@@ -1,13 +1,19 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { constants } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, open, rename, rmdir, unlink } from "node:fs/promises";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import {
+	MAX_HANDOFF_BYTES,
+	SESSION_HANDOFF_FILE_NAME,
 	buildContinuationPrompt,
 	buildHandoffCreationPrompt,
 	formatWarning,
+	handoffDirectory,
 	handoffPath,
+	isHandoffTokenForSession,
+	isValidHandoffContent,
 	makeHandoffToken,
 	validateThresholds,
 	warningLevel,
@@ -19,42 +25,34 @@ const OPEN_COMMAND = "session-handoff-open-new";
 
 type HandoffJob = {
 	token: string;
-	path: string;
-	sourceSessionPath?: string;
-	status: "writing" | "ready";
+	status: "writing" | "ready" | "transitioning";
 };
 
 type ExtensionState = {
-	version: 5;
+	version: 1;
 	warnedAtWarning: boolean;
 	handoff?: HandoffJob;
 };
 
 const DEFAULT_STATE: ExtensionState = {
-	version: 5,
+	version: 1,
 	warnedAtWarning: false,
 };
 
-function parseHandoff(value: unknown): HandoffJob | undefined {
+function parseHandoff(value: unknown, sessionId: string): HandoffJob | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const handoff = value as Record<string, unknown>;
 	if (
 		typeof handoff.token !== "string" ||
-		typeof handoff.path !== "string" ||
-		(handoff.sourceSessionPath !== undefined && typeof handoff.sourceSessionPath !== "string") ||
-		(handoff.status !== "writing" && handoff.status !== "ready")
+		!isHandoffTokenForSession(handoff.token, sessionId) ||
+		(handoff.status !== "writing" && handoff.status !== "ready" && handoff.status !== "transitioning")
 	) {
 		return undefined;
 	}
-	return {
-		token: handoff.token,
-		path: handoff.path,
-		...(typeof handoff.sourceSessionPath === "string" ? { sourceSessionPath: handoff.sourceSessionPath } : {}),
-		status: handoff.status,
-	};
+	return { token: handoff.token, status: handoff.status };
 }
 
-function restoreState(entries: readonly unknown[]): ExtensionState {
+function restoreState(entries: readonly unknown[], sessionId: string): ExtensionState {
 	let state = { ...DEFAULT_STATE };
 	for (const entry of entries) {
 		if (!entry || typeof entry !== "object") continue;
@@ -64,66 +62,190 @@ function restoreState(entries: readonly unknown[]): ExtensionState {
 			data?: Record<string, unknown>;
 		};
 		if (candidate.type !== "custom" || candidate.customType !== STATE_ENTRY || !candidate.data) continue;
+		const handoff = candidate.data.version === 1 ? parseHandoff(candidate.data.handoff, sessionId) : undefined;
 		state = {
-			version: 5,
+			version: 1,
 			warnedAtWarning: candidate.data.warnedAtWarning === true,
-			...(candidate.data.version === 5 && parseHandoff(candidate.data.handoff)
-				? { handoff: parseHandoff(candidate.data.handoff) }
-				: {}),
+			...(handoff ? { handoff } : {}),
 		};
 	}
 	return state;
 }
 
-async function fileIsReady(path: string): Promise<boolean> {
-	try {
-		const metadata = await stat(path);
-		return metadata.isFile() && Boolean((await readFile(path, "utf8")).trim());
-	} catch {
-		return false;
+function errorCode(error: unknown): string | undefined {
+	return typeof error === "object" && error !== null && "code" in error
+		? String((error as { code?: unknown }).code)
+		: undefined;
+}
+
+function isPrivateDirectory(metadata: Awaited<ReturnType<typeof lstat>>): boolean {
+	return metadata.isDirectory() && !metadata.isSymbolicLink() && (BigInt(metadata.mode) & 0o077n) === 0n;
+}
+
+async function createPrivateHandoffDirectory(token: string): Promise<void> {
+	const directory = handoffDirectory(token);
+	await mkdir(directory, { mode: 0o700 });
+	if (!isPrivateDirectory(await lstat(directory))) {
+		throw new Error("Handoff directory is not a private regular directory.");
 	}
+}
+
+async function readValidatedHandoff(token: string): Promise<string> {
+	const directory = handoffDirectory(token);
+	const directoryMetadata = await lstat(directory);
+	if (!isPrivateDirectory(directoryMetadata)) {
+		throw new Error("Handoff directory is not a private regular directory.");
+	}
+
+	const handle = await open(handoffPath(token), constants.O_RDONLY | constants.O_NOFOLLOW);
+	try {
+		const metadata = await handle.stat();
+		if (!metadata.isFile() || metadata.size < 1 || metadata.size > MAX_HANDOFF_BYTES) {
+			throw new Error("Handoff file is missing, unsafe, empty, or too large.");
+		}
+
+		const buffer = Buffer.alloc(MAX_HANDOFF_BYTES + 1);
+		let bytesRead = 0;
+		while (bytesRead < buffer.length) {
+			const result = await handle.read(buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+			if (result.bytesRead === 0) break;
+			bytesRead += result.bytesRead;
+		}
+		if (bytesRead > MAX_HANDOFF_BYTES) throw new Error("Handoff file is too large.");
+
+		const currentDirectoryMetadata = await lstat(directory);
+		if (
+			!isPrivateDirectory(currentDirectoryMetadata) ||
+			currentDirectoryMetadata.dev !== directoryMetadata.dev ||
+			currentDirectoryMetadata.ino !== directoryMetadata.ino
+		) {
+			throw new Error("Handoff directory changed while it was being read.");
+		}
+
+		const content = buffer.subarray(0, bytesRead).toString("utf8");
+		if (!isValidHandoffContent(content)) {
+			throw new Error("Handoff file is incomplete or malformed.");
+		}
+		return content;
+	} finally {
+		await handle.close();
+	}
+}
+
+async function cleanupHandoff(token: string): Promise<void> {
+	const directory = handoffDirectory(token);
+	let directoryMetadata: Awaited<ReturnType<typeof lstat>>;
+	try {
+		directoryMetadata = await lstat(directory);
+	} catch (error) {
+		if (errorCode(error) === "ENOENT") return;
+		throw error;
+	}
+
+	if (directoryMetadata.isSymbolicLink()) {
+		await unlink(directory);
+		return;
+	}
+	if (!isPrivateDirectory(directoryMetadata)) return;
+
+	const quarantine = `${directory}-cleanup-${randomUUID()}`;
+	await rename(directory, quarantine);
+	const quarantinedMetadata = await lstat(quarantine);
+	if (
+		!isPrivateDirectory(quarantinedMetadata) ||
+		quarantinedMetadata.dev !== directoryMetadata.dev ||
+		quarantinedMetadata.ino !== directoryMetadata.ino
+	) {
+		return;
+	}
+
+	const path = `${quarantine}/${SESSION_HANDOFF_FILE_NAME}`;
+	const isolatedFile = `${directory}-file-cleanup-${randomUUID()}`;
+	let movedFile = false;
+	try {
+		await rename(path, isolatedFile);
+		movedFile = true;
+	} catch (error) {
+		if (errorCode(error) !== "ENOENT") throw error;
+	}
+
+	if (movedFile) {
+		const currentQuarantineMetadata = await lstat(quarantine);
+		if (
+			!isPrivateDirectory(currentQuarantineMetadata) ||
+			currentQuarantineMetadata.dev !== directoryMetadata.dev ||
+			currentQuarantineMetadata.ino !== directoryMetadata.ino
+		) {
+			await rename(isolatedFile, path).catch(() => undefined);
+			return;
+		}
+		const metadata = await lstat(isolatedFile);
+		if (metadata.isFile() || metadata.isSymbolicLink()) await unlink(isolatedFile);
+	}
+
+	try {
+		await rmdir(quarantine);
+	} catch (error) {
+		if (errorCode(error) !== "ENOTEMPTY") throw error;
+	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 export default function simpleHandoffExtension(pi: ExtensionAPI) {
 	const thresholds = validateThresholds(HANDOFF_THRESHOLDS);
 	let state: ExtensionState = { ...DEFAULT_STATE };
+	let transitionInProgress = false;
 	const persist = () => pi.appendEntry(STATE_ENTRY, state);
+	const clearHandoff = () => {
+		const { handoff: _handoff, ...clearedState } = state;
+		state = clearedState;
+		persist();
+	};
 	const autonomousGuidance = `During explicitly user-authorized autonomous work, choose your own handoff cutoff between ${thresholds.warningThreshold}% and ${thresholds.criticalThreshold}% context usage. Use session_handoff status to monitor usage, and start the handoff at your chosen cutoff without waiting for the user. Never infer autonomous permission merely from a long task.`;
-
-	pi.on("session_start", (_event, ctx) => {
-		state = restoreState(ctx.sessionManager.getBranch());
-	});
-
-	pi.on("session_before_compact", () => {
-		if (state.handoff) return { cancel: true };
-	});
-
-	pi.on("agent_settled", async (_event, ctx) => {
-		if (state.handoff?.status === "writing") {
-			const { token, path, sourceSessionPath } = state.handoff;
-			if (!(await fileIsReady(path))) {
-				state = { ...state, handoff: undefined };
+	const advanceHandoff = async (ctx: { ui: { notify(message: string, level: "error"): void } }) => {
+		if (!state.handoff) return false;
+		const { token } = state.handoff;
+		try {
+			await readValidatedHandoff(token);
+			if (state.handoff.status !== "ready") {
+				state = { ...state, handoff: { token, status: "ready" } };
 				persist();
-				ctx.ui.notify("Handoff failed: the context handoff is missing or empty.", "error");
-				return;
 			}
-
-			state = {
-				...state,
-				handoff: {
-					token,
-					path,
-					...(sourceSessionPath ? { sourceSessionPath } : {}),
-					status: "ready",
-				},
-			};
-			persist();
 			pi.sendUserMessage(`/${OPEN_COMMAND} ${token}`, {
 				deliverAs: "followUp",
 				expandPromptTemplates: true,
 			});
-			return;
+		} catch (error) {
+			await cleanupHandoff(token).catch(() => undefined);
+			clearHandoff();
+			ctx.ui.notify(`Handoff failed: ${errorMessage(error)}`, "error");
 		}
+		return true;
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		state = restoreState(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId());
+		transitionInProgress = false;
+		await advanceHandoff(ctx);
+	});
+
+	pi.on("session_shutdown", async () => {
+		if (transitionInProgress) return;
+		const token = state.handoff?.token;
+		if (!token) return;
+		await cleanupHandoff(token).catch(() => undefined);
+		clearHandoff();
+	});
+
+	pi.on("session_before_compact", () => {
+		if (state.handoff || transitionInProgress) return { cancel: true };
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (await advanceHandoff(ctx)) return;
 
 		if (!ctx.hasUI) return;
 		const percent = ctx.getContextUsage()?.percent ?? null;
@@ -161,7 +283,7 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			if (state.handoff) {
+			if (state.handoff || transitionInProgress) {
 				return {
 					content: [{ type: "text", text: "A handoff is already in progress." }],
 					details: { queued: false, percent, ...thresholds },
@@ -184,26 +306,23 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 			description,
 			handler: async (_args, ctx) => {
 				await ctx.waitForIdle();
-				if (state.handoff) {
+				if (state.handoff || transitionInProgress) {
 					ctx.ui.notify("A handoff is already in progress.", "warning");
 					return;
 				}
 
 				const token = makeHandoffToken(ctx.sessionManager.getSessionId());
-				const path = handoffPath(ctx.cwd, token);
-				const sourceSessionPath = ctx.sessionManager.getSessionFile();
-				await mkdir(dirname(path), { recursive: true });
-				state = {
-					...state,
-					handoff: {
-						token,
-						path,
-						...(sourceSessionPath ? { sourceSessionPath } : {}),
-						status: "writing",
-					},
-				};
+				state = { ...state, handoff: { token, status: "writing" } };
 				persist();
-				pi.sendUserMessage(buildHandoffCreationPrompt(path, sourceSessionPath));
+
+				try {
+					await createPrivateHandoffDirectory(token);
+					pi.sendUserMessage(buildHandoffCreationPrompt(handoffPath(token), ctx.sessionManager.getSessionFile()));
+				} catch (error) {
+					await cleanupHandoff(token).catch(() => undefined);
+					clearHandoff();
+					ctx.ui.notify(`Could not start handoff: ${errorMessage(error)}`, "error");
+				}
 			},
 		});
 	};
@@ -215,24 +334,80 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 		description: "Open the fresh session after a completed handoff",
 		handler: async (args, ctx) => {
 			const token = args.trim();
-			if (!state.handoff || state.handoff.status !== "ready" || state.handoff.token !== token) {
+			if (
+				transitionInProgress ||
+				!state.handoff ||
+				state.handoff.status !== "ready" ||
+				state.handoff.token !== token ||
+				!isHandoffTokenForSession(token, ctx.sessionManager.getSessionId())
+			) {
 				ctx.ui.notify("No matching completed context handoff is available.", "error");
 				return;
 			}
 
-			const { path, sourceSessionPath } = state.handoff;
-			const continuationPrompt = buildContinuationPrompt(path);
-			const result = await ctx.newSession({
-				parentSession: sourceSessionPath,
-				withSession: async (replacementCtx) => {
-					await replacementCtx.sendUserMessage(continuationPrompt);
-				},
-			});
-			if (!result.cancelled) return;
+			let handoff: string;
+			try {
+				handoff = await readValidatedHandoff(token);
+			} catch (error) {
+				await cleanupHandoff(token).catch(() => undefined);
+				clearHandoff();
+				ctx.ui.notify(`Could not open handoff: ${errorMessage(error)}`, "error");
+				return;
+			}
 
-			state = { ...state, handoff: undefined };
+			const sourceSessionPath = ctx.sessionManager.getSessionFile();
+			const continuationPrompt = buildContinuationPrompt(handoff);
+			state = { ...state, handoff: { token, status: "transitioning" } };
 			persist();
-			ctx.ui.notify("The automatic session switch was cancelled.", "warning");
+			transitionInProgress = true;
+			let handoffDurableInReplacement = false;
+
+			try {
+				const result = await ctx.newSession({
+					...(sourceSessionPath ? { parentSession: sourceSessionPath } : {}),
+					setup: async (sessionManager) => {
+						sessionManager.appendMessage({
+							role: "user",
+							content: [{ type: "text", text: continuationPrompt }],
+							timestamp: Date.now(),
+						});
+					},
+					withSession: async (replacementCtx) => {
+						try {
+							await replacementCtx.sendUserMessage("Continue the handed-off work now.");
+							handoffDurableInReplacement = true;
+						} catch (error) {
+							replacementCtx.ui.notify(
+								"The handoff is preserved above, but automatic continuation failed. Send another message to retry.",
+								"error",
+							);
+							throw error;
+						}
+					},
+				});
+
+				if (result.cancelled) {
+					clearHandoff();
+					await cleanupHandoff(token);
+					ctx.ui.notify("The automatic session switch was cancelled. Run /simplehandoff to try again.", "warning");
+				} else {
+					await cleanupHandoff(token);
+				}
+			} catch (error) {
+				if (handoffDurableInReplacement) {
+					await cleanupHandoff(token).catch(() => undefined);
+				} else {
+					try {
+						state = { ...state, handoff: { token, status: "ready" } };
+						persist();
+						ctx.ui.notify(`Session handoff failed: ${errorMessage(error)} Run the queued handoff command again to retry.`, "error");
+					} catch {
+						// The source session can recover its persisted transitioning job when resumed.
+					}
+				}
+			} finally {
+				transitionInProgress = false;
+			}
 		},
 	});
 }

@@ -5,10 +5,43 @@ import {
 	buildHandoffCreationPrompt,
 	formatWarning,
 	handoffPath,
+	isHandoffTokenForSession,
+	isValidHandoffContent,
 	makeHandoffToken,
 	validateThresholds,
 	warningLevel,
 } from "../extensions/pi-simple-handoff/core.ts";
+
+function sampleHandoff(): string {
+	return `# Context Handoff
+
+## Goal
+Finish the release review.
+
+## Current State
+The package is prepared.
+
+## Decisions and Constraints
+Do not publish yet.
+
+## Next Steps
+Run integration tests and fix concrete findings.
+
+## Open Questions and Blockers
+None.
+
+## Working Set
+- package.json
+
+## Behavior Changes
+None.
+
+## Precision Anchors
+None.
+
+## Cold Context
+No transcript reference is available.`;
+}
 
 test("does not warn below 60 percent", () => {
 	assert.equal(warningLevel(null, false), undefined);
@@ -38,6 +71,10 @@ test("supports a configurable handoff window", () => {
 		() => validateThresholds({ warningThreshold: 80, criticalThreshold: 60 }),
 		/warningThreshold < criticalThreshold/,
 	);
+	assert.throws(
+		() => validateThresholds({ warningThreshold: Number.NaN, criticalThreshold: 80 }),
+		/thresholds must satisfy/,
+	);
 });
 
 test("formats soft and hard warnings differently", () => {
@@ -51,12 +88,16 @@ test("formats soft and hard warnings differently", () => {
 	);
 });
 
-test("builds one handoff path", () => {
-	assert.equal(handoffPath("/work", "session-1"), "/work/.pi/session-handoff/session-1/session-handoff.md");
+test("builds a private temporary handoff path from a validated token", () => {
+	assert.equal(
+		handoffPath("session-1", "/tmp"),
+		"/tmp/pi-simple-handoff-session-1/session-handoff.md",
+	);
+	assert.throws(() => handoffPath("../../escape", "/tmp"), /Invalid pi-simple-handoff token/);
 });
 
 test("creation prompt is forward-focused, English, and independent of project context files", () => {
-	const sessionPath = handoffPath("/work", "session-1");
+	const sessionPath = handoffPath("session-1", "/tmp");
 	const sourceSessionPath = "/sessions/source.jsonl";
 	const prompt = buildHandoffCreationPrompt(sessionPath, sourceSessionPath);
 	assert.match(prompt, /🟡 \*\*HANDOFF STARTED\*\*/);
@@ -72,17 +113,32 @@ test("creation prompt is forward-focused, English, and independent of project co
 	assert.doesNotMatch(prompt, /Aktualisiere|Lösche|Verhaltensänderungen/);
 });
 
-test("restart prompt reads, deletes exactly the handoff, and continues", () => {
-	const sessionPath = handoffPath("/work", "session-1");
-	const prompt = buildContinuationPrompt(sessionPath);
-	assert.match(prompt, /🟢 \*\*NEW SESSION STARTED\*\*/);
-	assert.equal(prompt.split(sessionPath).length - 1, 2);
-	assert.match(prompt, /delete exactly this file/);
-	assert.match(prompt, /Immediately continue.*“Next Steps\.”/);
-	assert.match(prompt, /Cold Context.*only if/);
-	assert.match(prompt, /Do not perform any other session scans/);
+test("validates required handoff structure and substantive continuation fields", () => {
+	assert.equal(isValidHandoffContent(sampleHandoff()), true);
+	assert.equal(isValidHandoffContent("# Context Handoff\n\n## Goal\n"), false);
+	assert.equal(isValidHandoffContent(sampleHandoff().replace("Finish the release review.", "")), false);
+	assert.equal(
+		isValidHandoffContent(sampleHandoff().replace("## Goal", "## Goal\0")),
+		false,
+	);
+	assert.equal(isValidHandoffContent(sampleHandoff().replace("## Goal", "## Goalkeeper")), false);
+	assert.equal(isValidHandoffContent(`${sampleHandoff()}\n--- END CONTEXT HANDOFF ---`), false);
 });
 
-test("creates filesystem-safe handoff tokens", () => {
-	assert.equal(makeHandoffToken("ABC_def/session", 36), "abc-def-session-10");
+test("continuation embeds the captured handoff without delegating file deletion", () => {
+	const handoff = sampleHandoff();
+	const prompt = buildContinuationPrompt(handoff);
+	assert.match(prompt, /🟢 \*\*NEW SESSION STARTED\*\*/);
+	assert.match(prompt, /Immediately continue.*“Next Steps\.”/);
+	assert.match(prompt, /Cold Context.*only if/);
+	assert.ok(prompt.includes(handoff));
+	assert.doesNotMatch(prompt, /delete exactly|session-handoff\.md/);
+});
+
+test("creates filesystem-safe tokens bound to their source session", () => {
+	const token = makeHandoffToken("ABC_def/session", 36, "01234567-89ab-cdef");
+	assert.equal(token, "abc-def-session-10-0123456789abcdef");
+	assert.equal(isHandoffTokenForSession(token, "ABC_def/session"), true);
+	assert.equal(isHandoffTokenForSession(token, "other-session"), false);
+	assert.equal(isHandoffTokenForSession("../../escape", "ABC_def/session"), false);
 });

@@ -1,17 +1,18 @@
 # pi-simple-handoff
 
-Continue your work in a fresh [Pi](https://pi.dev) session without losing momentum.
+Carry focused task context into a genuinely fresh [Pi](https://pi.dev) session and continue immediately.
 
-`pi-simple-handoff` creates one focused context handoff, opens a genuinely fresh session, and immediately continues the current task. Trigger it yourself when a conversation grows large, or explicitly authorize the agent to initiate it autonomously within a configurable context window.
+`pi-simple-handoff` is for rapid transitions during long conversations. Start it manually with `/simplehandoff` or `/sh`. For explicitly authorized autonomous work, the agent can monitor context usage and start the same flow itself.
+
+Requires Pi 0.84.2 or newer and Node.js 22.19.0 or newer.
 
 ## What it adds
 
-- `/simplehandoff` and the short alias `/sh` for an immediate fresh-session handoff.
-- A model-callable `session_handoff` tool for explicitly authorized autonomous work.
-- A warning at 60% context usage and critical reminders from 80% onward by default.
+- `/simplehandoff` and the short alias `/sh`.
+- A model-callable `session_handoff` tool with `status` and `start` actions.
+- One warning at 60% context usage and critical reminders from 80% by default.
 - Configurable warning and critical thresholds.
-- One temporary, forward-focused handoff instead of archives, indexes, or session scans.
-- A cold reference to the previous transcript for emergency recovery only.
+- A focused handoff to a new linked session, with the old transcript kept as cold fallback context.
 
 ## Install
 
@@ -21,13 +22,13 @@ Install from npm:
 pi install npm:pi-simple-handoff
 ```
 
-Try it for one run without installing it:
+Try it for one run:
 
 ```sh
 pi -e npm:pi-simple-handoff
 ```
 
-You can also install the GitHub repository directly:
+Or install directly from GitHub:
 
 ```sh
 pi install git:github.com/MircoBlitz/pi-simple-handoff
@@ -43,28 +44,26 @@ Start a handoff manually:
 /simplehandoff
 ```
 
-Or use the short alias:
+Or:
 
 ```text
 /sh
 ```
 
-The extension asks the current agent to write a focused handoff, verifies the result, opens a fresh session, and sends the continuation request automatically. The new session reads and deletes the temporary file before continuing the existing task.
+The current agent writes a concise context handoff. The extension validates it, persists its content into a fresh replacement session, removes the temporary file, and asks the replacement session to continue immediately.
 
 ## Autonomous handoffs
 
-For long-running autonomous work, explicitly tell the agent that it may initiate a handoff when needed. The extension exposes two `session_handoff` actions:
+For long-running autonomous work, explicitly tell the agent that it may initiate handoffs when needed. The `session_handoff` tool supports:
 
-- `status` reports current context usage and the configured handoff window.
-- `start` queues the same transition as `/simplehandoff`.
+- `status`: report current context usage and the configured handoff window.
+- `start`: queue the same flow as `/simplehandoff`.
 
-Once authorized, the agent chooses a cutoff within the configured window, monitors context usage, and starts the handoff without waiting for another confirmation. It then continues the requested work in the fresh session.
-
-The extension never infers autonomous permission merely because a task is long.
+The extension gives the model guidance not to infer permission merely from a long task. This is a model-policy instruction, not a technical authorization gate. Use autonomous handoffs only when you have explicitly authorized them.
 
 ## Configuration
 
-The default handoff window is 60% to 80% context usage. Override either threshold with environment variables before starting Pi:
+The default handoff window is 60% to 80% context usage. Set either threshold before starting Pi:
 
 ```sh
 export PI_SIMPLE_HANDOFF_WARNING_THRESHOLD=60
@@ -78,42 +77,40 @@ Values must satisfy:
 1 <= warning threshold < critical threshold <= 100
 ```
 
-The warning threshold controls the first notification. The critical threshold controls repeated reminders. Together they define the range in which an authorized autonomous agent chooses its cutoff.
+The lower value controls the first notification. The upper value controls repeated critical reminders. Together they guide an authorized autonomous agent's chosen cutoff.
 
 ## How it works
 
-1. The current session writes one concise Markdown handoff below the active working directory.
-2. The extension verifies that the file exists and is not empty.
-3. Pi opens a new session linked to the previous session.
-4. The new session reads and deletes exactly that handoff file.
-5. The agent immediately continues the carried request.
+1. The extension creates a session-bound directory with private permissions in the operating system's temporary directory.
+2. The current agent writes one structured Markdown handoff there.
+3. The extension rejects symlinks, unsafe or oversized files, and incomplete handoffs.
+4. Pi opens a new session linked to the previous persisted session.
+5. The extension stores the complete handoff as a message in the replacement session before requesting automatic continuation.
+6. The extension deletes the temporary file and directory.
 
-Temporary handoffs use this path:
+The handoff captures the goal, current state, decisions, constraints, next steps, blockers, working set, behavior changes, precision-sensitive statements, and a cold transcript reference. The replacement should consult that transcript only when essential information is missing.
 
-```text
-.pi/session-handoff/<session-token>/session-handoff.md
-```
-
-The handoff records the active goal, relevant state, decisions, constraints, detailed next steps, blockers, working files, behavioral changes, and precision-sensitive user statements. The old transcript remains cold context and is read only when an essential detail is missing.
-
-While a handoff is active, Pi compaction is cancelled so it cannot interfere with the transition.
+While a handoff job is active, the extension cancels compaction so it cannot interfere with the transition. Successful, cancelled, malformed, and interrupted flows clean up their expected temporary data. If the replacement cannot persist the handoff, the source session retains a retryable job and the temporary file for recovery.
 
 ## Caveats
 
 - Interactive Pi sessions are required for notifications and session switching.
-- Handoff quality depends on the active model following the focused handoff prompt.
-- Temporary parent directories may remain after the Markdown file is deleted.
-- The extension relies on Pi extension APIs for context usage, session state, and fresh-session creation; future Pi API changes may require updates.
+- Handoff quality still depends on the active model following the structured writing prompt.
+- Ephemeral sessions have no persisted source session to link as a parent and no cold transcript path to reference.
+- Cleanup removes only the extension's exact expected file and directory; it does not recursively delete unexpected files placed in that directory.
+- Unreleased pre-0.1.0 development snapshots used project-local temporary paths. If you upgrade with an in-flight old handoff, remove its `.pi/session-handoff` directory manually.
+- Future Pi extension API changes may require updates.
 
 ## Development
 
-Run the test suite:
+Install the pinned development dependencies and run all checks:
 
 ```sh
-npm test
+npm ci
+npm run validate
 ```
 
-Inspect the exact npm package contents before publishing:
+Inspect the exact package contents before publishing:
 
 ```sh
 npm pack --dry-run

@@ -1,3 +1,8 @@
+node_modules/
+*.tgz
+coverage/
+.nyc_output/
+
 # ---> macOS
 # General
 .DS_Store
