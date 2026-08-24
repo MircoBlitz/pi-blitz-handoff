@@ -1,0 +1,37 @@
+{
+  "name": "pi-simple-handoff",
+  "version": "0.1.0",
+  "description": "Replace Pi compaction with a small, focused handoff into a genuinely fresh session.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Mirco Blitz <mail@mircoblitz.de>",
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@192.168.11.10:2222/Lindworm/pi-simple-handoff.git"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "handoff",
+    "context-window",
+    "compaction"
+  ],
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pi-simple-handoff/index.ts"
+    ]
+  }
+}
