@@ -7,7 +7,14 @@
   "author": "Mirco Blitz <mail@mircoblitz.de>",
   "repository": {
     "type": "git",
-    "url": "ssh://git@192.168.11.10:2222/Lindworm/pi-simple-handoff.git"
+    "url": "git+https://github.com/MircoBlitz/pi-simple-handoff.git"
+  },
+  "homepage": "https://github.com/MircoBlitz/pi-simple-handoff#readme",
+  "bugs": {
+    "url": "https://github.com/MircoBlitz/pi-simple-handoff/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "pi-package",
@@ -22,7 +29,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/*.test.ts"
+    "test": "node --test test/*.test.ts",
+    "prepublishOnly": "npm test"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
