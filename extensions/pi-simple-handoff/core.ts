@@ -44,9 +44,9 @@ export function warningLevel(
 export function formatWarning(percent: number, level: WarningLevel): string {
 	const displayedPercent = Math.max(0, Math.min(100, Math.floor(percent)));
 	if (level === "error") {
-		return `CRITICAL: Your KV context is at ${displayedPercent}%. Run /handoff now.`;
+		return `CRITICAL: Your KV context is at ${displayedPercent}%. Run /simplehandoff or /sh now.`;
 	}
-	return `Your KV context is at ${displayedPercent}%. Consider running /handoff.`;
+	return `Your KV context is at ${displayedPercent}%. Consider running /simplehandoff or /sh.`;
 }
 
 export function makeHandoffToken(sessionId: string, now = Date.now()): string {

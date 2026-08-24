@@ -41,8 +41,14 @@ test("supports a configurable handoff window", () => {
 });
 
 test("formats soft and hard warnings differently", () => {
-	assert.equal(formatWarning(60, "warning"), "Your KV context is at 60%. Consider running /handoff.");
-	assert.equal(formatWarning(80.9, "error"), "CRITICAL: Your KV context is at 80%. Run /handoff now.");
+	assert.equal(
+		formatWarning(60, "warning"),
+		"Your KV context is at 60%. Consider running /simplehandoff or /sh.",
+	);
+	assert.equal(
+		formatWarning(80.9, "error"),
+		"CRITICAL: Your KV context is at 80%. Run /simplehandoff or /sh now.",
+	);
 });
 
 test("builds one handoff path", () => {

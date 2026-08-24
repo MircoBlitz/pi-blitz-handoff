@@ -8,7 +8,7 @@ Compaction keeps the existing KV cache alive. `pi-simple-handoff` instead writes
 
 - One warning at 60% context usage by default.
 - A critical warning after every settled turn from 80% onward.
-- `/handoff` for a manual fresh-session handoff.
+- `/simplehandoff` and its short alias `/sh` for a manual fresh-session handoff.
 - A model-callable `session_handoff` tool for explicitly authorized autonomous work.
 - User-configurable warning and critical thresholds.
 - One concise, forward-focused handoff instead of archives, registries, indexes, or session scans.
@@ -41,7 +41,13 @@ Pi packages and extensions execute with your full system permissions. Review thi
 Run:
 
 ```text
-/handoff
+/simplehandoff
+```
+
+Or use the short alias:
+
+```text
+/sh
 ```
 
 The current agent writes one temporary context handoff. The extension verifies that the file exists, opens a fresh session automatically, and sends the continuation prompt there. The new session reads the handoff, deletes exactly that file, and continues the existing request.
@@ -51,7 +57,7 @@ The current agent writes one temporary context handoff. The extension verifies t
 Tell the agent explicitly that it should work autonomously. The extension describes the workflow to the model through the `session_handoff` tool:
 
 - `status` reports current context usage and the configured handoff window.
-- `start` queues the same flow as `/handoff`.
+- `start` queues the same flow as `/simplehandoff`.
 
 During explicitly authorized autonomous work, the agent chooses its own cutoff within the warning-to-critical window, monitors usage, and starts the handoff at that cutoff without waiting for the user. After the fresh session starts, it continues autonomously from the handoff.
 

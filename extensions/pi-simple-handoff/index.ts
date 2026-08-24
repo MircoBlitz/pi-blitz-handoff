@@ -168,43 +168,48 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			pi.sendUserMessage("/handoff", {
+			pi.sendUserMessage("/simplehandoff", {
 				deliverAs: "followUp",
 				expandPromptTemplates: true,
 			});
 			return {
-				content: [{ type: "text", text: "Queued /handoff. Stop current work and let the handoff flow continue." }],
+				content: [{ type: "text", text: "Queued /simplehandoff. Stop current work and let the handoff flow continue." }],
 				details: { queued: true, percent, ...thresholds },
 			};
 		},
 	});
 
-	pi.registerCommand("handoff", {
-		description: "Write a focused context handoff and continue in a fresh session",
-		handler: async (_args, ctx) => {
-			await ctx.waitForIdle();
-			if (state.handoff) {
-				ctx.ui.notify("A handoff is already in progress.", "warning");
-				return;
-			}
+	const registerHandoffCommand = (name: string, description: string) => {
+		pi.registerCommand(name, {
+			description,
+			handler: async (_args, ctx) => {
+				await ctx.waitForIdle();
+				if (state.handoff) {
+					ctx.ui.notify("A handoff is already in progress.", "warning");
+					return;
+				}
 
-			const token = makeHandoffToken(ctx.sessionManager.getSessionId());
-			const path = handoffPath(ctx.cwd, token);
-			const sourceSessionPath = ctx.sessionManager.getSessionFile();
-			await mkdir(dirname(path), { recursive: true });
-			state = {
-				...state,
-				handoff: {
-					token,
-					path,
-					...(sourceSessionPath ? { sourceSessionPath } : {}),
-					status: "writing",
-				},
-			};
-			persist();
-			pi.sendUserMessage(buildHandoffCreationPrompt(path, sourceSessionPath));
-		},
-	});
+				const token = makeHandoffToken(ctx.sessionManager.getSessionId());
+				const path = handoffPath(ctx.cwd, token);
+				const sourceSessionPath = ctx.sessionManager.getSessionFile();
+				await mkdir(dirname(path), { recursive: true });
+				state = {
+					...state,
+					handoff: {
+						token,
+						path,
+						...(sourceSessionPath ? { sourceSessionPath } : {}),
+						status: "writing",
+					},
+				};
+				persist();
+				pi.sendUserMessage(buildHandoffCreationPrompt(path, sourceSessionPath));
+			},
+		});
+	};
+
+	registerHandoffCommand("simplehandoff", "Write a focused context handoff and continue in a fresh session");
+	registerHandoffCommand("sh", "Short alias for /simplehandoff");
 
 	pi.registerCommand(OPEN_COMMAND, {
 		description: "Open the fresh session after a completed handoff",
