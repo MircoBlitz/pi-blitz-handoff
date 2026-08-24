@@ -1,6 +1,6 @@
 # pi-simple-handoff
 
-A small [Pi](https://github.com/earendil-works/pi-mono) extension that replaces compaction with a focused handoff into a genuinely fresh session.
+A small [Pi](https://pi.dev) extension that replaces compaction with a focused handoff into a genuinely fresh session.
 
 Compaction keeps the existing KV cache alive. `pi-simple-handoff` instead writes one temporary Markdown handoff, opens a new session with a small cache, reads and deletes the handoff, and immediately continues the current task.
 
