@@ -167,7 +167,7 @@ test("cancelled session replacement clears state and temporary data", async (t) 
 	const harness = createHarness({ newSession: async () => ({ cancelled: true }) });
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const token = harness.latestState()?.handoff?.token;
 	assert.ok(token);
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
@@ -186,7 +186,7 @@ test("session replacement errors preserve a retryable handoff", async (t) => {
 	});
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const token = harness.latestState()?.handoff?.token;
 	assert.ok(token);
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
@@ -208,7 +208,7 @@ test("setup failures retain the handoff for source-session recovery", async (t) 
 	});
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const token = harness.latestState()?.handoff?.token;
 	assert.ok(token);
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
@@ -233,7 +233,7 @@ test("automatic continuation failures retain the source recovery file", async (t
 	});
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const token = harness.latestState()?.handoff?.token;
 	assert.ok(token);
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
@@ -247,7 +247,7 @@ test("malformed and symlinked handoffs are rejected without touching their targe
 	const malformed = createHarness();
 	t.after(() => malformed.cleanup());
 	await malformed.start();
-	await malformed.invoke("simplehandoff");
+	await malformed.invoke("sh");
 	const malformedToken = malformed.latestState()?.handoff?.token;
 	assert.ok(malformedToken);
 	await writeFile(handoffPath(malformedToken), "# Context Handoff\n\n## Goal\npartial", "utf8");
@@ -258,7 +258,7 @@ test("malformed and symlinked handoffs are rejected without touching their targe
 	const linked = createHarness();
 	t.after(() => linked.cleanup());
 	await linked.start();
-	await linked.invoke("simplehandoff");
+	await linked.invoke("sh");
 	const linkedToken = linked.latestState()?.handoff?.token;
 	assert.ok(linkedToken);
 	const target = `${handoffDirectory(linkedToken)}-target`;
@@ -337,7 +337,7 @@ test("session shutdown clears an unfinished handoff and its private data", async
 	const harness = createHarness();
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const token = harness.latestState()?.handoff?.token;
 	assert.ok(token);
 	await harness.events.get("session_shutdown")?.[0]?.({}, harness.ctx);
@@ -349,7 +349,7 @@ test("duplicate manual starts are blocked before creating another job", async (t
 	const harness = createHarness();
 	t.after(() => harness.cleanup());
 	await harness.start();
-	await harness.invoke("simplehandoff");
+	await harness.invoke("sh");
 	const firstToken = harness.latestState()?.handoff?.token;
 	await harness.invoke("sh");
 	assert.equal(harness.latestState()?.handoff?.token, firstToken);
@@ -357,17 +357,24 @@ test("duplicate manual starts are blocked before creating another job", async (t
 	assert.match(harness.notifications.at(-1)?.message ?? "", /already in progress/);
 });
 
-test("autonomous tool reports status and queues the public command", async () => {
+test("simple_handoff is discoverable from natural requests and queues the short command", async () => {
 	const harness = createHarness();
 	await harness.start();
-	const tool = harness.tools.get("session_handoff") as {
+	assert.equal(harness.commands.has("simplehandoff"), false);
+	assert.equal(harness.commands.has("sh"), true);
+	const tool = harness.tools.get("simple_handoff") as {
+		description: string;
+		promptGuidelines: string[];
 		execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }>; details: Record<string, unknown> }>;
 	};
+	assert.match(tool.description, /simple hand off/i);
+	assert.match(tool.promptGuidelines.join(" "), /call simple_handoff with action=start immediately/i);
+	assert.match(tool.promptGuidelines.join(" "), /merely discussing, questioning, testing, or asking to fix/i);
 	const status = await tool.execute("id", { action: "status" }, undefined, undefined, harness.ctx);
 	assert.match(status.content[0]!.text, /25\.0%/);
 	const start = await tool.execute("id", { action: "start" }, undefined, undefined, harness.ctx);
 	assert.equal(start.details.queued, true);
-	assert.equal(harness.sent.at(-1)?.content, "/simplehandoff");
+	assert.equal(harness.sent.at(-1)?.content, "/sh");
 	assert.deepEqual(harness.sent.at(-1)?.options, {
 		deliverAs: "followUp",
 		expandPromptTemplates: true,

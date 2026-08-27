@@ -2,14 +2,14 @@
 
 Carry focused task context into a genuinely fresh [Pi](https://pi.dev) session and continue immediately.
 
-`pi-simple-handoff` is for rapid transitions during long conversations. Start it manually with `/simplehandoff` or `/sh`. For explicitly authorized autonomous work, the agent can monitor context usage and start the same flow itself.
+`pi-simple-handoff` is for rapid transitions during long conversations. Ask the agent for a “handoff” or “simple handoff”, or start it manually with `/sh`. For explicitly authorized autonomous work, the agent can monitor context usage and start the same flow itself.
 
 Requires Pi 0.84.2 or newer and Node.js 22.19.0 or newer.
 
 ## What it adds
 
-- `/simplehandoff` and the short alias `/sh`.
-- A model-callable `session_handoff` tool with `status` and `start` actions.
+- The short manual command `/sh`.
+- A model-callable `simple_handoff` tool with `status` and `start` actions, explicitly discoverable from “handoff”, “hand off”, “simple handoff”, and “simple hand off” requests.
 - One warning at 60% context usage and critical reminders from 80% by default.
 - Configurable warning and critical thresholds.
 - A focused handoff to a new linked session, with the old transcript kept as cold fallback context.
@@ -38,13 +38,17 @@ Pi packages execute with your full system permissions. Review third-party source
 
 ## Usage
 
-Start a handoff manually:
+Ask the agent directly:
 
 ```text
-/simplehandoff
+handoff
 ```
 
-Or:
+```text
+simple handoff
+```
+
+Or start it manually:
 
 ```text
 /sh
@@ -54,10 +58,10 @@ The current agent writes a concise context handoff. The extension validates it, 
 
 ## Autonomous handoffs
 
-For long-running autonomous work, explicitly tell the agent that it may initiate handoffs when needed. The `session_handoff` tool supports:
+For long-running autonomous work, explicitly tell the agent that it may initiate handoffs when needed. The `simple_handoff` tool supports:
 
 - `status`: report current context usage and the configured handoff window.
-- `start`: queue the same flow as `/simplehandoff`.
+- `start`: queue the same flow as `/sh`.
 
 The extension gives the model guidance not to infer permission merely from a long task. This is a model-policy instruction, not a technical authorization gate. Use autonomous handoffs only when you have explicitly authorized them.
 

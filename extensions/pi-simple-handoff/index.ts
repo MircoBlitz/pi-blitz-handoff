@@ -204,7 +204,8 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 		state = clearedState;
 		persist();
 	};
-	const autonomousGuidance = `During explicitly user-authorized autonomous work, choose your own handoff cutoff between ${thresholds.warningThreshold}% and ${thresholds.criticalThreshold}% context usage. Use session_handoff status to monitor usage, and start the handoff at your chosen cutoff without waiting for the user. Never infer autonomous permission merely from a long task.`;
+	const directRequestGuidance = "When the user explicitly requests a handoff by saying 'handoff', 'hand off', 'simple handoff', 'simple hand off', or an equivalent imperative, call simple_handoff with action=start immediately. Do not start a handoff when the user is merely discussing, questioning, testing, or asking to fix handoff behavior.";
+	const autonomousGuidance = `During explicitly user-authorized autonomous work, choose your own handoff cutoff between ${thresholds.warningThreshold}% and ${thresholds.criticalThreshold}% context usage. Use simple_handoff status to monitor usage, and start the handoff at your chosen cutoff without waiting for the user. Never infer autonomous permission merely from a long task.`;
 	const advanceHandoff = async (ctx: { ui: { notify(message: string, level: "error"): void } }) => {
 		if (!state.handoff) return false;
 		const { token } = state.handoff;
@@ -260,11 +261,11 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "session_handoff",
-		label: "Session Handoff",
-		description: `Inspect context usage or start pi-simple-handoff's focused handoff into a genuinely fresh session. The configured handoff window is ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%. ${autonomousGuidance} Outside explicitly authorized autonomous work, start only when the user requests it.`,
-		promptSnippet: `Inspect context usage or start a focused fresh-session handoff (${thresholds.warningThreshold}–${thresholds.criticalThreshold}% window)`,
-		promptGuidelines: [autonomousGuidance],
+		name: "simple_handoff",
+		label: "Simple Handoff",
+		description: `Inspect context usage or start pi-simple-handoff's focused handoff into a genuinely fresh session. Use action=start when the user asks for a handoff, says "handoff", "hand off", "simple handoff", or "simple hand off" as a request. The configured handoff window is ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%. ${autonomousGuidance}`,
+		promptSnippet: `Run Simple Handoff when the user requests "handoff", "hand off", "simple handoff", or "simple hand off"; status also reports context usage (${thresholds.warningThreshold}–${thresholds.criticalThreshold}% window)`,
+		promptGuidelines: [directRequestGuidance, autonomousGuidance],
 		parameters: Type.Object({
 			action: StringEnum(["status", "start"] as const, {
 				description: "Check current usage and configured thresholds, or queue the handoff now",
@@ -290,12 +291,12 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			pi.sendUserMessage("/simplehandoff", {
+			pi.sendUserMessage("/sh", {
 				deliverAs: "followUp",
 				expandPromptTemplates: true,
 			});
 			return {
-				content: [{ type: "text", text: "Queued /simplehandoff. Stop current work and let the handoff flow continue." }],
+				content: [{ type: "text", text: "Queued /sh. Stop current work and let the handoff flow continue." }],
 				details: { queued: true, percent, ...thresholds },
 			};
 		},
@@ -327,8 +328,7 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 		});
 	};
 
-	registerHandoffCommand("simplehandoff", "Write a focused context handoff and continue in a fresh session");
-	registerHandoffCommand("sh", "Short alias for /simplehandoff");
+	registerHandoffCommand("sh", "Write a focused context handoff and continue in a fresh session");
 
 	pi.registerCommand(OPEN_COMMAND, {
 		description: "Open the fresh session after a completed handoff",
@@ -389,7 +389,7 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				if (result.cancelled) {
 					clearHandoff();
 					await cleanupHandoff(token);
-					ctx.ui.notify("The automatic session switch was cancelled. Run /simplehandoff to try again.", "warning");
+					ctx.ui.notify("The automatic session switch was cancelled. Run /sh to try again.", "warning");
 				} else {
 					await cleanupHandoff(token);
 				}
