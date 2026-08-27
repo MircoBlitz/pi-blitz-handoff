@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { access, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import simpleHandoffExtension from "../extensions/pi-simple-handoff/index.ts";
 import { handoffDirectory, handoffPath } from "../extensions/pi-simple-handoff/core.ts";
@@ -379,4 +381,32 @@ test("simple_handoff is discoverable from natural requests and queues the short 
 		deliverAs: "followUp",
 		expandPromptTemplates: true,
 	});
+});
+
+test("tool text uses limits configured in Pi's extension settings file", async (t) => {
+	const agentDirectory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-config-"));
+	const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+	t.after(async () => {
+		if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+		await rm(agentDirectory, { recursive: true, force: true });
+	});
+	await mkdir(join(agentDirectory, "extensions"));
+	await writeFile(join(agentDirectory, "extensions", "pi-simple-handoff.json"), JSON.stringify({
+		kvWarningPercent: 55,
+		selfHandoffPercent: 75,
+	}), "utf8");
+	process.env.PI_CODING_AGENT_DIR = agentDirectory;
+
+	const harness = createHarness();
+	await harness.start();
+	const tool = harness.tools.get("simple_handoff") as {
+		description: string;
+		promptSnippet: string;
+		execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>;
+	};
+	assert.match(tool.description, /55% to 75%/);
+	assert.match(tool.promptSnippet, /55–75%/);
+	const status = await tool.execute("id", { action: "status" }, undefined, undefined, harness.ctx);
+	assert.match(status.content[0]!.text, /55% to 75%/);
 });

@@ -18,7 +18,7 @@ import {
 	validateThresholds,
 	warningLevel,
 } from "./core.ts";
-import { HANDOFF_THRESHOLDS } from "./config.ts";
+import { loadHandoffThresholds } from "./config.ts";
 
 const STATE_ENTRY = "pi-simple-handoff-state";
 const OPEN_COMMAND = "session-handoff-open-new";
@@ -195,7 +195,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function simpleHandoffExtension(pi: ExtensionAPI) {
-	const thresholds = validateThresholds(HANDOFF_THRESHOLDS);
+	const thresholds = validateThresholds(loadHandoffThresholds());
 	let state: ExtensionState = { ...DEFAULT_STATE };
 	let transitionInProgress = false;
 	const persist = () => pi.appendEntry(STATE_ENTRY, state);

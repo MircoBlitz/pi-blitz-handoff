@@ -67,21 +67,28 @@ The extension gives the model guidance not to infer permission merely from a lon
 
 ## Configuration
 
-The default handoff window is 60% to 80% context usage. Set either threshold before starting Pi:
+Configure the extension in Pi's global extension settings directory:
 
-```sh
-export PI_SIMPLE_HANDOFF_WARNING_THRESHOLD=60
-export PI_SIMPLE_HANDOFF_CRITICAL_THRESHOLD=80
-pi
+```text
+~/.pi/agent/extensions/pi-simple-handoff.json
+```
+
+When `PI_CODING_AGENT_DIR` is set, the file lives in its `extensions` subdirectory instead. Example:
+
+```json
+{
+  "kvWarningPercent": 60,
+  "selfHandoffPercent": 80
+}
 ```
 
 Values must satisfy:
 
 ```text
-1 <= warning threshold < critical threshold <= 100
+1 <= kvWarningPercent < selfHandoffPercent <= 100
 ```
 
-The lower value controls the first notification. The upper value controls repeated critical reminders. Together they guide an authorized autonomous agent's chosen cutoff.
+`kvWarningPercent` controls the first context warning. `selfHandoffPercent` controls repeated critical reminders and the upper end of the autonomous handoff window. Tool descriptions, prompt guidance, status output, and warning messages use the configured values. Changes take effect after `/reload` or a Pi restart.
 
 ## How it works
 
