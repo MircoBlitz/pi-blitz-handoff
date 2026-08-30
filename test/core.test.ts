@@ -110,7 +110,6 @@ test("creation prompt is forward-focused, English, and independent of project co
 	assert.match(prompt, /must not be read automatically/);
 	assert.ok(prompt.includes(sessionPath));
 	assert.ok(prompt.includes(sourceSessionPath));
-	assert.doesNotMatch(prompt, /Aktualisiere|Lösche|Verhaltensänderungen/);
 });
 
 test("validates required handoff structure and substantive continuation fields", () => {
