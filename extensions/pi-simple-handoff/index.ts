@@ -1,8 +1,17 @@
 import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, rename, rmdir, unlink } from "node:fs/promises";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import {
+	type Component,
+	Container,
+	Input,
+	type SettingItem,
+	SettingsList,
+	type SettingsListTheme,
+	Text,
+} from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
 	MAX_HANDOFF_BYTES,
@@ -18,7 +27,11 @@ import {
 	validateThresholds,
 	warningLevel,
 } from "./core.ts";
-import { loadHandoffThresholds } from "./config.ts";
+import {
+	MIN_AUTOMATIC_HANDOFF_PERCENT,
+	loadSimpleHandoffConfig,
+	saveSimpleHandoffConfig,
+} from "./config.ts";
 
 const STATE_ENTRY = "pi-simple-handoff-state";
 const OPEN_COMMAND = "session-handoff-open-new";
@@ -195,7 +208,16 @@ function errorMessage(error: unknown): string {
 }
 
 export default function simpleHandoffExtension(pi: ExtensionAPI) {
-	const thresholds = validateThresholds(loadHandoffThresholds());
+	const config = loadSimpleHandoffConfig();
+	const thresholds = validateThresholds({
+		warningThreshold: config.kvWarningPercent,
+		criticalThreshold: config.selfHandoffPercent,
+	});
+	const configuredAutomaticHandoffPercent = config.automaticSessionHandoffPercent;
+	const automaticHandoffPercent = config.automaticSessionHandoff &&
+		configuredAutomaticHandoffPercent >= MIN_AUTOMATIC_HANDOFF_PERCENT
+		? configuredAutomaticHandoffPercent
+		: 0;
 	let state: ExtensionState = { ...DEFAULT_STATE };
 	let transitionInProgress = false;
 	const persist = () => pi.appendEntry(STATE_ENTRY, state);
@@ -205,7 +227,12 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 		persist();
 	};
 	const directRequestGuidance = "When the user explicitly requests a handoff by saying 'handoff', 'hand off', 'simple handoff', 'simple hand off', or an equivalent imperative, call simple_handoff with action=start immediately. Do not start a handoff when the user is merely discussing, questioning, testing, or asking to fix handoff behavior.";
-	const autonomousGuidance = `During explicitly user-authorized autonomous work, choose your own handoff cutoff between ${thresholds.warningThreshold}% and ${thresholds.criticalThreshold}% context usage. Use simple_handoff status to monitor usage, and start the handoff at your chosen cutoff without waiting for the user. Never infer autonomous permission merely from a long task.`;
+	const autonomousGuidance = automaticHandoffPercent === 0
+		? `During explicitly user-authorized autonomous work, choose your own handoff cutoff between ${thresholds.warningThreshold}% and ${thresholds.criticalThreshold}% context usage. Use simple_handoff status to monitor usage, and start the handoff at your chosen cutoff without waiting for the user. Never infer autonomous permission merely from a long task.`
+		: `Automatic session handoff is globally authorized and handled by pi-simple-handoff at ${automaticHandoffPercent}% context usage. Do not call simple_handoff merely to manage that automatic transition.`;
+	const automaticStatus = automaticHandoffPercent === 0
+		? "Automatic session handoff is disabled."
+		: `Automatic session handoff is enabled at ${automaticHandoffPercent}%.`;
 	const advanceHandoff = async (ctx: { ui: { notify(message: string, level: "error"): void } }) => {
 		if (!state.handoff) return false;
 		const { token } = state.handoff;
@@ -220,6 +247,10 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				expandPromptTemplates: true,
 			});
 		} catch (error) {
+			if (state.handoff?.status === "transitioning" && errorCode(error) === "ENOENT") {
+				clearHandoff();
+				return true;
+			}
 			await cleanupHandoff(token).catch(() => undefined);
 			clearHandoff();
 			ctx.ui.notify(`Handoff failed: ${errorMessage(error)}`, "error");
@@ -230,6 +261,16 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		state = restoreState(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId());
 		transitionInProgress = false;
+		if (
+			ctx.hasUI &&
+			configuredAutomaticHandoffPercent > 0 &&
+			configuredAutomaticHandoffPercent < MIN_AUTOMATIC_HANDOFF_PERCENT
+		) {
+			ctx.ui.notify(
+				`Automatic Session Handoff is deactivated: ${configuredAutomaticHandoffPercent}% is too low; use 50–100%.`,
+				"warning",
+			);
+		}
 		await advanceHandoff(ctx);
 	});
 
@@ -250,6 +291,20 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 
 		if (!ctx.hasUI) return;
 		const percent = ctx.getContextUsage()?.percent ?? null;
+		if (
+			automaticHandoffPercent !== 0 &&
+			percent !== null &&
+			Number.isFinite(percent) &&
+			percent >= automaticHandoffPercent
+		) {
+			pi.sendUserMessage("/sh", {
+				deliverAs: "followUp",
+				expandPromptTemplates: true,
+			});
+			ctx.ui.notify(`Automatic session handoff queued at ${Math.floor(percent)}%.`, "warning");
+			return;
+		}
+
 		const level = warningLevel(percent, state.warnedAtWarning, thresholds);
 		if (!level || percent === null) return;
 
@@ -263,8 +318,9 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "simple_handoff",
 		label: "Simple Handoff",
-		description: `Inspect context usage or start pi-simple-handoff's focused handoff into a genuinely fresh session. Use action=start when the user asks for a handoff, says "handoff", "hand off", "simple handoff", or "simple hand off" as a request. The configured handoff window is ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%. ${autonomousGuidance}`,
-		promptSnippet: `Run Simple Handoff when the user requests "handoff", "hand off", "simple handoff", or "simple hand off"; status also reports context usage (${thresholds.warningThreshold}–${thresholds.criticalThreshold}% window)`,
+		description: `Inspect context usage or start pi-simple-handoff's focused handoff into a genuinely fresh session. Use action=start when the user asks for a handoff, says "handoff", "hand off", "simple handoff", or "simple hand off" as a request. The configured handoff window is ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%. ${automaticStatus} ${autonomousGuidance}`,
+		promptSnippet: `Run Simple Handoff when the user requests "handoff", "hand off", "simple handoff", or "simple hand off"; status reports context usage and handoff settings`,
+
 		promptGuidelines: [directRequestGuidance, autonomousGuidance],
 		parameters: Type.Object({
 			action: StringEnum(["status", "start"] as const, {
@@ -278,9 +334,15 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				return {
 					content: [{
 						type: "text",
-						text: `Current context usage: ${usage}. Configured handoff window: ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%.`,
+						text: `Current context usage: ${usage}. Configured handoff window: ${thresholds.warningThreshold}% to ${thresholds.criticalThreshold}%. ${automaticStatus}`,
 					}],
-					details: { percent, ...thresholds },
+					details: {
+						percent,
+						...thresholds,
+						automaticSessionHandoffPercent: automaticHandoffPercent,
+						automaticSessionHandoff: config.automaticSessionHandoff,
+						configuredAutomaticSessionHandoffPercent: configuredAutomaticHandoffPercent,
+					},
 				};
 			}
 
@@ -299,6 +361,172 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 				content: [{ type: "text", text: "Queued /sh. Stop current work and let the handoff flow continue." }],
 				details: { queued: true, percent, ...thresholds },
 			};
+		},
+	});
+
+	pi.registerCommand("shconfig", {
+		description: "Configure automatic session handoff",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("/shconfig requires TUI mode.", "error");
+				return;
+			}
+
+			const draft = {
+				...config,
+				automaticSessionHandoffPercent: Math.min(
+					100,
+					Math.max(MIN_AUTOMATIC_HANDOFF_PERCENT, config.automaticSessionHandoffPercent),
+				),
+			};
+			const shouldSave = await ctx.ui.custom<boolean>((tui, theme, _keybindings, done) => {
+				const createNumberEditor = (
+					label: string,
+					currentValue: string,
+					minimum: number,
+					maximum: number,
+					selectValue: (value?: string) => void,
+				): Component => {
+					const input = new Input();
+					input.handleInput(currentValue);
+					const errorText = new Text("", 1, 0);
+					input.onSubmit = (value) => {
+						const percent = Number(value.trim());
+						if (!Number.isFinite(percent) || percent < minimum || percent > maximum) {
+							errorText.setText(theme.fg("error", `Enter a number from ${minimum} through ${maximum}.`));
+							tui.requestRender();
+							return;
+						}
+						selectValue(String(percent));
+					};
+					input.onEscape = () => selectValue();
+					const editor = new Container();
+					editor.addChild(new Text(theme.fg("accent", theme.bold(label)), 1, 1));
+					editor.addChild(new Text(theme.fg("dim", `Allowed range: ${minimum}–${maximum}%`), 1, 0));
+					editor.addChild(input);
+					editor.addChild(errorText);
+					editor.addChild(new Text(theme.fg("dim", "enter apply • esc back"), 1, 1));
+					return {
+						render: (width: number) => editor.render(width),
+						invalidate: () => editor.invalidate(),
+						handleInput: (data: string) => input.handleInput(data),
+					};
+				};
+
+				const items: SettingItem[] = [
+					{
+						id: "kvWarningPercent",
+						label: "Context warning",
+						description: "Shown once when context usage reaches this percentage.",
+						currentValue: String(draft.kvWarningPercent),
+						submenu: (value, selectValue) => createNumberEditor("Context warning", value, 1, 100, selectValue),
+					},
+					{
+						id: "selfHandoffPercent",
+						label: "Critical warning",
+						description: "Shown after every settled turn from this percentage onward.",
+						currentValue: String(draft.selfHandoffPercent),
+						submenu: (value, selectValue) => createNumberEditor("Critical warning", value, 1, 100, selectValue),
+					},
+					{
+						id: "automaticSessionHandoff",
+						label: "Automatic Session Handoff",
+						description: "Persistently authorize the extension to start handoffs itself.",
+						currentValue: draft.automaticSessionHandoff ? "enabled" : "disabled",
+						values: ["enabled", "disabled"],
+					},
+					{
+						id: "automaticSessionHandoffPercent",
+						label: "Automatic threshold",
+						description: "Start a handoff after a settled turn reaches this percentage.",
+						currentValue: String(draft.automaticSessionHandoffPercent),
+						submenu: (value, selectValue) => createNumberEditor("Automatic threshold", value, 50, 100, selectValue),
+					},
+					{
+						id: "save",
+						label: "Save and reload",
+						currentValue: "press enter",
+						values: ["press enter"],
+					},
+					{
+						id: "cancel",
+						label: "Cancel",
+						currentValue: "press enter",
+						values: ["press enter"],
+					},
+				];
+				const container = new Container();
+				container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+				container.addChild(new Text(theme.fg("accent", theme.bold("Simple Handoff Configuration")), 1, 1));
+				const settingsTheme: SettingsListTheme = {
+					cursor: theme.fg("accent", "> "),
+					label: (text, selected) => selected ? theme.fg("accent", text) : text,
+					value: (text, selected) => theme.fg(selected ? "accent" : "muted", text),
+					description: (text) => theme.fg("muted", text),
+					hint: (text) => theme.fg("dim", text),
+				};
+				const formError = new Text("", 1, 0);
+				const settingsList = new SettingsList(
+					items,
+					9,
+					settingsTheme,
+					(id, newValue) => {
+						formError.setText("");
+						if (id === "kvWarningPercent") draft.kvWarningPercent = Number(newValue);
+						else if (id === "selfHandoffPercent") draft.selfHandoffPercent = Number(newValue);
+						else if (id === "automaticSessionHandoff") {
+							draft.automaticSessionHandoff = newValue === "enabled";
+						} else if (id === "automaticSessionHandoffPercent") {
+							draft.automaticSessionHandoffPercent = Number(newValue);
+						} else if (id === "cancel") done(false);
+						else if (id === "save") {
+							try {
+								validateThresholds({
+									warningThreshold: draft.kvWarningPercent,
+									criticalThreshold: draft.selfHandoffPercent,
+								});
+								done(true);
+							} catch {
+								formError.setText(theme.fg("error", "Context warning must be lower than critical warning."));
+							}
+						}
+						tui.requestRender();
+					},
+					() => done(false),
+				);
+				container.addChild(settingsList);
+				container.addChild(formError);
+				container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter edit/select • esc cancel"), 1, 1));
+				container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+
+				return {
+					render: (width: number) => container.render(width),
+					invalidate: () => container.invalidate(),
+					handleInput: (data: string) => {
+						settingsList.handleInput?.(data);
+						tui.requestRender();
+					},
+				};
+			}, {
+				overlay: true,
+				overlayOptions: {
+					anchor: "center",
+					width: 72,
+					minWidth: 56,
+					maxHeight: "85%",
+					margin: 1,
+				},
+			});
+			if (!shouldSave) return;
+
+			try {
+				await saveSimpleHandoffConfig(draft);
+				ctx.ui.notify("Simple Handoff configuration saved. Reloading…", "info");
+				await ctx.reload();
+				return;
+			} catch (error) {
+				ctx.ui.notify(`Could not save Simple Handoff configuration: ${errorMessage(error)}`, "error");
+			}
 		},
 	});
 
@@ -361,27 +589,38 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 			persist();
 			transitionInProgress = true;
 			let handoffDurableInReplacement = false;
+			let setupError: unknown;
 
 			try {
 				const result = await ctx.newSession({
 					...(sourceSessionPath ? { parentSession: sourceSessionPath } : {}),
 					setup: async (sessionManager) => {
-						sessionManager.appendMessage({
-							role: "user",
-							content: [{ type: "text", text: continuationPrompt }],
-							timestamp: Date.now(),
-						});
-					},
-					withSession: async (replacementCtx) => {
 						try {
-							await replacementCtx.sendUserMessage("Continue the handed-off work now.");
+							sessionManager.appendMessage({
+								role: "user",
+								content: [{ type: "text", text: continuationPrompt }],
+								timestamp: Date.now(),
+							});
 							handoffDurableInReplacement = true;
 						} catch (error) {
+							setupError = error;
+						}
+					},
+					withSession: async (replacementCtx) => {
+						if (setupError) {
+							replacementCtx.ui.notify(
+								`The handoff could not be persisted: ${errorMessage(setupError)} Resume the source session to retry.`,
+								"error",
+							);
+							return;
+						}
+						try {
+							await replacementCtx.sendUserMessage("Continue the handed-off work now.");
+						} catch {
 							replacementCtx.ui.notify(
 								"The handoff is preserved above, but automatic continuation failed. Send another message to retry.",
 								"error",
 							);
-							throw error;
 						}
 					},
 				});
@@ -390,21 +629,14 @@ export default function simpleHandoffExtension(pi: ExtensionAPI) {
 					clearHandoff();
 					await cleanupHandoff(token);
 					ctx.ui.notify("The automatic session switch was cancelled. Run /sh to try again.", "warning");
-				} else {
+				} else if (handoffDurableInReplacement) {
 					await cleanupHandoff(token);
 				}
-			} catch (error) {
+			} catch {
 				if (handoffDurableInReplacement) {
 					await cleanupHandoff(token).catch(() => undefined);
-				} else {
-					try {
-						state = { ...state, handoff: { token, status: "ready" } };
-						persist();
-						ctx.ui.notify(`Session handoff failed: ${errorMessage(error)} Run the queued handoff command again to retry.`, "error");
-					} catch {
-						// The source session can recover its persisted transitioning job when resumed.
-					}
 				}
+				// The source session keeps its ready job and private file for recovery.
 			} finally {
 				transitionInProgress = false;
 			}

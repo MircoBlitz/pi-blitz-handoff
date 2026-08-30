@@ -1,6 +1,6 @@
 {
   "name": "pi-simple-handoff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Carry focused task context into a genuinely fresh Pi session.",
   "type": "module",
   "license": "MIT",
@@ -40,11 +40,13 @@
   "peerDependencies": {
     "@earendil-works/pi-ai": ">=0.84.2",
     "@earendil-works/pi-coding-agent": ">=0.84.2",
+    "@earendil-works/pi-tui": ">=0.84.2",
     "typebox": ">=1.3.7"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "0.84.2",
     "@earendil-works/pi-coding-agent": "0.84.2",
+    "@earendil-works/pi-tui": "0.84.2",
     "@types/node": "24.12.4",
     "typebox": "1.3.7",
     "typescript": "5.9.3"

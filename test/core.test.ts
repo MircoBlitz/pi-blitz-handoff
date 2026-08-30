@@ -43,21 +43,21 @@ None.
 No transcript reference is available.`;
 }
 
-test("does not warn below 60 percent", () => {
+test("does not warn below 70 percent", () => {
 	assert.equal(warningLevel(null, false), undefined);
-	assert.equal(warningLevel(59.99, false), undefined);
+	assert.equal(warningLevel(69.99, false), undefined);
 });
 
-test("warns once from 60 percent", () => {
-	assert.equal(warningLevel(60, false), "warning");
-	assert.equal(warningLevel(79.99, false), "warning");
-	assert.equal(warningLevel(60, true), undefined);
-	assert.equal(warningLevel(79.99, true), undefined);
+test("warns once from 70 percent", () => {
+	assert.equal(warningLevel(70, false), "warning");
+	assert.equal(warningLevel(89.99, false), "warning");
+	assert.equal(warningLevel(70, true), undefined);
+	assert.equal(warningLevel(89.99, true), undefined);
 });
 
-test("warns hard on every settled turn from 80 percent", () => {
-	assert.equal(warningLevel(80, false), "error");
-	assert.equal(warningLevel(80, true), "error");
+test("warns hard on every settled turn from 90 percent", () => {
+	assert.equal(warningLevel(90, false), "error");
+	assert.equal(warningLevel(90, true), "error");
 	assert.equal(warningLevel(100, true), "error");
 });
 
@@ -79,12 +79,12 @@ test("supports a configurable handoff window", () => {
 
 test("formats soft and hard warnings differently", () => {
 	assert.equal(
-		formatWarning(60, "warning"),
-		"Your KV context is at 60%. Consider running /sh or asking for a handoff.",
+		formatWarning(70, "warning"),
+		"Your KV context is at 70%. Consider running /sh or asking for a handoff.",
 	);
 	assert.equal(
-		formatWarning(80.9, "error"),
-		"CRITICAL: Your KV context is at 80%. Run /sh now or ask for a handoff.",
+		formatWarning(90.9, "error"),
+		"CRITICAL: Your KV context is at 90%. Run /sh now or ask for a handoff.",
 	);
 });
 

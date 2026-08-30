@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const WARNING_THRESHOLD = 60;
-export const HARD_WARNING_THRESHOLD = 80;
+export const WARNING_THRESHOLD = 70;
+export const HARD_WARNING_THRESHOLD = 90;
 export const SESSION_HANDOFF_FILE_NAME = "session-handoff.md";
 export const MAX_HANDOFF_BYTES = 256 * 1024;
 

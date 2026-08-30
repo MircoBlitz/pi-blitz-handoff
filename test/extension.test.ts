@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,6 +12,9 @@ type CommandHandler = (args: string, ctx: Record<string, unknown>) => Promise<vo
 type HarnessOptions = {
 	sessionId?: string;
 	branch?: unknown[];
+	contextPercent?: number;
+	custom?: (factory: AnyHandler, options?: Record<string, unknown>) => Promise<unknown>;
+	reload?: () => Promise<void>;
 	newSession?: (options: Record<string, unknown>) => Promise<{ cancelled: boolean }>;
 };
 
@@ -48,8 +51,8 @@ No transcript reference is available.`;
 
 function createHarness(options: HarnessOptions = {}) {
 	const sessionId = options.sessionId ?? `test-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-	const branch = options.branch ?? [];
 	const entries: Array<{ type: string; customType: string; data: unknown }> = [];
+	const branch = options.branch ?? entries;
 	const sent: Array<{ content: unknown; options?: unknown }> = [];
 	const notifications: Array<{ message: string; level: string }> = [];
 	const replacementMessages: unknown[] = [];
@@ -77,12 +80,17 @@ function createHarness(options: HarnessOptions = {}) {
 	};
 
 	const ctx: Record<string, unknown> = {
+		mode: "tui",
 		hasUI: true,
 		waitForIdle: async () => undefined,
-		getContextUsage: () => ({ percent: 25 }),
+		getContextUsage: () => ({ percent: options.contextPercent ?? 25 }),
 		sessionManager,
 		newSession: options.newSession ?? defaultNewSession,
-		ui: { notify: (message: string, level: string) => notifications.push({ message, level }) },
+		reload: options.reload ?? (async () => undefined),
+		ui: {
+			notify: (message: string, level: string) => notifications.push({ message, level }),
+			custom: options.custom ?? (async () => false),
+		},
 	};
 
 	const pi = {
@@ -180,7 +188,7 @@ test("cancelled session replacement clears state and temporary data", async (t) 
 	assert.match(harness.notifications.at(-1)?.message ?? "", /cancelled/);
 });
 
-test("session replacement errors preserve a retryable handoff", async (t) => {
+test("session replacement errors preserve a retryable source handoff without stale context calls", async (t) => {
 	const harness = createHarness({
 		newSession: async () => {
 			throw new Error("switch failed");
@@ -194,17 +202,25 @@ test("session replacement errors preserve a retryable handoff", async (t) => {
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
 	await harness.settle();
 	await harness.invoke("session-handoff-open-new", token);
-	assert.equal(harness.latestState()?.handoff?.status, "ready");
+	assert.equal(harness.latestState()?.handoff?.status, "transitioning");
 	await access(handoffPath(token));
 	assert.deepEqual(await harness.events.get("session_before_compact")?.[0]?.({}, harness.ctx), { cancel: true });
-	assert.match(harness.notifications.at(-1)?.message ?? "", /retry/);
+	assert.equal(harness.notifications.length, 0);
+	await harness.start();
+	assert.equal(harness.latestState()?.handoff?.status, "ready");
+	assert.match(String(harness.sent.at(-1)?.content), /^\/session-handoff-open-new /);
 });
 
 test("setup failures retain the handoff for source-session recovery", async (t) => {
 	const harness = createHarness({
 		newSession: async (newSessionOptions) => {
 			const setup = newSessionOptions.setup as (manager: Record<string, unknown>) => Promise<void>;
+			const withSession = newSessionOptions.withSession as (ctx: Record<string, unknown>) => Promise<void>;
 			await setup({ appendMessage: () => { throw new Error("persist failed"); } });
+			await withSession({
+				sendUserMessage: async () => undefined,
+				ui: { notify: () => undefined },
+			});
 			return { cancelled: false };
 		},
 	});
@@ -216,11 +232,16 @@ test("setup failures retain the handoff for source-session recovery", async (t) 
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
 	await harness.settle();
 	await harness.invoke("session-handoff-open-new", token);
-	assert.equal(harness.latestState()?.handoff?.status, "ready");
+	assert.equal(harness.latestState()?.handoff?.status, "transitioning");
 	await access(handoffPath(token));
+	const resumed = createHarness({ sessionId: harness.sessionId, branch: harness.entries });
+	t.after(() => resumed.cleanup());
+	await resumed.start();
+	assert.equal(resumed.latestState()?.handoff?.status, "ready");
+	assert.match(String(resumed.sent.at(-1)?.content), /^\/session-handoff-open-new /);
 });
 
-test("automatic continuation failures retain the source recovery file", async (t) => {
+test("automatic continuation failures keep the durable replacement handoff and clean the source file", async (t) => {
 	const harness = createHarness({
 		newSession: async (newSessionOptions) => {
 			const setup = newSessionOptions.setup as (manager: Record<string, unknown>) => Promise<void>;
@@ -241,8 +262,12 @@ test("automatic continuation failures retain the source recovery file", async (t
 	await writeFile(handoffPath(token), validHandoff(), "utf8");
 	await harness.settle();
 	await harness.invoke("session-handoff-open-new", token);
-	assert.equal(harness.latestState()?.handoff?.status, "ready");
-	await access(handoffPath(token));
+	assert.equal(harness.latestState()?.handoff?.status, "transitioning");
+	await assertMissing(handoffPath(token));
+	const resumed = createHarness({ sessionId: harness.sessionId, branch: harness.entries });
+	await resumed.start();
+	assert.equal(resumed.latestState()?.handoff, undefined);
+	assert.equal(resumed.notifications.length, 0);
 });
 
 test("malformed and symlinked handoffs are rejected without touching their targets", async (t) => {
@@ -364,6 +389,7 @@ test("simple_handoff is discoverable from natural requests and queues the short 
 	await harness.start();
 	assert.equal(harness.commands.has("simplehandoff"), false);
 	assert.equal(harness.commands.has("sh"), true);
+	assert.equal(harness.commands.has("shconfig"), true);
 	const tool = harness.tools.get("simple_handoff") as {
 		description: string;
 		promptGuidelines: string[];
@@ -381,6 +407,100 @@ test("simple_handoff is discoverable from natural requests and queues the short 
 		deliverAs: "followUp",
 		expandPromptTemplates: true,
 	});
+});
+
+test("shconfig opens a popup, accepts direct input, saves all settings, and reloads Pi", async (t) => {
+	const agentDirectory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-tui-config-"));
+	const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+	let reloaded = false;
+	let overlayOpened = false;
+	t.after(async () => {
+		if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+		await rm(agentDirectory, { recursive: true, force: true });
+	});
+	process.env.PI_CODING_AGENT_DIR = agentDirectory;
+	const harness = createHarness({
+		custom: async (factory, options) => {
+			overlayOpened = options?.overlay === true;
+			let result = false;
+			const component = factory(
+				{ requestRender: () => undefined },
+				{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
+				{},
+				(value: boolean) => { result = value; },
+			) as { handleInput(data: string): void };
+			component.handleInput("\x1b[B");
+			component.handleInput("\x1b[B");
+			component.handleInput("\r");
+			component.handleInput("\x1b[B");
+			component.handleInput("\r");
+			component.handleInput("\x7f");
+			component.handleInput("\x7f");
+			component.handleInput("6");
+			component.handleInput("5");
+			component.handleInput("\r");
+			component.handleInput("\x1b[B");
+			component.handleInput("\r");
+			return result;
+		},
+		reload: async () => { reloaded = true; },
+	});
+	await harness.start();
+	await harness.invoke("shconfig");
+
+	const saved = JSON.parse(await readFile(
+		join(agentDirectory, "extensions", "pi-simple-handoff.json"),
+		"utf8",
+	)) as Record<string, unknown>;
+	assert.equal(saved.automaticSessionHandoff, true);
+	assert.equal(saved.automaticSessionHandoffPercent, 65);
+	assert.equal(saved.kvWarningPercent, 70);
+	assert.equal(saved.selfHandoffPercent, 90);
+	assert.equal(overlayOpened, true);
+	assert.equal(reloaded, true);
+});
+
+test("automatic handoff is opt-in, warns below 50, and queues at its threshold", async (t) => {
+	const agentDirectory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-automatic-config-"));
+	const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+	t.after(async () => {
+		if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+		await rm(agentDirectory, { recursive: true, force: true });
+	});
+	await mkdir(join(agentDirectory, "extensions"));
+	process.env.PI_CODING_AGENT_DIR = agentDirectory;
+	const configPath = join(agentDirectory, "extensions", "pi-simple-handoff.json");
+
+	await writeFile(configPath, JSON.stringify({
+		automaticSessionHandoff: true,
+		automaticSessionHandoffPercent: 49,
+	}), "utf8");
+	const tooLow = createHarness({ contextPercent: 99 });
+	await tooLow.start();
+	assert.match(tooLow.notifications.at(-1)?.message ?? "", /49% is too low; use 50–100%/);
+	await tooLow.settle();
+	assert.equal(tooLow.sent.some((message) => message.content === "/sh"), false);
+
+	await writeFile(configPath, JSON.stringify({
+		automaticSessionHandoff: false,
+		automaticSessionHandoffPercent: 60,
+	}), "utf8");
+	const disabled = createHarness({ contextPercent: 99 });
+	await disabled.start();
+	await disabled.settle();
+	assert.equal(disabled.sent.some((message) => message.content === "/sh"), false);
+
+	await writeFile(configPath, JSON.stringify({
+		automaticSessionHandoff: true,
+		automaticSessionHandoffPercent: 60,
+	}), "utf8");
+	const enabled = createHarness({ contextPercent: 60 });
+	await enabled.start();
+	await enabled.settle();
+	assert.equal(enabled.sent.at(-1)?.content, "/sh");
+	assert.match(enabled.notifications.at(-1)?.message ?? "", /queued at 60%/);
 });
 
 test("tool text uses limits configured in Pi's extension settings file", async (t) => {
@@ -406,7 +526,7 @@ test("tool text uses limits configured in Pi's extension settings file", async (
 		execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>;
 	};
 	assert.match(tool.description, /55% to 75%/);
-	assert.match(tool.promptSnippet, /55–75%/);
+	assert.match(tool.promptSnippet, /status reports context usage and handoff settings/);
 	const status = await tool.execute("id", { action: "status" }, undefined, undefined, harness.ctx);
 	assert.match(status.content[0]!.text, /55% to 75%/);
 });
