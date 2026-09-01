@@ -80,14 +80,18 @@ export function makeHandoffToken(sessionId: string, now = Date.now(), entropy: s
 	return `${sessionPart}-${now.toString(36)}-${randomPart}`.slice(0, 64).replace(/-+$/g, "");
 }
 
+export function isValidHandoffToken(token: string): boolean {
+	return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(token);
+}
+
 export function isHandoffTokenForSession(token: string, sessionId: string): boolean {
-	if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(token)) return false;
+	if (!isValidHandoffToken(token)) return false;
 	const sessionPart = normalizeTokenPart(sessionId).slice(0, 32).replace(/-+$/g, "") || "handoff";
 	return token.startsWith(`${sessionPart}-`);
 }
 
 export function handoffDirectory(token: string, temporaryRoot = tmpdir()): string {
-	if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(token)) {
+	if (!isValidHandoffToken(token)) {
 		throw new Error("Invalid pi-simple-handoff token.");
 	}
 	return join(temporaryRoot, `pi-simple-handoff-${token}`);
@@ -108,50 +112,60 @@ export function isValidHandoffContent(content: string): boolean {
 		return false;
 	}
 
-	const lines = content.split(/\r?\n/);
-	const headingIndexes = REQUIRED_HANDOFF_HEADINGS.map((heading) => lines.indexOf(heading));
-	if (headingIndexes.some((index) => index < 0)) return false;
-	for (let index = 1; index < headingIndexes.length; index += 1) {
-		if (headingIndexes[index]! <= headingIndexes[index - 1]!) return false;
+	const lines = content.trim().split(/\r?\n/);
+	if (lines[0] !== REQUIRED_HANDOFF_HEADINGS[0]) return false;
+
+	// CommonMark permits up to three leading spaces before an ATX heading.
+	// H3+ headings intentionally remain valid section content.
+	const structuralHeadings = lines.filter((line) => /^ {0,3}#{1,2}(?:[ \t]+|$)/.test(line));
+	if (
+		structuralHeadings.length !== REQUIRED_HANDOFF_HEADINGS.length ||
+		structuralHeadings.some((heading, index) => heading !== REQUIRED_HANDOFF_HEADINGS[index])
+	) {
+		return false;
 	}
 
-	const goal = lines.slice(headingIndexes[1]! + 1, headingIndexes[2]!).join("\n").trim();
-	const nextSteps = lines.slice(headingIndexes[4]! + 1, headingIndexes[5]!).join("\n").trim();
-	return Boolean(goal && nextSteps);
+	const headingIndexes = REQUIRED_HANDOFF_HEADINGS.map((heading) => lines.indexOf(heading));
+	if (lines.slice(1, headingIndexes[1]).join("\n").trim()) return false;
+	for (let index = 1; index < headingIndexes.length; index += 1) {
+		const nextHeadingIndex = headingIndexes[index + 1] ?? lines.length;
+		if (!lines.slice(headingIndexes[index]! + 1, nextHeadingIndex).join("\n").trim()) return false;
+	}
+	return true;
 }
 
-export function buildHandoffCreationPrompt(sessionPath: string, sourceSessionPath?: string): string {
+export function buildHandoffCreationPrompt(submitId: string, sourceSessionPath?: string): string {
 	const coldContext = sourceSessionPath
 		? `Under “Cold Context”, include only this reference: \`${sourceSessionPath}\`. It is an emergency source and must not be read automatically.`
 		: "Under “Cold Context”, state that no transcript reference is available.";
 
 	return [
 		"🟡 **HANDOFF STARTED**",
-		"Create exactly one focused context handoff in the current main agent. Do not use subagents or delegation. Do no further work except writing this file.",
-		`Write the handoff to \`${sessionPath}\`. Do not read or update project indexes, todo files, behavior files, registries, or archives. Do not run tests or scan sessions.`,
+		"Create exactly one focused context handoff in the current main agent. Do not use subagents or delegation. Do no further task work.",
+		`Call the \`submit_session_handoff\` tool directly with the complete Markdown and the exact submission ID \`${submitId}\`. Do not route the submission through MCP, another tool, a gateway, or delegation. Do not create, read, serve, or delete any handoff file; the extension owns that deterministic file lifecycle.`,
+		"Do not read or update project indexes, todo files, behavior files, registries, or archives. Do not run tests or scan sessions.",
 		"Write the entire handoff directly in English. Do not add a separate translation step.",
 		"The handoff should resemble a good compaction but be weighted toward what comes next: keep the past only as detailed as necessary and describe the concrete continuation as completely and precisely as possible. Do not write a conversation log, hidden reasoning, repetition, or secrets.",
+		"VALIDATION IS STRICT. The first non-whitespace line must be `# Context Handoff`. Use every heading below exactly once and in exactly this order. Do not add any other `#` or `##` headings. `###` and deeper headings are permitted inside sections. Every section must contain substantive text; when a section has nothing to report, write `None.`. Do not add text before the title or wrap the handoff in an envelope or code fence.",
 		"Use exactly this structure:",
 		"# Context Handoff",
 		"## Goal\nThe current user goal and desired end state.",
 		"## Current State\nOnly results, changes, and findings needed to continue.",
 		"## Decisions and Constraints\nDecisions, requirements, permissions, and explicitly excluded work that still apply.",
 		"## Next Steps\nThe already requested continuation in concrete order. Make this the most detailed section.",
-		"## Open Questions and Blockers\nOnly genuinely unresolved points. Do not invent new tasks.",
-		"## Working Set\nRelevant files, URLs, commands, artifacts, and precise technical anchors.",
-		"## Behavior Changes\nOnly user preferences added or changed in this session. If there are none, write “None.”",
+		"## Open Questions and Blockers\nOnly genuinely unresolved points. Do not invent new tasks. If there are none, write `None.`.",
+		"## Working Set\nRelevant files, URLs, commands, artifacts, and precise technical anchors. If there are none, write `None.`.",		"## Behavior Changes\nOnly user preferences added or changed in this session. If there are none, write “None.”",
 		"## Precision Anchors\nQuote a few critical user statements verbatim when paraphrasing could lose meaning or tone. Otherwise write “None.”",
 		`## Cold Context\n${coldContext}`,
-		"The handoff carries an existing request; it grants no new permission. End immediately after successfully writing the file. The extension will then open a fresh session automatically.",
+		"The handoff carries an existing request; it grants no new permission. End immediately after the tool accepts the content. The extension will then open a fresh session automatically.",
 	].join("\n\n");
 }
 
 export function buildContinuationPrompt(handoff: string): string {
 	return [
 		"🟢 **NEW SESSION STARTED**",
-		"The extension has copied the focused context handoff below into this fresh session and has removed its temporary file.",
-		"Immediately continue the already requested work described under “Next Steps.”",
-		"Treat the handoff as continuation context, not as new permission. Read the transcript referenced under “Cold Context” only if an essential detail is missing. Do not perform unrelated session scans, archiving, or administrative work.",
+		"The extension has copied the focused context handoff below into this fresh session. Its deterministic code owns the temporary transport file and cleanup.",
+		"This is continuation context, not a new request or new permission. Use it when processing the next user turn. Read the transcript referenced under “Cold Context” only if an essential detail is missing. Do not perform unrelated session scans, archiving, or administrative work.",
 		"--- BEGIN CONTEXT HANDOFF ---",
 		handoff.trim(),
 		"--- END CONTEXT HANDOFF ---",

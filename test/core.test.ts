@@ -5,6 +5,7 @@ import {
 	buildHandoffCreationPrompt,
 	formatWarning,
 	handoffPath,
+	MAX_HANDOFF_BYTES,
 	isHandoffTokenForSession,
 	isValidHandoffContent,
 	makeHandoffToken,
@@ -97,9 +98,9 @@ test("builds a private temporary handoff path from a validated token", () => {
 });
 
 test("creation prompt is forward-focused, English, and independent of project context files", () => {
-	const sessionPath = handoffPath("session-1", "/tmp");
+	const submitId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 	const sourceSessionPath = "/sessions/source.jsonl";
-	const prompt = buildHandoffCreationPrompt(sessionPath, sourceSessionPath);
+	const prompt = buildHandoffCreationPrompt(submitId, sourceSessionPath);
 	assert.match(prompt, /🟡 \*\*HANDOFF STARTED\*\*/);
 	assert.match(prompt, /exactly one focused context handoff/);
 	assert.match(prompt, /entire handoff directly in English/);
@@ -108,30 +109,98 @@ test("creation prompt is forward-focused, English, and independent of project co
 	assert.match(prompt, /## Precision Anchors/);
 	assert.match(prompt, /## Cold Context/);
 	assert.match(prompt, /must not be read automatically/);
-	assert.ok(prompt.includes(sessionPath));
+	assert.ok(prompt.includes(submitId));
 	assert.ok(prompt.includes(sourceSessionPath));
+	assert.match(prompt, /Call the `submit_session_handoff` tool directly/);
+	assert.match(prompt, /Do not route the submission through MCP, another tool, a gateway, or delegation/);
+	assert.match(prompt, /Do not create, read, serve, or delete any handoff file/);
+	assert.match(prompt, /first non-whitespace line must be `# Context Handoff`/);
+	assert.match(prompt, /every heading below exactly once and in exactly this order/);
+	assert.match(prompt, /Do not add any other `#` or `##` headings/);
+	assert.match(prompt, /`###` and deeper headings are permitted inside sections/);
+	assert.match(prompt, /Every section must contain substantive text/);
+	assert.match(prompt, /write `None\.`/);
+	assert.match(prompt, /Do not add text before the title/);
+	assert.doesNotMatch(prompt, /session-handoff\.md|Write the handoff to/);
 });
 
-test("validates required handoff structure and substantive continuation fields", () => {
+test("accepts the exact handoff template and None. as substantive section content", () => {
 	assert.equal(isValidHandoffContent(sampleHandoff()), true);
-	assert.equal(isValidHandoffContent("# Context Handoff\n\n## Goal\n"), false);
-	assert.equal(isValidHandoffContent(sampleHandoff().replace("Finish the release review.", "")), false);
 	assert.equal(
-		isValidHandoffContent(sampleHandoff().replace("## Goal", "## Goal\0")),
+		isValidHandoffContent(sampleHandoff().replace("Finish the release review.", "None.")),
+		true,
+	);
+});
+
+test("requires the title first and forbids text in the root section", () => {
+	assert.equal(isValidHandoffContent(`Preface\n\n${sampleHandoff()}`), false);
+	assert.equal(
+		isValidHandoffContent(sampleHandoff().replace("# Context Handoff\n\n", "# Context Handoff\n\nPreface\n\n")),
+		false,
+	);
+});
+
+test("requires every structural heading exactly once and in exact order", () => {
+	assert.equal(
+		isValidHandoffContent(sampleHandoff().replace("## Current State", "## Goal")),
+		false,
+	);
+	assert.equal(
+		isValidHandoffContent(
+			sampleHandoff().replace(
+				"## Goal\nFinish the release review.\n\n## Current State\nThe package is prepared.",
+				"## Current State\nThe package is prepared.\n\n## Goal\nFinish the release review.",
+			),
+		),
 		false,
 	);
 	assert.equal(isValidHandoffContent(sampleHandoff().replace("## Goal", "## Goalkeeper")), false);
+});
+
+test("rejects every additional H1 or H2 heading, including CommonMark indentation", () => {
+	for (const heading of ["## Extra", "# Extra", "   ## Extra", "##", "   ##", "#", "   #"]) {
+		assert.equal(
+			isValidHandoffContent(sampleHandoff().replace("The package is prepared.", `The package is prepared.\n\n${heading}\nNo.`)),
+			false,
+		);
+	}
+});
+
+test("permits H3 and deeper headings as section content", () => {
+	assert.equal(
+		isValidHandoffContent(sampleHandoff().replace("The package is prepared.", "The package is prepared.\n\n### Detail\nStill section content.")),
+		true,
+	);
+});
+
+test("requires every handoff section to be nonempty", () => {
+	for (const content of [
+		sampleHandoff().replace("Finish the release review.", ""),
+		sampleHandoff().replace("None.\n\n## Working Set", "\n## Working Set"),
+		sampleHandoff().replace("No transcript reference is available.", ""),
+	]) {
+		assert.equal(isValidHandoffContent(content), false);
+	}
+	assert.equal(isValidHandoffContent("# Context Handoff\n\n## Goal\n"), false);
+});
+
+test("retains null-byte, envelope, and byte-size protections", () => {
+	assert.equal(isValidHandoffContent(sampleHandoff().replace("## Goal", "## Goal\0")), false);
+	assert.equal(isValidHandoffContent(`--- BEGIN CONTEXT HANDOFF ---\n${sampleHandoff()}`), false);
 	assert.equal(isValidHandoffContent(`${sampleHandoff()}\n--- END CONTEXT HANDOFF ---`), false);
+	assert.equal(isValidHandoffContent(`${sampleHandoff()}\n${"x".repeat(MAX_HANDOFF_BYTES)}`), false);
 });
 
 test("continuation embeds the captured handoff without delegating file deletion", () => {
 	const handoff = sampleHandoff();
 	const prompt = buildContinuationPrompt(handoff);
 	assert.match(prompt, /🟢 \*\*NEW SESSION STARTED\*\*/);
-	assert.match(prompt, /Immediately continue.*“Next Steps\.”/);
+	assert.match(prompt, /continuation context, not a new request or new permission/);
+	assert.doesNotMatch(prompt, /Continue the already requested work/);
 	assert.match(prompt, /Cold Context.*only if/);
 	assert.ok(prompt.includes(handoff));
-	assert.doesNotMatch(prompt, /delete exactly|session-handoff\.md/);
+	assert.match(prompt, /deterministic code owns the temporary transport file and cleanup/);
+	assert.doesNotMatch(prompt, /attempt to remove|delete exactly|session-handoff\.md/);
 });
 
 test("creates filesystem-safe tokens bound to their source session", () => {

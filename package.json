@@ -1,10 +1,10 @@
 {
   "name": "pi-simple-handoff",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Carry focused task context into a genuinely fresh Pi session.",
   "type": "module",
   "license": "MIT",
-  "author": "Mirco Blitz <mail@mircoblitz.de>",
+  "author": "Mirco Blitz <simplehandoff@edelhack.de>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MircoBlitz/pi-simple-handoff.git"
@@ -26,7 +26,8 @@
   "files": [
     "extensions",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.ts",
@@ -38,10 +39,10 @@
     "node": ">=22.19.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.84.2",
-    "@earendil-works/pi-coding-agent": ">=0.84.2",
-    "@earendil-works/pi-tui": ">=0.84.2",
-    "typebox": ">=1.3.7"
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "0.84.2",

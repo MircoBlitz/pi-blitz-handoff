@@ -1,18 +1,27 @@
 import { randomUUID } from "node:crypto";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { DEFAULT_THRESHOLDS, type HandoffThresholds } from "./core.ts";
+import { dirname, join } from "node:path";
+import { DEFAULT_THRESHOLDS } from "./core.ts";
 
 export const CONFIG_FILE_NAME = "pi-simple-handoff.json";
 export const MIN_AUTOMATIC_HANDOFF_PERCENT = 50;
+export const MIN_READINESS_RETRY_SECONDS = 1;
+export const MAX_READINESS_RETRY_SECONDS = 300;
+export const MIN_WRITER_RETRY_LIMIT = 0;
+export const MAX_WRITER_RETRY_LIMIT = 10;
+export const MIN_WRITER_RETRY_SECONDS = 1;
+export const MAX_WRITER_RETRY_SECONDS = 300;
 
 export type SimpleHandoffConfig = {
 	kvWarningPercent: number;
 	selfHandoffPercent: number;
 	automaticSessionHandoff: boolean;
 	automaticSessionHandoffPercent: number;
+	readinessRetrySeconds: number;
+	writerRetryLimit: number;
+	writerRetryDelaySeconds: number;
 };
 
 export const DEFAULT_CONFIG: SimpleHandoffConfig = {
@@ -20,6 +29,9 @@ export const DEFAULT_CONFIG: SimpleHandoffConfig = {
 	selfHandoffPercent: DEFAULT_THRESHOLDS.criticalThreshold,
 	automaticSessionHandoff: false,
 	automaticSessionHandoffPercent: 60,
+	readinessRetrySeconds: 30,
+	writerRetryLimit: 3,
+	writerRetryDelaySeconds: 30,
 };
 
 function validateAutomaticSessionHandoff(value: unknown, path: string): boolean {
@@ -44,24 +56,19 @@ function validateAutomaticSessionHandoffPercent(value: unknown, path: string): n
 	return percent;
 }
 
-function expandHome(path: string): string {
-	if (path === "~") return homedir();
-	if (path.startsWith("~/")) return join(homedir(), path.slice(2));
-	return path;
+function validateIntegerRange(value: unknown, path: string, setting: string, minimum: number, maximum: number): number {
+	const number = validateNumber(value, path, setting);
+	if (!Number.isInteger(number) || number < minimum || number > maximum) {
+		throw new Error(`${path} ${setting} must be an integer between ${minimum} and ${maximum}.`);
+	}
+	return number;
 }
 
-export function piAgentDirectory(environment: NodeJS.ProcessEnv = process.env): string {
-	const configured = environment.PI_CODING_AGENT_DIR?.trim();
-	if (!configured) return join(homedir(), ".pi", "agent");
-	const expanded = expandHome(configured);
-	return isAbsolute(expanded) ? expanded : resolve(expanded);
-}
-
-export function simpleHandoffConfigPath(agentDirectory = piAgentDirectory()): string {
+export function simpleHandoffConfigPath(agentDirectory = getAgentDir()): string {
 	return join(agentDirectory, "extensions", CONFIG_FILE_NAME);
 }
 
-export function loadSimpleHandoffConfig(agentDirectory = piAgentDirectory()): SimpleHandoffConfig {
+export function loadSimpleHandoffConfig(agentDirectory = getAgentDir()): SimpleHandoffConfig {
 	const path = simpleHandoffConfigPath(agentDirectory);
 	if (!existsSync(path)) return { ...DEFAULT_CONFIG };
 
@@ -90,12 +97,24 @@ export function loadSimpleHandoffConfig(agentDirectory = piAgentDirectory()): Si
 		automaticSessionHandoffPercent: values.automaticSessionHandoffPercent === undefined
 			? DEFAULT_CONFIG.automaticSessionHandoffPercent
 			: validateAutomaticSessionHandoffPercent(values.automaticSessionHandoffPercent, path),
+		readinessRetrySeconds: values.readinessRetrySeconds === undefined
+			? DEFAULT_CONFIG.readinessRetrySeconds
+			: validateIntegerRange(values.readinessRetrySeconds, path, "readinessRetrySeconds", MIN_READINESS_RETRY_SECONDS, MAX_READINESS_RETRY_SECONDS),
+		writerRetryLimit: values.writerRetryLimit === undefined
+			? DEFAULT_CONFIG.writerRetryLimit
+			: validateIntegerRange(values.writerRetryLimit, path, "writerRetryLimit", MIN_WRITER_RETRY_LIMIT, MAX_WRITER_RETRY_LIMIT),
+		writerRetryDelaySeconds: values.writerRetryDelaySeconds === undefined
+			? DEFAULT_CONFIG.writerRetryDelaySeconds
+			: validateIntegerRange(values.writerRetryDelaySeconds, path, "writerRetryDelaySeconds", MIN_WRITER_RETRY_SECONDS, MAX_WRITER_RETRY_SECONDS),
 	};
 	const unknownKeys = Object.keys(values).filter(
 		(key) => key !== "kvWarningPercent" &&
 			key !== "selfHandoffPercent" &&
 			key !== "automaticSessionHandoff" &&
-			key !== "automaticSessionHandoffPercent",
+			key !== "automaticSessionHandoffPercent" &&
+			key !== "readinessRetrySeconds" &&
+			key !== "writerRetryLimit" &&
+			key !== "writerRetryDelaySeconds",
 	);
 	if (unknownKeys.length > 0) {
 		throw new Error(`${path} contains unknown setting(s): ${unknownKeys.join(", ")}.`);
@@ -105,7 +124,7 @@ export function loadSimpleHandoffConfig(agentDirectory = piAgentDirectory()): Si
 
 export async function saveSimpleHandoffConfig(
 	config: SimpleHandoffConfig,
-	agentDirectory = piAgentDirectory(),
+	agentDirectory = getAgentDir(),
 ): Promise<void> {
 	const path = simpleHandoffConfigPath(agentDirectory);
 	await mkdir(dirname(path), { recursive: true });
@@ -121,12 +140,4 @@ export async function saveSimpleHandoffConfig(
 		await unlink(temporaryPath).catch(() => undefined);
 		throw error;
 	}
-}
-
-export function loadHandoffThresholds(agentDirectory = piAgentDirectory()): HandoffThresholds {
-	const config = loadSimpleHandoffConfig(agentDirectory);
-	return {
-		warningThreshold: config.kvWarningPercent,
-		criticalThreshold: config.selfHandoffPercent,
-	};
 }
