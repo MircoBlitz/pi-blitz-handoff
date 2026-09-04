@@ -22,6 +22,7 @@ interface TransitionRigOptions {
   deferred?: string[];
   newSessionCancelled?: boolean;
   newSessionError?: Error;
+  afterSendResult?: "cancelled" | "throw";
   sendError?: Error;
   cleanupError?: Error;
 }
@@ -71,6 +72,15 @@ function rig(options: TransitionRigOptions = {}) {
       if (options.newSessionError !== undefined) throw options.newSessionError;
       if (options.newSessionCancelled === true) return { cancelled: true };
       await newSessionOptions?.withSession?.(replacementContext);
+      if (options.afterSendResult === "cancelled") {
+        order.push("outer-cancelled");
+        return { cancelled: true };
+      }
+      if (options.afterSendResult === "throw") {
+        order.push("outer-threw");
+        throw new Error("outer replacement failed");
+      }
+      order.push("outer-confirmed");
       return { cancelled: false };
     },
   } as unknown as ExtensionCommandContext;
@@ -174,7 +184,7 @@ test("execution takes the latest deferred snapshot, sends one deterministic firs
       "--- Deferred Prompt 1 of 2 ---\n  first unchanged\n\n--- Deferred Prompt 2 of 2 ---\nsecond\nline",
     ].join("\n\n"),
   );
-  assert.deepEqual(testRig.order, ["send", "cleanup"]);
+  assert.deepEqual(testRig.order, ["send", "outer-confirmed", "cleanup"]);
   assert.deepEqual(testRig.cleanup, [{
     directory: "/recovery",
     fileName: "2026-02-03T04-05-06-007Z-exact-source-jsonl.md",
@@ -250,5 +260,26 @@ test("a guard-cancelled or failed newSession is terminal and never sends or clea
     assert.deepEqual(testRig.cleanup, []);
     assert.equal(testRig.failures.length, 1);
     assert.equal(testRig.transition.phase, "inactive");
+  }
+});
+
+test("successful first-prompt delivery does not finish or clean up until outer replacement succeeds", async () => {
+  for (const afterSendResult of ["cancelled", "throw"] as const) {
+    const testRig = rig({ deferred: ["recover me"], afterSendResult });
+    const token = testRig.transition.prepare(request());
+
+    assert.equal(await testRig.transition.execute(token ?? "", testRig.context), false);
+    assert.deepEqual(testRig.prompts, [
+      [
+        "Task-specific title\n\n# Dossier body",
+        "## Deferred Prompts",
+        "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
+        "--- Deferred Prompt 1 of 1 ---\nrecover me",
+      ].join("\n\n"),
+    ]);
+    assert.deepEqual(testRig.cleanup, []);
+    assert.deepEqual(testRig.finished, []);
+    assert.equal(testRig.failures.length, 1);
+    assert.deepEqual(testRig.order, ["send", afterSendResult === "cancelled" ? "outer-cancelled" : "outer-threw"]);
   }
 });

@@ -84,13 +84,13 @@ export function activateHandoffExtension(
       return flow.snapshot?.id === handoffId ? flow.deferredSnapshot : undefined;
     },
     onReplacementStarted(_request, ctx) {
-      const sessionFile = ctx.sessionManager.getSessionFile();
-      protectReplacementSession(sessionFile);
-      setHandoffTerminalState(sessionFile, "finished");
-      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "finished"));
+      protectReplacementSession(ctx.sessionManager.getSessionFile());
     },
     onFinished(_request, ctx) {
-      unprotectReplacementSession(ctx.sessionManager.getSessionFile());
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      unprotectReplacementSession(sessionFile);
+      setHandoffTerminalState(sessionFile, "finished");
+      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "finished"));
     },
     onFailure(request, message, ctx) {
       flow.finish(ctx, request.handoffId);

@@ -134,7 +134,6 @@ export class NativeHandoffTransition {
     active.phase = "replacing";
     active.allowOwnSwitch = true;
     let replacementContext: ReplacementContext | undefined;
-    let failureReported = false;
 
     try {
       const result = await ctx.newSession({
@@ -142,27 +141,7 @@ export class NativeHandoffTransition {
         withSession: async (freshCtx) => {
           replacementContext = freshCtx;
           this.options.onReplacementStarted?.(active, freshCtx);
-          try {
-            await freshCtx.sendUserMessage(markdown);
-          } catch (error) {
-            failureReported = true;
-            this.fail(active, replacementFailure(error, recoveryPath), freshCtx);
-            throw error;
-          }
-
-          if (recoveryFile !== undefined) {
-            try {
-              await this.removeRecoveryFile(this.options.recoveryDirectory, recoveryFile);
-            } catch (error) {
-              freshCtx.ui.notify(
-                `Session handoff succeeded, but the deferred-prompt recovery file could not be deleted at ${recoveryPath}: ${errorMessage(error)}`,
-                "error",
-              );
-            }
-          }
-
-          if (this.active === active) this.active = undefined;
-          this.options.onFinished?.(active, freshCtx);
+          await freshCtx.sendUserMessage(markdown);
         },
       });
 
@@ -170,17 +149,35 @@ export class NativeHandoffTransition {
         this.fail(
           active,
           `Session handoff replacement was cancelled by a session guard. ${recoveryDisposition(recoveryPath)}`,
+          replacementContext ?? ctx,
+        );
+        return false;
+      }
+      if (replacementContext === undefined) {
+        this.fail(
+          active,
+          `Session handoff replacement failed: the replacement session context was unavailable. ${recoveryDisposition(recoveryPath)}`,
           ctx,
         );
         return false;
       }
 
+      if (recoveryFile !== undefined) {
+        try {
+          await this.removeRecoveryFile(this.options.recoveryDirectory, recoveryFile);
+        } catch (error) {
+          replacementContext.ui.notify(
+            `Session handoff succeeded, but the deferred-prompt recovery file could not be deleted at ${recoveryPath}: ${errorMessage(error)}`,
+            "error",
+          );
+        }
+      }
+
       if (this.active === active) this.active = undefined;
+      this.options.onFinished?.(active, replacementContext);
       return true;
     } catch (error) {
-      if (!failureReported) {
-        this.fail(active, replacementFailure(error, recoveryPath), replacementContext ?? ctx);
-      }
+      this.fail(active, replacementFailure(error, recoveryPath), replacementContext ?? ctx);
       return false;
     }
   }
