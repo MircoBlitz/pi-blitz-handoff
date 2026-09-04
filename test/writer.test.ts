@@ -25,6 +25,7 @@ interface WriterRigOptions {
   resolveError?: Error;
   sendError?: Error;
   isolateError?: Error;
+  restoreError?: Error;
   initialTools?: string[];
 }
 
@@ -72,6 +73,9 @@ function rig(options: WriterRigOptions = {}) {
     setActiveTools(toolNames) {
       if (options.isolateError !== undefined && toolNames.length === 1 && toolNames[0] === SUBMIT_SESSION_HANDOFF_TOOL) {
         throw options.isolateError;
+      }
+      if (options.restoreError !== undefined && toolNames.join("\0") === initialTools.join("\0")) {
+        throw options.restoreError;
       }
       activeTools = [...toolNames];
       toolChanges.push([...toolNames]);
@@ -196,6 +200,24 @@ test("writer isolates tools, reports every fallback failure, accepts once, and r
   assert.deepEqual(testRig.successes, [{ attempt: 1, id: "submission-1", content: "# Dossier" }]);
   assert.deepEqual(testRig.getActiveTools(), testRig.initialTools);
   assert.deepEqual(testRig.toolChanges, [[SUBMIT_SESSION_HANDOFF_TOOL], testRig.initialTools]);
+});
+
+test("a valid settled submission fails visibly instead of succeeding when tool restoration fails", async () => {
+  const testRig = rig({ restoreError: new Error("saved tool list rejected") });
+
+  testRig.writer.start(handoff(), testRig.ctx);
+  await settlePromises();
+  testRig.writer.submit({ id: "submission-1", content: "# Dossier" });
+  testRig.writer.handleSettled(testRig.ctx);
+
+  assert.equal(testRig.writer.phase, "failed");
+  assert.equal(testRig.writer.isActive, false);
+  assert.deepEqual(testRig.getActiveTools(), [SUBMIT_SESSION_HANDOFF_TOOL]);
+  assert.deepEqual(testRig.successes, []);
+  assert.deepEqual(testRig.terminals, [{
+    reason: "failed",
+    message: "Could not restore the active tool list: saved tool list rejected",
+  }]);
 });
 
 test("settled attempts retry exactly after configured delay with a fresh template and ID", async () => {

@@ -145,8 +145,9 @@ export class HandoffWriter {
         attempt: active.attempt,
         submission: { ...active.submission },
       };
-      this.terminate(active, "succeeded");
-      this.options.onSuccess?.(result, ctx);
+      if (this.terminate(active, "succeeded")) {
+        this.options.onSuccess?.(result, ctx);
+      }
       return;
     }
 
@@ -242,8 +243,8 @@ export class HandoffWriter {
     }
   }
 
-  private terminate(active: ActiveWriter, reason: WriterTerminalReason, message?: string): void {
-    if (this.active !== active) return;
+  private terminate(active: ActiveWriter, reason: WriterTerminalReason, message?: string): boolean {
+    if (this.active !== active) return false;
     this.clearRetryTimer(active);
     active.acceptingSubmission = false;
     active.attemptToken = undefined;
@@ -256,13 +257,15 @@ export class HandoffWriter {
     }
 
     this.active = undefined;
-    this.currentPhase = reason;
-    this.options.onPhaseChange?.(reason, active.attempt, active.ctx);
+    const terminalReason = reason === "succeeded" && restorationFailure !== undefined ? "failed" : reason;
+    this.currentPhase = terminalReason;
+    this.options.onPhaseChange?.(terminalReason, active.attempt, active.ctx);
 
-    if (reason !== "succeeded") {
+    if (terminalReason !== "succeeded") {
       const detail = [message, restorationFailure].filter((part): part is string => part !== undefined).join(" ");
-      this.options.onTerminalFailure?.(reason, detail, active.ctx);
+      this.options.onTerminalFailure?.(terminalReason, detail, active.ctx);
     }
+    return terminalReason === "succeeded";
   }
 
   private restoreTools(active: ActiveWriter): void {
