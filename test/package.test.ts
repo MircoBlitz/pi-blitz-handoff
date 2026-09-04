@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { initializeHandoffStorage } from "../extensions/pi-simple-handoff/index.ts";
+import { defaultConfig } from "../extensions/pi-simple-handoff/config.ts";
 import { loadExtension } from "./extension-harness.ts";
 
 interface PackageManifest {
@@ -29,23 +29,37 @@ test("package declares the supported runtimes and shipped resources", async () =
   assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-simple-handoff/index.ts"]);
 });
 
-test("extension entrypoint loads with the baseline API adapter", async () => {
-  const baselineApi = Object.freeze({}) as ExtensionAPI;
-
-  await assert.doesNotReject(loadExtension(baselineApi));
-});
-
-test("foundation initialization creates managed storage, installs the shipped default, and loads defaults", async (t) => {
+test("loading the package entrypoint initializes and validates managed storage", async (t) => {
   const agentDirectory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-package-"));
+  const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDirectory;
+  t.after(() => {
+    if (previousAgentDirectory === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    }
+  });
   t.after(() => rm(agentDirectory, { recursive: true, force: true }));
 
-  const initialized = await initializeHandoffStorage(agentDirectory);
-  assert.equal((await stat(initialized.paths.baseDirectory)).isDirectory(), true);
-  assert.equal((await stat(initialized.paths.recoveryDirectory)).isDirectory(), true);
-  assert.equal((await stat(initialized.paths.templateDirectory)).isDirectory(), true);
+  const baselineApi = Object.freeze({}) as ExtensionAPI;
+  await loadExtension(baselineApi);
+
+  const baseDirectory = join(agentDirectory, "pi-simple-handoff");
+  const recoveryDirectory = join(baseDirectory, "recovery");
+  const templateDirectory = join(baseDirectory, "templates");
+  assert.equal((await stat(baseDirectory)).isDirectory(), true);
+  assert.equal((await stat(recoveryDirectory)).isDirectory(), true);
+  assert.equal((await stat(templateDirectory)).isDirectory(), true);
   assert.equal(
-    await readFile(join(initialized.paths.templateDirectory, "default.cmpl"), "utf8"),
+    await readFile(join(templateDirectory, "default.cmpl"), "utf8"),
     await readFile(new URL("../default.cmpl", import.meta.url), "utf8"),
   );
-  assert.equal(initialized.config.handoffTemplate, "default.cmpl");
+
+  const missingRecoveryDirectory = join(agentDirectory, "missing-recovery");
+  await writeFile(
+    join(baseDirectory, "config.json"),
+    JSON.stringify({ ...defaultConfig(agentDirectory), recoveryDirectory: missingRecoveryDirectory }),
+  );
+  await assert.rejects(loadExtension(baselineApi), { code: "ENOENT" });
 });

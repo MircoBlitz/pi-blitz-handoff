@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
@@ -32,4 +32,6 @@ export async function initializeHandoffStorage(
   return { config, paths };
 }
 
-export default function piSimpleHandoff(_pi: ExtensionAPI): void {}
+export default async function piSimpleHandoff(_pi: ExtensionAPI): Promise<void> {
+  await initializeHandoffStorage(getAgentDir());
+}
