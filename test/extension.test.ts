@@ -19,12 +19,19 @@ import type {
 import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
 import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
 import { setHandoffTerminalState } from "../extensions/pi-simple-handoff/status.ts";
+import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-simple-handoff/submission-tool.ts";
 
 interface RuntimeState {
   idle: boolean;
   pending: boolean;
   sessionFile?: string;
   percent?: number | null;
+}
+
+interface ToolRuntimeOptions {
+  activeTools: string[];
+  loading: boolean;
+  setCalls: string[][];
 }
 
 interface Notification {
@@ -60,6 +67,7 @@ function createRig(
   configChanges: Partial<HandoffConfig> = {},
   stateChanges: Partial<RuntimeState> = {},
   agentDirectory = "/tmp/pi-simple-handoff-test-agent",
+  toolRuntime?: ToolRuntimeOptions,
 ) {
   const state: RuntimeState = {
     idle: true,
@@ -133,6 +141,18 @@ function createRig(
     sendUserMessage(content: string | Array<{ type: string; text?: string }>) {
       sentUserMessages.push(typeof content === "string" ? content : JSON.stringify(content));
     },
+    ...(toolRuntime === undefined
+      ? {}
+      : {
+          getActiveTools() {
+            return [...toolRuntime.activeTools];
+          },
+          setActiveTools(toolNames: string[]) {
+            if (toolRuntime.loading) throw new Error("setActiveTools called during extension loading");
+            toolRuntime.activeTools = [...toolNames];
+            toolRuntime.setCalls.push([...toolNames]);
+          },
+        }),
   } as unknown as ExtensionAPI;
 
   const config = { ...defaultConfig(agentDirectory), ...configChanges };
@@ -156,6 +176,24 @@ function createRig(
     },
   };
 }
+
+test("defers writer tool initialization until the first session_start", async () => {
+  const toolRuntime: ToolRuntimeOptions = {
+    activeTools: ["read", SUBMIT_SESSION_HANDOFF_TOOL, "bash"],
+    loading: true,
+    setCalls: [],
+  };
+
+  const rig = createRig({}, {}, "/tmp/pi-simple-handoff-extension-tools", toolRuntime);
+  assert.deepEqual(toolRuntime.setCalls, []);
+
+  toolRuntime.loading = false;
+  await rig.handlers.session_start?.({ type: "session_start", reason: "startup" }, rig.context);
+
+  assert.deepEqual(toolRuntime.setCalls, [["read", "bash"]]);
+  assert.deepEqual(toolRuntime.activeTools, ["read", "bash"]);
+  assert.equal(rig.notifications.some((notification) => notification.type === "error"), false);
+});
 
 function assistantMessage(text: string): MessageEndEvent {
   return {

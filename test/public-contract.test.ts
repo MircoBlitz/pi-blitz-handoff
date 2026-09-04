@@ -31,6 +31,7 @@ function captureRegistration() {
   const activeTools = ["read", "bash", "submit_session_handoff"];
   let currentTools = [...activeTools];
   let nativeStarts = 0;
+  let sessionStartHandler: ((event: unknown, ctx: unknown) => void | Promise<void>) | undefined;
 
   const context = {
     mode: "tui",
@@ -67,7 +68,11 @@ function captureRegistration() {
     registerTool(tool: RegisteredTool) {
       tools.set(tool.name, tool);
     },
-    on() {},
+    on(event: string, handler: unknown) {
+      if (event === "session_start") {
+        sessionStartHandler = handler as (event: unknown, ctx: unknown) => void | Promise<void>;
+      }
+    },
     getActiveTools() {
       return [...currentTools];
     },
@@ -90,6 +95,9 @@ function captureRegistration() {
     context,
     getActiveTools: () => currentTools,
     getNativeStarts: () => nativeStarts,
+    startSession: async () => {
+      await sessionStartHandler?.({ type: "session_start", reason: "startup" }, context);
+    },
   };
 }
 
@@ -109,8 +117,9 @@ test("the only advertised command is /sh with exactly the documented subcommands
   assert.deepEqual([...rig.commands.keys()].filter((name) => ["shconfig", "sh-retry", "sh-cleanup"].includes(name)), []);
 });
 
-test("simple_handoff exposes only status and start while the writer submission tool starts inactive", () => {
+test("simple_handoff exposes only status and initializes the writer submission tool at session_start", async () => {
   const rig = captureRegistration();
+  await rig.startSession();
   assert.deepEqual([...rig.tools.keys()].sort(), ["simple_handoff", "submit_session_handoff"]);
 
   const publicTool = rig.tools.get("simple_handoff");

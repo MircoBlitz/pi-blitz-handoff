@@ -190,8 +190,21 @@ export function activateHandoffExtension(
 
   if (writer !== undefined) {
     registerSubmissionTool(pi, (submission) => writer.submit(submission));
-    pi.setActiveTools(pi.getActiveTools().filter((name) => name !== SUBMIT_SESSION_HANDOFF_TOOL));
   }
+
+  const initializeWriterTools = (ctx: ExtensionContext): void => {
+    if (writerRuntime === undefined || writer === undefined) return;
+    try {
+      writerRuntime.setActiveTools(
+        writerRuntime.getActiveTools().filter((name) => name !== SUBMIT_SESSION_HANDOFF_TOOL),
+      );
+    } catch (error) {
+      ctx.ui.notify(
+        `Could not initialize session handoff writer tools: ${errorMessage(error)}`,
+        "error",
+      );
+    }
+  };
 
   flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
@@ -390,6 +403,7 @@ export function activateHandoffExtension(
   });
 
   pi.on("session_start", (_event, ctx) => {
+    initializeWriterTools(ctx);
     configDialog.discard();
     recoveryDialog.discard();
     advisoryWarningShown = false;
