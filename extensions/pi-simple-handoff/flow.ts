@@ -139,7 +139,11 @@ export class HandoffFlow {
   }
 
   cancel(ctx: ExtensionContext): boolean {
-    if (this.active === undefined) return false;
+    return this.finish(ctx);
+  }
+
+  finish(ctx: ExtensionContext, handoffId?: string): boolean {
+    if (this.active === undefined || (handoffId !== undefined && this.active.id !== handoffId)) return false;
     this.clearRetryTimer(this.active);
     this.active = undefined;
     this.options.onPhaseChange?.(undefined, ctx);

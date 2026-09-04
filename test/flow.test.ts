@@ -169,6 +169,17 @@ test("ordinary input invalidates IDs and timers, passes control to the next sett
   assert.equal(flow.handleInput("extension", ctx), false);
 });
 
+test("writer completion can finish only the correlated active handoff", () => {
+  const state: MutableContext = { idle: true, pending: false, sessionFile: "/sessions/source.jsonl" };
+  const { flow, ctx } = setup(state);
+
+  flow.start(ctx, "command");
+  assert.equal(flow.finish(ctx, "stale-handoff"), false);
+  assert.equal(flow.phase, "checking");
+  assert.equal(flow.finish(ctx, "handoff-1"), true);
+  assert.equal(flow.phase, "inactive");
+});
+
 test("late retry callbacks from cancelled or input-invalidated handoffs do nothing", () => {
   const state: MutableContext = { idle: true, pending: false, sessionFile: "/sessions/source.jsonl" };
   const first = setup(state);

@@ -4,8 +4,10 @@ import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from 
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
 import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
+import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
 import { contextWarning, formatPublicStatus, persistentHandoffStatus, warningMessage } from "./status.ts";
-import { shippedDefaultPath, synchronizeManagedDefault } from "./templates.ts";
+import { resolveTemplate, shippedDefaultPath, synchronizeManagedDefault } from "./templates.ts";
+import { HandoffWriter, type WriterRuntime } from "./writer.ts";
 
 export * from "./config.ts";
 export * from "./filesystem.ts";
@@ -13,7 +15,9 @@ export * from "./flow.ts";
 export * from "./public-tool.ts";
 export * from "./readiness.ts";
 export * from "./status.ts";
+export * from "./submission-tool.ts";
 export * from "./templates.ts";
+export * from "./writer.ts";
 
 const STATUS_KEY = "pi-simple-handoff";
 const READINESS_MESSAGE_TYPE = "pi-simple-handoff-readiness";
@@ -42,10 +46,54 @@ export async function initializeHandoffStorage(
   return { config, paths };
 }
 
-export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig): HandoffFlow {
+export function activateHandoffExtension(
+  pi: ExtensionAPI,
+  config: HandoffConfig,
+  paths: HandoffPaths = handoffPaths(getAgentDir()),
+): HandoffFlow {
   let advisoryWarningShown = false;
+  let flow: HandoffFlow;
 
-  const flow = new HandoffFlow({
+  const writerRuntime = writerRuntimeFrom(pi);
+  const writer = writerRuntime === undefined
+    ? undefined
+    : new HandoffWriter({
+        writerAttempts: config.writerAttempts,
+        writerRetryDelaySeconds: config.writerRetryDelaySeconds,
+        runtime: writerRuntime,
+        resolveTemplate: () =>
+          resolveTemplate(config.handoffTemplate, {
+            managedDirectory: paths.templateDirectory,
+            addendumDirectory: config.templateDirectory,
+          }),
+        onTemplateFailure(failure, attempt, ctx) {
+          ctx.ui.notify(
+            `Writer attempt ${attempt} could not use template ${failure.path}: ${failure.reason}`,
+            "warning",
+          );
+        },
+        onPhaseChange(phase, _attempt, ctx) {
+          if (phase === "resolving" || phase === "writing" || phase === "retry-delay") {
+            ctx.ui.setStatus(STATUS_KEY, "Writing Session Handoff");
+          }
+        },
+        onSuccess(result, ctx) {
+          ctx.ui.notify(`Session handoff dossier accepted on writer attempt ${result.attempt}.`, "info");
+        },
+        onTerminalFailure(reason, message, ctx) {
+          flow.finish(ctx);
+          if (reason !== "cancelled") {
+            ctx.ui.notify(message, "error");
+          }
+        },
+      });
+
+  if (writer !== undefined) {
+    registerSubmissionTool(pi, (submission) => writer.submit(submission));
+    pi.setActiveTools(pi.getActiveTools().filter((name) => name !== SUBMIT_SESSION_HANDOFF_TOOL));
+  }
+
+  flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
     onReadinessPrompt(prompt) {
       pi.sendMessage(
@@ -57,8 +105,9 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
         { deliverAs: "followUp", triggerTurn: true },
       );
     },
-    onReady(_handoff, ctx) {
+    onReady(handoff, ctx) {
       ctx.ui.notify("Session handoff readiness confirmed.", "info");
+      writer?.start(handoff, ctx);
     },
     onPhaseChange(handoff, ctx) {
       ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(handoff?.phase ?? "inactive"));
@@ -92,8 +141,12 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
         return;
       }
       if (action === "cancel") {
+        const writerCancelled = writer?.cancel(ctx) ?? false;
+        const flowCancelled = flow.cancel(ctx);
         ctx.ui.notify(
-          flow.cancel(ctx) ? "Session handoff cancelled." : "No active session handoff to cancel.",
+          writerCancelled || flowCancelled
+            ? "Session handoff cancelled."
+            : "No active session handoff to cancel.",
           "info",
         );
         return;
@@ -104,7 +157,10 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
 
   registerPublicHandoffTool(pi, {
     status(ctx) {
-      return formatPublicStatus(flow.phase, ctx.getContextUsage(), config);
+      const status = formatPublicStatus(flow.phase, ctx.getContextUsage(), config);
+      return writer?.isActive
+        ? status.replace(/^Waiting for Session Handoff\./, "Writing Session Handoff.")
+        : status;
     },
     start(ctx) {
       return requestStart(ctx, "tool");
@@ -137,6 +193,11 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
       ctx.ui.notify(warningMessage(warning, usage.percent), "warning");
     }
 
+    if (writer?.isActive) {
+      writer.handleSettled(ctx);
+      return;
+    }
+
     if (flow.phase !== "inactive") {
       flow.handleSettled(ctx);
       return;
@@ -161,6 +222,7 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    writer?.invalidate();
     flow.invalidate();
     ctx.ui.setStatus(STATUS_KEY, undefined);
   });
@@ -169,8 +231,23 @@ export function activateHandoffExtension(pi: ExtensionAPI, config: HandoffConfig
 }
 
 export default async function piSimpleHandoff(pi: ExtensionAPI): Promise<void> {
-  const { config } = await initializeHandoffStorage(getAgentDir());
+  const { config, paths } = await initializeHandoffStorage(getAgentDir());
   if (typeof pi.registerCommand === "function") {
-    activateHandoffExtension(pi, config);
+    activateHandoffExtension(pi, config, paths);
   }
+}
+
+function writerRuntimeFrom(pi: ExtensionAPI): WriterRuntime | undefined {
+  if (
+    typeof pi.getActiveTools !== "function" ||
+    typeof pi.setActiveTools !== "function" ||
+    typeof pi.sendUserMessage !== "function"
+  ) {
+    return undefined;
+  }
+  return {
+    getActiveTools: () => pi.getActiveTools(),
+    setActiveTools: (toolNames) => pi.setActiveTools(toolNames),
+    sendUserMessage: (content) => pi.sendUserMessage(content),
+  };
 }
