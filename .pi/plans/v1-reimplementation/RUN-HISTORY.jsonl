@@ -1,3 +1,4 @@
 {"timestamp":"2026-09-04T01:05:57Z","event":"specification-frozen","authorization":"B01-B05","next":"B01/T01","realPi":"not-authorized"}
 {"timestamp":"2026-09-04T01:11:36Z","event":"task-accepted","task":"B01/T01","basis":"a57c800ebb4889c0bf6c4d20311bb23bb1afcaff","candidate":"c41fa02ac6c9e3379635065e6602a3cb83220a43","next":"B01/T02"}
 {"timestamp":"2026-09-04T01:23:29Z","event":"task-accepted","task":"B01/T02","basis":"a2fcbadb34e2e5c45d9d1f1e446a8447e5f6135e","initialCandidate":"f6d0c1b04f19ab40c3636cbd493b0f945b3f0fc2","candidate":"4a4790d8372edb1a1cba9c3cfee7518ff8865915","block":"B01","blockGate":"passed","next":"B02/T01"}
+{"timestamp":"2026-09-04T01:34:40Z","event":"task-accepted","task":"B02/T01","basis":"9c42ac339e086ef68140984aac5772a7c5d41743","candidate":"8f7e63c1985383136c7442eecef1be760ae3f6a9","next":"B02/T02"}
