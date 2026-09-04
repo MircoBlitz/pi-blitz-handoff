@@ -28,13 +28,14 @@ test("readiness prompt asks only about remaining session-owned work and requires
   assert.match(prompt, /exactly one current identifier and nothing else/);
 });
 
-test("only exact current identifiers classify as answers", () => {
+test("only current identifiers on the final non-empty line classify as answers", () => {
   const ids = { go: "go-current", notYet: "not-yet-current" };
 
   assert.equal(classifyReadinessAnswer("go-current", ids), "go");
   assert.equal(classifyReadinessAnswer("not-yet-current", ids), "not-yet");
-  assert.equal(classifyReadinessAnswer(" go-current", ids), "invalid");
-  assert.equal(classifyReadinessAnswer("go-current\n", ids), "invalid");
+  assert.equal(classifyReadinessAnswer("Reasoning first\n\ngo-current", ids), "go");
+  assert.equal(classifyReadinessAnswer("Reasoning first\n\n not-yet-current ", ids), "not-yet");
+  assert.equal(classifyReadinessAnswer("go-current\nOther text", ids), "invalid");
   assert.equal(classifyReadinessAnswer("go-stale", ids), "invalid");
   assert.equal(classifyReadinessAnswer(undefined, ids), "invalid");
 });

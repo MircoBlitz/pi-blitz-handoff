@@ -479,15 +479,15 @@ test("post-GO persistence failure is visible and still handles the captured prom
   assert.match(rig.notifications.at(-1)?.message ?? "", /recovery file could not be updated/);
 });
 
-test("only the current exact GO answer advances after the answering run settles", async () => {
+test("only the current GO answer on the final line advances after the answering run settles", async () => {
   const rig = createRig();
   await rig.commands.get("sh")?.("", rig.context);
   const go = rig.flow.snapshot?.readinessIds?.go;
   assert.ok(go);
 
-  await rig.handlers.message_end?.(assistantMessage(`${go}\n`), rig.context);
+  await rig.handlers.message_end?.(assistantMessage(`Reasoning first\n${go}`), rig.context);
   await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
-  assert.equal(rig.flow.phase, "retry-delay");
+  assert.equal(rig.flow.phase, "ready");
 
   await rig.commands.get("sh")?.("cancel", rig.context);
   await rig.commands.get("sh")?.("", rig.context);

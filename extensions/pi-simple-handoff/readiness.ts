@@ -24,7 +24,12 @@ export function readinessPrompt(ids: ReadinessIdentifiers): string {
 }
 
 export function classifyReadinessAnswer(answer: string | undefined, ids: ReadinessIdentifiers): ReadinessAnswer {
-  if (answer === ids.go) return "go";
-  if (answer === ids.notYet) return "not-yet";
+  const finalLine = answer
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .at(-1);
+  if (finalLine === ids.go) return "go";
+  if (finalLine === ids.notYet) return "not-yet";
   return "invalid";
 }

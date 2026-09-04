@@ -1,10 +1,14 @@
-FROM node:22.19.0-bookworm-slim
+FROM ubuntu:24.04
 
-RUN mkdir -p /opt/pi /root/.pi/agent \
-  && npm install --prefix /opt/pi --no-package-lock --no-save --no-fund --no-audit \
-    @earendil-works/pi-coding-agent@0.84.2
+ENV DEBIAN_FRONTEND=noninteractive
 
-ENV PATH="/opt/pi/node_modules/.bin:${PATH}"
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git ripgrep \
+  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+  && apt-get install -y --no-install-recommends nodejs \
+  && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.2 \
+  && mkdir -p /root/.pi/agent \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work
-
-ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["sleep", "infinity"]
