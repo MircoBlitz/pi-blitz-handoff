@@ -1,0 +1,27 @@
+services:
+  pi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    stdin_open: true
+    tty: true
+    working_dir: /work
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../..:/work:ro
+      - pi-sessions:/tmp/pi-sessions
+      - ./models.json:/root/.pi/agent/models.json:ro
+      - type: bind
+        source: ${HOME}/.config/omlx/omlx-harness-sub.token
+        target: /run/secrets/omlx-token
+        read_only: true
+    command: >-
+      export OMLX_TOKEN="$$(cat /run/secrets/omlx-token)";
+      exec pi
+      --model omlx-harness/scottlowry--Qwen3.8-27B-oQ8e-fp16-mtp
+      --session-dir /tmp/pi-sessions
+      -e /work/extensions/pi-simple-handoff/index.ts
+
+volumes:
+  pi-sessions:
