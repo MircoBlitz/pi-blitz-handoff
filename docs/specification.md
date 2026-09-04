@@ -1,8 +1,8 @@
 # pi-simple-handoff v1.0 Product Specification
 
-> **FROZEN v1.0 — User-approved product authority.**
+> **DRAFT v1.0 — Under active user and orchestrator review.**
 >
-> This specification was rewritten from the completed runtime walkthrough and then frozen again with explicit user approval. Implementation must conform to it. Changes require another explicit user decision.
+> This specification is being corrected before implementation planning is approved. It is not frozen yet. Material product, UX, authorization, security, or scope changes require an explicit user decision; small implementation details that are clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
@@ -16,8 +16,9 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 
 - Pi v0.84.2 or later.
 - Node.js v22.19.0 or later.
-- Native replacement uses `ctx.newSession({ parentSession })`.
+- Native replacement uses `ctx.newSession({ parentSession })` through Pi's command context.
 - The commands and in-chat interactions work in Pi's interactive chat surface.
+- A persisted source session is required. Initiation is rejected visibly in `--no-session` or other in-memory sessions because they have no source transcript path or native parent lineage.
 
 ## 3. Public surface
 
@@ -28,7 +29,7 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 - `/sh recover` — inspect and act on leftover deferred-prompt files.
 - `/sh config` — configure the extension through an in-chat question-and-answer flow.
 
-There is no internal or public transition command, `/sh retry`, `/sh cleanup`, `/shconfig`, or compatibility alias.
+There is no public transition command, `/sh retry`, `/sh cleanup`, `/shconfig`, or compatibility alias. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
 
 ### Model-callable tool
 
@@ -121,11 +122,11 @@ Catalogue scans are nonrecursive. An optional configured addendum directory may 
 
 Every writer attempt resolves the current template in this order:
 
-1. selected effective template;
+1. the selected filename from the addendum directory when configured and present, otherwise the selected filename from the managed directory;
 2. addendum `default.cmpl`, when configured;
 3. managed `templates/default.cmpl`.
 
-A valid template is a readable, nonempty `.cmpl` file. Every failed tier is reported. There is no embedded TypeScript template and no fourth fallback.
+Each physical candidate path is attempted at most once. A valid template is a readable, nonempty `.cmpl` file. Every failed candidate is reported. There is no embedded TypeScript template and no fourth fallback.
 
 ## 6. Warnings and automatic initiation
 
@@ -151,12 +152,14 @@ Only the exact current `GO` identifier is accepted as readiness. The writer may 
 
 The exact current `NOT YET` identifier, a malformed answer, or no valid answer leaves the handoff pending. Another check is scheduled after `readinessRetrySeconds`. Retry uses one timer, not periodic idle polling.
 
-If interactive or RPC input arrives while readiness is active:
+If ordinary interactive or RPC model input that reaches Pi's `input` event arrives while readiness is active:
 
 1. invalidate the current GO and NOT-YET identifiers;
 2. let the input pass unchanged to the source agent;
 3. wait for the resulting work to reach `agent_settled`;
 4. start a fresh readiness attempt with fresh identifiers.
+
+Slash commands retain Pi's native command behavior because Pi dispatches them before the `input` event.
 
 Steering is recognized through the Pi input event's `streamingBehavior === "steer"`. Follow-up input has the same invalidating effect. Before an accepted GO, user input is normal source-session work and is not deferred.
 
@@ -166,12 +169,14 @@ There is no separate active-questioning detector or questioning state. An unfini
 
 The accepted GO followed by its settled boundary starts the handoff writer and the deferred-prompt window.
 
-From that boundary until replacement is released:
+From that boundary until the native replacement begins:
 
-- incoming user prompt text is handled by the extension and does not reach the source writer;
+- ordinary user prompt text that reaches Pi's `input` event is handled by the extension and does not reach the source writer;
 - each prompt is kept unchanged in memory;
 - prompt boundaries and arrival order are preserved;
 - no prompt parsing, rewriting, summarization, link extraction, or content classification occurs.
+
+Slash commands retain Pi's native command behavior. The extension keeps the transition visibly announced and uses the straightforward latest deferred-prompt snapshot when replacement starts; it does not add a second delivery protocol for theoretical cutover races.
 
 The in-memory list is the normal runtime source. As a recovery precaution, the extension also maintains one Markdown file for the entire handoff window. Its filename is:
 
@@ -209,7 +214,7 @@ The writer prompt includes the complete template, exact current submission ID, a
 
 The extension validates current-ID correlation, nonempty content, and absence of NUL. It does not parse the Markdown structure or impose a product-specific byte cap.
 
-The template instructs the model to begin the handoff with a concise, meaningful Markdown title and then continue with the dossier. There is no separate session-name field, parser, sanitizer, or second title channel.
+The template instructs the model to begin the handoff with a concise, meaningful, task-specific Markdown title and then continue with the dossier. This first line is also the useful visible name of the replacement session in Pi's session navigation. No generic handoff-status prefix may precede it. There is no separate session-name field, parser, sanitizer, or second title channel. Title and dossier structure are writer instructions, not claims of deterministic semantic validation.
 
 The dossier distinguishes completed and verified work, completed but unverified work, partial or reverted work, authorized work, work requiring fresh approval, blockers, open questions, working files, evidence, prior decisions, and precise cold-context references. It must not turn discussion, criticism, rejected proposals, or unanswered questions into authorization.
 
@@ -231,7 +236,7 @@ The built-in template retains these continuation sections after its meaningful t
 14. `Integrity notes`
 15. `Post-Handoff Initial Action`
 
-The final section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff.
+The final writer-produced dossier section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff. An unanswered question currently awaiting user input remains source-session work and produces `NOT YET`; continued questioning is appropriate when the prior exchange is complete and the next authorized question is due.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -241,7 +246,7 @@ After exhaustion the handoff stops visibly. Any deferred-prompt recovery file re
 
 ## 10. Deterministic assembly and native replacement
 
-After a valid writer submission, no further model call is used to assemble the transition prompt.
+After a valid writer submission and its settled boundary, no further model call is used to assemble the transition prompt. The extension invokes its private correlated transition command to obtain the command context required by Pi's native replacement API.
 
 When deferred prompts exist, the extension appends this section to the submitted handoff:
 
@@ -249,13 +254,13 @@ When deferred prompts exist, the extension appends this section to the submitted
 ## Deferred Prompts
 ```
 
-It then appends each unchanged prompt in original order with deterministic boundaries. When no deferred prompt exists, the handoff is not given an empty deferred section.
+It then appends each unchanged prompt in original order with deterministic boundaries. The section tells the replacement model to treat the entries semantically as separate sequential user inputs after the dossier, so later deferred prompts may update or supersede earlier context. When no deferred prompt exists, the handoff is not given an empty deferred section.
 
-After the successful writer run reaches `agent_settled`, the extension directly calls `ctx.newSession({ parentSession: sourceSessionPath })`. There is no queued command and no intermediate handoff transport file.
+The private correlated transition command calls `ctx.newSession({ parentSession: sourceSessionPath })`. There is no intermediate handoff transport file and no model-authored transition command.
 
 The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title.
 
-After the replacement session has received the prompt and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff.
+After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
 The source transcript remains available through native parent-session lineage and the exact source path recorded in the handoff. The submitted handoff also remains visible in the source session's tool log.
 
@@ -263,7 +268,7 @@ The source transcript remains available through native parent-session lineage an
 
 Before GO, `/sh cancel` clears the pending request and invalidates readiness identifiers.
 
-After GO, `/sh cancel` stops extension-owned writer or transition work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. This is the complete post-GO cancellation behavior: deferred prompts are not automatically replayed to the source session.
+After GO and before native replacement starts, `/sh cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
 Before GO, user session navigation may discard the pending handoff. From GO until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked because they would invalidate the active transfer. The extension's own native replacement is allowed.
 
@@ -284,7 +289,7 @@ Recovery is explicit and file-based. The extension never automatically executes 
 
 Recovery questions and answers are extension-owned and do not enter model context.
 
-Executing a file sends all prompts from that file to the current session as one combined user turn, preserving their stored order and boundaries. The file is deleted only after Pi accepts that user turn.
+Executing a file sends all prompts from that file to the current session as one combined user turn, preserving their stored order and boundaries and instructing the model to treat them as separate sequential inputs. The file is deleted once that turn has been sent without an immediate dispatch error.
 
 Discarding deletes only the explicitly selected file. Inspecting never changes it. Unreadable files are reported and left untouched.
 
@@ -296,7 +301,7 @@ The extension exposes concise factual status in chat and through `simple_handoff
 
 - `Waiting for Session Handoff`;
 - `Writing Session Handoff` with an indeterminate activity indicator;
-- `Session Handoff Finished`.
+- `Session Handoff Finished` in the replacement session until the next ordinary user input or another handoff begins.
 
 Failure and cancellation override those states. Concrete attempt information may appear in factual chat or tool status, but the persistent indicator does not invent fractional or numbered progress.
 
@@ -340,7 +345,7 @@ A real current-Pi validation is a separate final gate and requires fresh user ap
 v1.0 excludes:
 
 - a TUI or overlay configuration editor;
-- an internal transition command;
+- a public transition command or a parallel replacement mechanism beyond the one private bridge required by Pi's command-only session API;
 - idle polling;
 - a separate session-name field;
 - an intermediate handoff transport file;
@@ -356,8 +361,8 @@ v1.0 excludes:
 - optional-extension-specific readiness logic;
 - GitHub CI.
 
-## 16. Authority and freeze
+## 16. Review status and authority
 
-This document is the frozen, user-approved v1.0 product authority after the runtime simplification walkthrough.
+This document is currently a draft under active user and orchestrator review. It becomes the frozen v1.0 product authority only after explicit user approval of the corrected specification.
 
-Implementation history, previous plan text, and existing code are not authority when they disagree with this document. Any future specification change requires explicit user approval before implementation.
+Git history, previous plan text, and previous implementation code are not product authority and must not be used as implementation context. Workers may report a concrete gap but must not edit or reinterpret this specification. The orchestrator may approve a small implementation detail when it is clearly implied by the approved concept and does not materially change public behavior, UX, authorization, security, data lifecycle, or scope. Material changes, uncertainty, and genuine product decisions go to the user. Contradictory proposals are rejected rather than incorporated.
