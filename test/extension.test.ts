@@ -12,9 +12,11 @@ import type {
   InputEvent,
   InputEventResult,
   MessageEndEvent,
+  SessionShutdownEvent,
+  SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
+import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
 import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
 
 interface RuntimeState {
@@ -38,6 +40,13 @@ type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<vo
 type InputHandler = (event: InputEvent, ctx: ExtensionContext) => InputEventResult | void | Promise<InputEventResult | void>;
 type SettledHandler = (event: AgentSettledEvent, ctx: ExtensionContext) => void | Promise<void>;
 type MessageEndHandler = (event: MessageEndEvent, ctx: ExtensionContext) => void | Promise<void>;
+type SessionStartHandler = (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
+type SessionShutdownHandler = (event: SessionShutdownEvent, ctx: ExtensionContext) => void | Promise<void>;
+type SelectHandler = (
+  title: string,
+  options: string[],
+  opts?: { signal?: AbortSignal },
+) => Promise<string | undefined>;
 type ToolExecute = (
   toolCallId: string,
   params: { action: "status" | "start" },
@@ -46,7 +55,11 @@ type ToolExecute = (
   ctx: ExtensionContext,
 ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 
-function createRig(configChanges: Partial<HandoffConfig> = {}, stateChanges: Partial<RuntimeState> = {}) {
+function createRig(
+  configChanges: Partial<HandoffConfig> = {},
+  stateChanges: Partial<RuntimeState> = {},
+  agentDirectory = "/tmp/pi-simple-handoff-test-agent",
+) {
   const state: RuntimeState = {
     idle: true,
     pending: false,
@@ -62,10 +75,15 @@ function createRig(configChanges: Partial<HandoffConfig> = {}, stateChanges: Par
     input?: InputHandler;
     agent_settled?: SettledHandler;
     message_end?: MessageEndHandler;
+    session_start?: SessionStartHandler;
+    session_shutdown?: SessionShutdownHandler;
   } = {};
   let toolExecute: ToolExecute | undefined;
+  let selectHandler: SelectHandler = async () => undefined;
 
   const context = {
+    mode: "tui",
+    hasUI: true,
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({
@@ -75,6 +93,15 @@ function createRig(configChanges: Partial<HandoffConfig> = {}, stateChanges: Par
     }),
     sessionManager: { getSessionFile: () => state.sessionFile },
     ui: {
+      select(title: string, options: string[], opts?: { signal?: AbortSignal }) {
+        return selectHandler(title, options, opts);
+      },
+      async input() {
+        return undefined;
+      },
+      async confirm() {
+        return false;
+      },
       notify(message: string, type?: "info" | "warning" | "error") {
         notifications.push({ message, type });
       },
@@ -95,14 +122,16 @@ function createRig(configChanges: Partial<HandoffConfig> = {}, stateChanges: Par
       if (event === "input") handlers.input = handler as InputHandler;
       if (event === "agent_settled") handlers.agent_settled = handler as SettledHandler;
       if (event === "message_end") handlers.message_end = handler as MessageEndHandler;
+      if (event === "session_start") handlers.session_start = handler as SessionStartHandler;
+      if (event === "session_shutdown") handlers.session_shutdown = handler as SessionShutdownHandler;
     },
     sendMessage(message: SentMessage["message"], options?: SentMessage["options"]) {
       sentMessages.push({ message, options });
     },
   } as unknown as ExtensionAPI;
 
-  const config = { ...defaultConfig("/tmp/agent"), ...configChanges };
-  const flow = activateHandoffExtension(api, config);
+  const config = { ...defaultConfig(agentDirectory), ...configChanges };
+  const flow = activateHandoffExtension(api, config, handoffPaths(agentDirectory));
   return {
     state,
     notifications,
@@ -112,6 +141,9 @@ function createRig(configChanges: Partial<HandoffConfig> = {}, stateChanges: Par
     handlers,
     context,
     flow,
+    setSelectHandler(handler: SelectHandler) {
+      selectHandler = handler;
+    },
     getToolExecute: () => {
       if (toolExecute === undefined) throw new Error("tool was not registered");
       return toolExecute;
@@ -173,6 +205,39 @@ test("persisted-session prerequisite is visible for command and tool starts", as
   const result = await toolRig.getToolExecute()("call", { action: "start" }, undefined, undefined, toolRig.context);
   assert.match(result.content[0]?.text ?? "", /--no-session/);
   assert.equal(toolRig.flow.phase, "inactive");
+});
+
+test("/sh config stays in extension UI and reload or session replacement discards its draft", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-config-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  for (const reason of ["reload", "new"] as const) {
+    const rig = createRig({}, {}, join(root, reason));
+    let observedSignal: AbortSignal | undefined;
+    let markPromptStarted: (() => void) | undefined;
+    const promptStarted = new Promise<void>((resolve) => {
+      markPromptStarted = resolve;
+    });
+    rig.setSelectHandler(async (title, options, opts) => {
+      assert.equal(title, "Configure pi-simple-handoff");
+      assert.equal(options.length, 12);
+      observedSignal = opts?.signal;
+      markPromptStarted?.();
+      return new Promise<string | undefined>((resolve) => {
+        opts?.signal?.addEventListener("abort", () => resolve(undefined), { once: true });
+      });
+    });
+
+    const running = rig.commands.get("sh")?.("config", rig.context);
+    assert.ok(running);
+    await promptStarted;
+    await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason }, rig.context);
+    await running;
+
+    assert.equal(observedSignal?.aborted, true);
+    assert.equal(rig.sentMessages.length, 0);
+    assert.equal(rig.notifications.length, 0);
+  }
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {

@@ -1,5 +1,8 @@
+import { dirname } from "node:path";
+
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { ConfigDialog } from "./config-dialog.ts";
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
 import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
@@ -26,6 +29,7 @@ import {
 } from "./transition.ts";
 import { HandoffWriter, type WriterRuntime } from "./writer.ts";
 
+export * from "./config-dialog.ts";
 export * from "./config.ts";
 export * from "./deferred.ts";
 export * from "./filesystem.ts";
@@ -74,6 +78,7 @@ export function activateHandoffExtension(
   let advisoryWarningShown = false;
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
+  const configDialog = new ConfigDialog(dirname(paths.baseDirectory));
 
   const transition = new NativeHandoffTransition({
     recoveryDirectory: config.recoveryDirectory,
@@ -216,11 +221,15 @@ export function activateHandoffExtension(
   };
 
   pi.registerCommand("sh", {
-    description: "Start or cancel a session handoff",
+    description: "Start, cancel, or configure a session handoff",
     handler: async (args, ctx) => {
       const action = args.trim();
       if (action === "") {
         requestStart(ctx, "command");
+        return;
+      }
+      if (action === "config") {
+        await configDialog.run(ctx);
         return;
       }
       if (action === "cancel") {
@@ -242,7 +251,7 @@ export function activateHandoffExtension(
         );
         return;
       }
-      ctx.ui.notify("Usage: /sh or /sh cancel", "warning");
+      ctx.ui.notify("Usage: /sh, /sh cancel, or /sh config", "warning");
     },
   });
 
@@ -360,12 +369,14 @@ export function activateHandoffExtension(
   });
 
   pi.on("session_start", (_event, ctx) => {
+    configDialog.discard();
     advisoryWarningShown = false;
     const terminal = getHandoffTerminalState(ctx.sessionManager.getSessionFile());
     ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(flow.phase, terminal));
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    configDialog.discard();
     writer?.invalidate();
     flow.invalidate();
     transition.invalidate();
