@@ -1,0 +1,33 @@
+{
+  "name": "pi-simple-handoff",
+  "version": "1.0.0",
+  "description": "A Pi package for replacing a persisted session with a prepared continuation.",
+  "type": "module",
+  "files": [
+    "extensions",
+    "default.cmpl"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "pi-package"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pi-simple-handoff/index.ts"
+    ]
+  }
+}
