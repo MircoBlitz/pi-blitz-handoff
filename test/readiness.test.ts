@@ -22,7 +22,9 @@ test("readiness prompt asks only about remaining session-owned work and requires
   const ids = { go: "go-current", notYet: "not-yet-current" };
   const prompt = readinessPrompt(ids);
 
-  assert.match(prompt, /^Is any session-owned work still active\?/);
+  assert.match(prompt, /^This session handoff readiness check is already active\./);
+  assert.match(prompt, /Do not call tools, inspect files, or continue task work\./);
+  assert.match(prompt, /Is any session-owned work still active\?/);
   assert.equal(prompt.match(/go-current/g)?.length, 1);
   assert.equal(prompt.match(/not-yet-current/g)?.length, 1);
   assert.match(prompt, /exactly one current identifier and nothing else/);

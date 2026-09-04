@@ -16,10 +16,12 @@ export function createReadinessIdentifiers(): ReadinessIdentifiers {
 
 export function readinessPrompt(ids: ReadinessIdentifiers): string {
   return [
+    "This session handoff readiness check is already active.",
+    "Do not call tools, inspect files, or continue task work.",
     "Is any session-owned work still active?",
     `If no, reply with exactly ${ids.go}`,
     `If yes, reply with exactly ${ids.notYet}`,
-    "Reply with exactly one current identifier and nothing else.",
+    "Reply immediately with exactly one current identifier and nothing else.",
   ].join("\n");
 }
 
