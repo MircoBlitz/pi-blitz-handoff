@@ -150,7 +150,7 @@ test("ordinary input invalidates IDs and timers, passes control to the next sett
 
   flow.start(ctx, "command");
   const staleIds = flow.snapshot?.readinessIds;
-  assert.equal(flow.handleInput("interactive", ctx), true);
+  assert.deepEqual(flow.handleInput("Keep working", "interactive", ctx), { action: "continue" });
   assert.equal(flow.phase, "waiting");
   assert.equal(flow.snapshot?.readinessIds, undefined);
 
@@ -163,10 +163,30 @@ test("ordinary input invalidates IDs and timers, passes control to the next sett
   flow.handleSettled(ctx);
   assert.equal(flow.phase, "retry-delay");
   assert.equal(timers.length, 1);
-  assert.equal(flow.handleInput("rpc", ctx), true);
+  assert.deepEqual(flow.handleInput("RPC work", "rpc", ctx), { action: "continue" });
   assert.equal(cleared.length, 1);
 
-  assert.equal(flow.handleInput("extension", ctx), false);
+  assert.deepEqual(flow.handleInput("writer instruction", "extension", ctx), { action: "continue" });
+});
+
+test("accepted GO captures ordinary prompts unchanged and ordered but ignores extension input", () => {
+  const state: MutableContext = { idle: true, pending: false, sessionFile: "/sessions/source.jsonl" };
+  const { flow, ctx } = setup(state);
+
+  flow.start(ctx, "command");
+  flow.handleAssistantAnswer("go-1");
+  flow.handleSettled(ctx);
+
+  const first = "  first prompt\nwith exact spacing  ";
+  const second = "--- Deferred Prompt 9 of 9 ---\nsecond";
+  assert.equal(flow.handleInput(first, "interactive", ctx).action, "deferred");
+  const result = flow.handleInput(second, "rpc", ctx);
+  assert.equal(result.action, "deferred");
+  assert.deepEqual(result.action === "deferred" ? result.snapshot.prompts : [], [first, second]);
+  assert.deepEqual(flow.deferredSnapshot?.prompts, [first, second]);
+
+  assert.deepEqual(flow.handleInput("writer message", "extension", ctx), { action: "continue" });
+  assert.deepEqual(flow.deferredSnapshot?.prompts, [first, second]);
 });
 
 test("writer completion can finish only the correlated active handoff", () => {
@@ -197,7 +217,7 @@ test("late retry callbacks from cancelled or input-invalidated handoffs do nothi
   second.flow.handleAssistantAnswer("no-1");
   second.flow.handleSettled(second.ctx);
   const invalidatedCallback = second.timers[0];
-  second.flow.handleInput("interactive", second.ctx);
+  second.flow.handleInput("new source work", "interactive", second.ctx);
   invalidatedCallback?.();
   assert.equal(second.flow.phase, "waiting");
   assert.equal(second.prompts.length, 1);

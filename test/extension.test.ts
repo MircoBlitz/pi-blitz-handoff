@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import type {
@@ -231,6 +234,81 @@ test("steering and follow-up input invalidate readiness IDs and pass unchanged",
     await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
     assert.notDeepEqual(rig.flow.snapshot?.readinessIds, oldIds);
   }
+});
+
+test("post-GO interactive and RPC prompts are handled, preserved, and persisted in one file", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const recoveryDirectory = join(root, "recovery");
+  await mkdir(recoveryDirectory);
+  const rig = createRig({ recoveryDirectory }, { sessionFile: "/sessions/My source.jsonl" });
+  await rig.commands.get("sh")?.("", rig.context);
+  const go = rig.flow.snapshot?.readinessIds?.go;
+  assert.ok(go);
+  await rig.handlers.message_end?.(assistantMessage(go), rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+
+  const first: InputEvent = {
+    type: "input",
+    text: "  steer exactly\n",
+    source: "interactive",
+    streamingBehavior: "steer",
+  };
+  const second: InputEvent = {
+    type: "input",
+    text: "follow up  ",
+    source: "rpc",
+    streamingBehavior: "followUp",
+  };
+  const firstCopy = { ...first };
+  const secondCopy = { ...second };
+  const firstResult = rig.handlers.input?.(first, rig.context);
+  const secondResult = rig.handlers.input?.(second, rig.context);
+  assert.deepEqual(await firstResult, { action: "handled" });
+  assert.deepEqual(await secondResult, { action: "handled" });
+  assert.deepEqual(first, firstCopy);
+  assert.deepEqual(second, secondCopy);
+  assert.deepEqual(rig.flow.deferredSnapshot?.prompts, [first.text, second.text]);
+
+  const extensionResult = await rig.handlers.input?.({
+    type: "input",
+    text: "writer-owned message",
+    source: "extension",
+  }, rig.context);
+  assert.deepEqual(extensionResult, { action: "continue" });
+  assert.deepEqual(rig.flow.deferredSnapshot?.prompts, [first.text, second.text]);
+
+  const files = await readdir(recoveryDirectory);
+  assert.equal(files.length, 1);
+  assert.match(files[0] ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-My-source-jsonl\.md$/);
+  assert.equal(
+    await readFile(join(recoveryDirectory, files[0] ?? ""), "utf8"),
+    `--- Deferred Prompt 1 of 2 ---\n${first.text}\n--- Deferred Prompt 2 of 2 ---\n${second.text}`,
+  );
+});
+
+test("post-GO persistence failure is visible and still handles the captured prompt", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-failure-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const notDirectory = join(root, "not-a-directory");
+  await writeFile(notDirectory, "occupied");
+  const rig = createRig({ recoveryDirectory: notDirectory });
+  await rig.commands.get("sh")?.("", rig.context);
+  const go = rig.flow.snapshot?.readinessIds?.go;
+  assert.ok(go);
+  await rig.handlers.message_end?.(assistantMessage(go), rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+
+  const result = await rig.handlers.input?.({
+    type: "input",
+    text: "must not reach the writer",
+    source: "interactive",
+  }, rig.context);
+
+  assert.deepEqual(result, { action: "handled" });
+  assert.deepEqual(rig.flow.deferredSnapshot?.prompts, ["must not reach the writer"]);
+  assert.equal(rig.notifications.at(-1)?.type, "error");
+  assert.match(rig.notifications.at(-1)?.message ?? "", /recovery file could not be updated/);
 });
 
 test("only the current exact GO answer advances after the answering run settles", async () => {

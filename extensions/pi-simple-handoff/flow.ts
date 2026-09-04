@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { DeferredPromptWindow, type DeferredPromptSnapshot } from "./deferred.ts";
 import {
   classifyReadinessAnswer,
   createReadinessIdentifiers,
@@ -22,6 +23,10 @@ export type HandoffStartResult =
   | { accepted: true; handoff: ActiveHandoffSnapshot }
   | { accepted: false; reason: "active" | "unpersisted"; handoff?: ActiveHandoffSnapshot };
 
+export type HandoffInputResult =
+  | { action: "continue" }
+  | { action: "deferred"; snapshot: DeferredPromptSnapshot };
+
 export interface HandoffFlowOptions {
   readinessRetrySeconds: number;
   onReadinessPrompt(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
@@ -31,6 +36,7 @@ export interface HandoffFlowOptions {
   createIdentifiers?: () => ReadinessIdentifiers;
   setTimer?: (callback: () => void, delayMilliseconds: number) => unknown;
   clearTimer?: (timer: unknown) => void;
+  now?: () => Date;
 }
 
 interface ActiveHandoff {
@@ -41,6 +47,7 @@ interface ActiveHandoff {
   readinessIds?: ReadinessIdentifiers;
   answer?: string;
   retryTimer?: unknown;
+  deferred?: DeferredPromptWindow;
 }
 
 export class HandoffFlow {
@@ -50,6 +57,7 @@ export class HandoffFlow {
   private readonly createIdentifiers: () => ReadinessIdentifiers;
   private readonly setTimer: (callback: () => void, delayMilliseconds: number) => unknown;
   private readonly clearTimer: (timer: unknown) => void;
+  private readonly now: () => Date;
 
   constructor(options: HandoffFlowOptions) {
     this.options = options;
@@ -57,6 +65,7 @@ export class HandoffFlow {
     this.createIdentifiers = options.createIdentifiers ?? createReadinessIdentifiers;
     this.setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
     this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
+    this.now = options.now ?? (() => new Date());
   }
 
   get phase(): HandoffFlowPhase {
@@ -65,6 +74,10 @@ export class HandoffFlow {
 
   get snapshot(): ActiveHandoffSnapshot | undefined {
     return this.active === undefined ? undefined : snapshot(this.active);
+  }
+
+  get deferredSnapshot(): DeferredPromptSnapshot | undefined {
+    return this.active?.deferred?.snapshot;
   }
 
   start(ctx: ExtensionContext, source: HandoffStartSource): HandoffStartResult {
@@ -98,9 +111,21 @@ export class HandoffFlow {
     }
   }
 
-  handleInput(source: "interactive" | "rpc" | "extension", ctx: ExtensionContext): boolean {
-    if (source === "extension" || this.active === undefined || this.active.phase === "ready") {
-      return false;
+  handleInput(
+    text: string,
+    source: "interactive" | "rpc" | "extension",
+    ctx: ExtensionContext,
+  ): HandoffInputResult {
+    if (source === "extension" || this.active === undefined) {
+      return { action: "continue" };
+    }
+
+    if (this.active.phase === "ready") {
+      const deferred = this.active.deferred;
+      if (deferred === undefined) {
+        throw new Error("Deferred-prompt window is unavailable after accepted readiness");
+      }
+      return { action: "deferred", snapshot: deferred.capture(text) };
     }
 
     this.clearRetryTimer(this.active);
@@ -108,7 +133,7 @@ export class HandoffFlow {
     this.active.answer = undefined;
     this.active.phase = "waiting";
     this.changed(ctx);
-    return true;
+    return { action: "continue" };
   }
 
   handleSettled(ctx: ExtensionContext): void {
@@ -125,6 +150,7 @@ export class HandoffFlow {
     if (ids !== undefined && classifyReadinessAnswer(active.answer, ids) === "go") {
       active.readinessIds = undefined;
       active.answer = undefined;
+      active.deferred = new DeferredPromptWindow(this.now(), active.sourceSessionPath);
       active.phase = "ready";
       this.changed(ctx);
       this.options.onReady(snapshot(active), ctx);

@@ -3,6 +3,7 @@ import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
 import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
+import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
 import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
 import { contextWarning, formatPublicStatus, persistentHandoffStatus, warningMessage } from "./status.ts";
@@ -10,8 +11,10 @@ import { resolveTemplate, shippedDefaultPath, synchronizeManagedDefault } from "
 import { HandoffWriter, type WriterRuntime } from "./writer.ts";
 
 export * from "./config.ts";
+export * from "./deferred.ts";
 export * from "./filesystem.ts";
 export * from "./flow.ts";
+export * from "./recovery-store.ts";
 export * from "./public-tool.ts";
 export * from "./readiness.ts";
 export * from "./status.ts";
@@ -52,6 +55,7 @@ export function activateHandoffExtension(
   paths: HandoffPaths = handoffPaths(getAgentDir()),
 ): HandoffFlow {
   let advisoryWarningShown = false;
+  let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
 
   const writerRuntime = writerRuntimeFrom(pi);
@@ -176,13 +180,25 @@ export function activateHandoffExtension(
     flow.handleAssistantAnswer(answer);
   });
 
-  pi.on("input", (event, ctx) => {
-    if (event.source === "interactive" || event.source === "rpc") {
-      // Steering and follow-up input are deliberately equivalent here: both are
-      // ordinary source-session work and invalidate current readiness IDs.
-      flow.handleInput(event.source, ctx);
+  pi.on("input", async (event, ctx) => {
+    const result = flow.handleInput(event.text, event.source, ctx);
+    if (result.action === "continue") {
+      return { action: "continue" };
     }
-    return { action: "continue" };
+
+    const recoveryWrite = recoveryWrites.then(() =>
+      persistDeferredPrompts(config.recoveryDirectory, result.snapshot),
+    );
+    recoveryWrites = recoveryWrite.catch(() => undefined);
+    try {
+      await recoveryWrite;
+    } catch (error) {
+      ctx.ui.notify(
+        `Deferred prompt was captured in memory, but its recovery file could not be updated: ${errorMessage(error)}`,
+        "error",
+      );
+    }
+    return { action: "handled" };
   });
 
   pi.on("agent_settled", (_event, ctx) => {
@@ -235,6 +251,10 @@ export default async function piSimpleHandoff(pi: ExtensionAPI): Promise<void> {
   if (typeof pi.registerCommand === "function") {
     activateHandoffExtension(pi, config, paths);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function writerRuntimeFrom(pi: ExtensionAPI): WriterRuntime | undefined {
