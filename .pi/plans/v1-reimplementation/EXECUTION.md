@@ -9,9 +9,9 @@
 - Specification status: frozen and approved by the v1.0 reimplementation authorization
 - Product-code authorization: granted for B01 through B05
 - Real-Pi authorization: not granted; stop before B06/T01
-- Accepted through: B02/T01 at `8f7e63c1985383136c7442eecef1be760ae3f6a9`
-- Completed blocks: B01 Foundation
-- Next allowed action: execute B02/T02
+- Accepted through: B02/T02 at `37132a42233208196ad0c1b27889541bd3bb110e`
+- Completed blocks: B01 Foundation; B02 Handoff lifecycle
+- Next allowed action: execute B03/T01
 
 ## Goal
 
