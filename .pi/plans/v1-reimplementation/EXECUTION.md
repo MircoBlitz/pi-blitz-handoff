@@ -12,7 +12,8 @@
 - Accepted through: B05/T01 at `624f67513fd5a23f41f7487f2732c46941e7cb93`
 - Completed blocks: B01 Foundation; B02 Handoff lifecycle; B03 Transfer and recovery; B04 User flows; B05 Integration
 - Local release gate: passed on `624f67513fd5a23f41f7487f2732c46941e7cb93`
-- Next allowed action: execute bounded B06/T01 Real-Pi validation without product-file changes
+- B06/T01 status: blocked at clean-Pi startup; action method called during extension loading
+- Next allowed action: implement a narrowly scoped startup-activation FIX, then rerun B06/T01
 
 ## Goal
 
