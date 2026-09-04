@@ -4,10 +4,12 @@
 
 - Mode: Plan mode
 - Branch: `feature/v1.0-rework`
-- Planning basis: current working-tree `docs/specification.md`, current `default.cmpl`, current Pi 0.84.4 public APIs, and recorded user decisions
+- Planning basis: frozen `docs/specification.md`, current `default.cmpl`, current Pi 0.84.4 public APIs, and recorded user decisions
 - Git history: prohibited as implementation context
-- Product-code authorization: not granted
-- Next allowed action: user review of this complete plan and corrected specification
+- Specification status: frozen and approved by the v1.0 reimplementation authorization
+- Product-code authorization: granted for B01 through B05
+- Real-Pi authorization: not granted; stop before B06/T01
+- Next allowed action: execute B01/T01
 
 ## Goal
 

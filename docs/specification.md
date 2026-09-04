@@ -1,8 +1,8 @@
 # pi-simple-handoff v1.0 Product Specification
 
-> **DRAFT v1.0 — Under active user and orchestrator review.**
+> **FROZEN v1.0 — Approved product authority.**
 >
-> This specification is being corrected before implementation planning is approved. It is not frozen yet. Material product, UX, authorization, security, or scope changes require an explicit user decision; small implementation details that are clearly implied by the approved concept may be resolved by the orchestrator.
+> This specification was approved with the v1.0 reimplementation authorization. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details that are clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
@@ -363,6 +363,6 @@ v1.0 excludes:
 
 ## 16. Review status and authority
 
-This document is currently a draft under active user and orchestrator review. It becomes the frozen v1.0 product authority only after explicit user approval of the corrected specification.
+This document is the frozen v1.0 product authority, approved together with the autonomous reimplementation request.
 
 Git history, previous plan text, and previous implementation code are not product authority and must not be used as implementation context. Workers may report a concrete gap but must not edit or reinterpret this specification. The orchestrator may approve a small implementation detail when it is clearly implied by the approved concept and does not materially change public behavior, UX, authorization, security, data lifecycle, or scope. Material changes, uncertainty, and genuine product decisions go to the user. Contradictory proposals are rejected rather than incorporated.

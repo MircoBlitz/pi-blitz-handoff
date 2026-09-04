@@ -1,8 +1,6 @@
-# Context Handoff
-
 ### Writer instruction
 
-Write a **Session Handoff** for a genuinely fresh Pi session. This is not a short Session Summary. Preserve all source-session truth needed to continue correctly across repeated future handoffs.
+Write a **Session Handoff** for a genuinely fresh Pi session. Begin the output immediately with a concise, meaningful, task-specific Markdown title on the first line. Do not place a generic handoff label, status line, or other prefix before that title. This is not a short Session Summary. Preserve all source-session truth needed to continue correctly across repeated future handoffs.
 
 Use only facts supported by the supplied session context. Do not perform work, call tools, invent completion, infer permission, or hide uncertainty. Distinguish truthfully among:
 
