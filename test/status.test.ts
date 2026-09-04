@@ -12,6 +12,7 @@ import {
   replacementSessionIsProtected,
   setHandoffTerminalState,
   unprotectReplacementSession,
+  updatePersistentHandoffStatus,
   warningMessage,
 } from "../extensions/pi-simple-handoff/status.ts";
 
@@ -24,6 +25,31 @@ test("persistent status is factual and does not invent numbered progress", () =>
     assert.equal(status, "Waiting for Session Handoff");
     assert.doesNotMatch(status, /\d+\s*\/\s*\d+|\d+%/);
   }
+});
+
+test("writing status uses an indeterminate public activity indicator and terminal states override it", () => {
+  const statuses: Array<string | undefined> = [];
+  const indicators: Array<{ frames?: string[]; intervalMs?: number } | undefined> = [];
+  const ui = {
+    setStatus(_key: string, text: string | undefined) {
+      statuses.push(text);
+    },
+    setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }) {
+      indicators.push(options);
+    },
+  };
+
+  updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
+  assert.equal(statuses.at(-1), "Writing Session Handoff");
+  assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
+  assert.equal(indicators.at(-1)?.intervalMs, 120);
+  assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
+
+  updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
+  assert.equal(statuses.at(-1), "Session Handoff Failed");
+  assert.equal(indicators.at(-1), undefined);
+  assert.equal(persistentHandoffStatus("ready", undefined, true), "Writing Session Handoff");
+  assert.match(formatPublicStatus("ready", undefined, config, undefined, true), /^Writing Session Handoff\./);
 });
 
 test("terminal status is factual, session-correlated, and overrides active wording", () => {

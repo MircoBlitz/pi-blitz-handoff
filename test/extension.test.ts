@@ -18,6 +18,7 @@ import type {
 
 import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
 import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
+import { setHandoffTerminalState } from "../extensions/pi-simple-handoff/status.ts";
 
 interface RuntimeState {
   idle: boolean;
@@ -70,6 +71,7 @@ function createRig(
   const notifications: Notification[] = [];
   const statuses: Array<string | undefined> = [];
   const sentMessages: SentMessage[] = [];
+  const sentUserMessages: string[] = [];
   const commands = new Map<string, CommandHandler>();
   const handlers: {
     input?: InputHandler;
@@ -128,6 +130,9 @@ function createRig(
     sendMessage(message: SentMessage["message"], options?: SentMessage["options"]) {
       sentMessages.push({ message, options });
     },
+    sendUserMessage(content: string | Array<{ type: string; text?: string }>) {
+      sentUserMessages.push(typeof content === "string" ? content : JSON.stringify(content));
+    },
   } as unknown as ExtensionAPI;
 
   const config = { ...defaultConfig(agentDirectory), ...configChanges };
@@ -137,6 +142,7 @@ function createRig(
     notifications,
     statuses,
     sentMessages,
+    sentUserMessages,
     commands,
     handlers,
     context,
@@ -207,6 +213,43 @@ test("persisted-session prerequisite is visible for command and tool starts", as
   assert.equal(toolRig.flow.phase, "inactive");
 });
 
+test("/sh recover routes through extension UI and executes one selected recovery file", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-recover-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const recoveryDirectory = join(root, "recovery");
+  await mkdir(recoveryDirectory);
+  const fileName = "2026-02-03T04-05-06-007Z-source-jsonl.md";
+  const content = "--- Deferred Prompt 1 of 1 ---\nrecover this";
+  await writeFile(join(recoveryDirectory, fileName), content);
+  const rig = createRig({ recoveryDirectory }, {}, root);
+  const answers = [
+    `2026-02-03T04:05:06.007Z — ${fileName}`,
+    "Execute recovered prompts",
+  ];
+  rig.setSelectHandler(async () => answers.shift());
+
+  await rig.commands.get("sh")?.("recover", rig.context);
+
+  assert.equal(rig.sentUserMessages.length, 1);
+  assert.match(rig.sentUserMessages[0] ?? "", /separate sequential user inputs/);
+  assert.ok((rig.sentUserMessages[0] ?? "").endsWith(content));
+  assert.deepEqual(await readdir(recoveryDirectory), []);
+  assert.equal(rig.notifications.at(-1)?.type, "info");
+});
+
+test("/sh recover reports an empty recovery directory factually", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-empty-recover-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const recoveryDirectory = join(root, "recovery");
+  await mkdir(recoveryDirectory);
+  const rig = createRig({ recoveryDirectory }, {}, root);
+
+  await rig.commands.get("sh")?.("recover", rig.context);
+
+  assert.equal(rig.sentUserMessages.length, 0);
+  assert.equal(rig.notifications.at(-1)?.message, "No session handoff recovery files remain.");
+});
+
 test("/sh config stays in extension UI and reload or session replacement discards its draft", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -238,6 +281,28 @@ test("/sh config stays in extension UI and reload or session replacement discard
     assert.equal(rig.sentMessages.length, 0);
     assert.equal(rig.notifications.length, 0);
   }
+});
+
+test("finished status lasts until ordinary input or a new handoff begins", async () => {
+  const inputSession = "/sessions/finished-input.jsonl";
+  const inputRig = createRig({}, { sessionFile: inputSession });
+  setHandoffTerminalState(inputSession, "finished");
+  await inputRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, inputRig.context);
+  assert.equal(inputRig.statuses.at(-1), "Session Handoff Finished");
+
+  await inputRig.handlers.input?.({
+    type: "input",
+    text: "continue normally",
+    source: "interactive",
+  }, inputRig.context);
+  assert.equal(inputRig.statuses.at(-1), undefined);
+
+  const startSession = "/sessions/finished-new-handoff.jsonl";
+  const startRig = createRig({}, { sessionFile: startSession });
+  setHandoffTerminalState(startSession, "finished");
+  await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
+  await startRig.commands.get("sh")?.("", startRig.context);
+  assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff");
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {

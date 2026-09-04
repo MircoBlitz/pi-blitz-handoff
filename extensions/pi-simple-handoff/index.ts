@@ -6,6 +6,7 @@ import { ConfigDialog } from "./config-dialog.ts";
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
 import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
+import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
 import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
@@ -14,11 +15,11 @@ import {
   contextWarning,
   formatPublicStatus,
   getHandoffTerminalState,
-  persistentHandoffStatus,
   protectReplacementSession,
   replacementSessionIsProtected,
   setHandoffTerminalState,
   unprotectReplacementSession,
+  updatePersistentHandoffStatus,
   warningMessage,
 } from "./status.ts";
 import { resolveTemplate, shippedDefaultPath, synchronizeManagedDefault } from "./templates.ts";
@@ -37,6 +38,7 @@ export * from "./flow.ts";
 export * from "./recovery-store.ts";
 export * from "./public-tool.ts";
 export * from "./readiness.ts";
+export * from "./recovery-dialog.ts";
 export * from "./status.ts";
 export * from "./submission-tool.ts";
 export * from "./templates.ts";
@@ -79,6 +81,10 @@ export function activateHandoffExtension(
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
   const configDialog = new ConfigDialog(dirname(paths.baseDirectory));
+  const recoveryDialog = new RecoveryDialog(
+    config.recoveryDirectory,
+    (content, options) => pi.sendUserMessage(content, options),
+  );
 
   const transition = new NativeHandoffTransition({
     recoveryDirectory: config.recoveryDirectory,
@@ -95,14 +101,14 @@ export function activateHandoffExtension(
       const sessionFile = ctx.sessionManager.getSessionFile();
       unprotectReplacementSession(sessionFile);
       setHandoffTerminalState(sessionFile, "finished");
-      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "finished"));
+      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "finished");
     },
     onFailure(request, message, ctx) {
       flow.finish(ctx, request.handoffId);
       const sessionFile = ctx.sessionManager.getSessionFile();
       unprotectReplacementSession(sessionFile);
       setHandoffTerminalState(sessionFile, "failed");
-      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
       ctx.ui.notify(message, "error");
     },
   });
@@ -127,9 +133,14 @@ export function activateHandoffExtension(
           );
         },
         onPhaseChange(phase, _attempt, ctx) {
-          if (phase === "resolving" || phase === "writing" || phase === "retry-delay") {
-            ctx.ui.setStatus(STATUS_KEY, "Writing Session Handoff");
-          }
+          const writing = phase === "resolving" || phase === "writing" || phase === "retry-delay";
+          updatePersistentHandoffStatus(
+            ctx.ui,
+            STATUS_KEY,
+            flow.phase,
+            getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+            writing,
+          );
         },
         onSuccess(result, ctx) {
           const token = transition.prepare({
@@ -140,7 +151,7 @@ export function activateHandoffExtension(
           if (token === undefined) {
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
-            ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
             ctx.ui.notify("Could not start the correlated session handoff transition.", "error");
             return;
           }
@@ -155,7 +166,7 @@ export function activateHandoffExtension(
             transition.cancel();
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
-            ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
             ctx.ui.notify(`Could not request native session replacement: ${errorMessage(error)}`, "error");
           }
         },
@@ -165,9 +176,11 @@ export function activateHandoffExtension(
             ctx.sessionManager.getSessionFile(),
             reason === "cancelled" ? "cancelled" : "failed",
           );
-          ctx.ui.setStatus(
+          updatePersistentHandoffStatus(
+            ctx.ui,
             STATUS_KEY,
-            persistentHandoffStatus("inactive", reason === "cancelled" ? "cancelled" : "failed"),
+            "inactive",
+            reason === "cancelled" ? "cancelled" : "failed",
           );
           if (reason !== "cancelled") {
             ctx.ui.notify(message, "error");
@@ -197,7 +210,12 @@ export function activateHandoffExtension(
       writer?.start(handoff, ctx);
     },
     onPhaseChange(handoff, ctx) {
-      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(handoff?.phase ?? "inactive"));
+      updatePersistentHandoffStatus(
+        ctx.ui,
+        STATUS_KEY,
+        handoff?.phase ?? "inactive",
+        getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+      );
     },
   });
 
@@ -215,13 +233,14 @@ export function activateHandoffExtension(
     }
 
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, flow.phase);
     const message = "Session handoff requested. Waiting for readiness.";
     ctx.ui.notify(message, "info");
     return message;
   };
 
   pi.registerCommand("sh", {
-    description: "Start, cancel, or configure a session handoff",
+    description: "Start, cancel, recover, or configure a session handoff",
     handler: async (args, ctx) => {
       const action = args.trim();
       if (action === "") {
@@ -230,6 +249,10 @@ export function activateHandoffExtension(
       }
       if (action === "config") {
         await configDialog.run(ctx);
+        return;
+      }
+      if (action === "recover") {
+        await recoveryDialog.run(ctx);
         return;
       }
       if (action === "cancel") {
@@ -243,7 +266,7 @@ export function activateHandoffExtension(
         const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
         if (cancelled) {
           setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
-          ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "cancelled"));
+          updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled");
         }
         ctx.ui.notify(
           cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
@@ -251,21 +274,19 @@ export function activateHandoffExtension(
         );
         return;
       }
-      ctx.ui.notify("Usage: /sh, /sh cancel, or /sh config", "warning");
+      ctx.ui.notify("Usage: /sh, /sh cancel, /sh recover, or /sh config", "warning");
     },
   });
 
   registerPublicHandoffTool(pi, {
     status(ctx) {
-      const status = formatPublicStatus(
+      return formatPublicStatus(
         flow.phase,
         ctx.getContextUsage(),
         config,
         getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+        writer?.isActive ?? false,
       );
-      return writer?.isActive
-        ? status.replace(/^Waiting for Session Handoff\./, "Writing Session Handoff.")
-        : status;
     },
     start(ctx) {
       return requestStart(ctx, "tool");
@@ -284,7 +305,7 @@ export function activateHandoffExtension(
   pi.on("input", async (event, ctx) => {
     if (event.source !== "extension" && flow.phase === "inactive") {
       clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
-      ctx.ui.setStatus(STATUS_KEY, undefined);
+      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
     }
     const result = flow.handleInput(event.text, event.source, ctx);
     if (result.action === "continue") {
@@ -370,19 +391,21 @@ export function activateHandoffExtension(
 
   pi.on("session_start", (_event, ctx) => {
     configDialog.discard();
+    recoveryDialog.discard();
     advisoryWarningShown = false;
     const terminal = getHandoffTerminalState(ctx.sessionManager.getSessionFile());
-    ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(flow.phase, terminal));
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, flow.phase, terminal);
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
     configDialog.discard();
+    recoveryDialog.discard();
     writer?.invalidate();
     flow.invalidate();
     transition.invalidate();
     unprotectReplacementSession(ctx.sessionManager.getSessionFile());
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
-    ctx.ui.setStatus(STATUS_KEY, undefined);
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
   });
 
   return flow;

@@ -6,6 +6,16 @@ import { automaticHandoffEnabled, type HandoffFlowPhase } from "./flow.ts";
 export type ContextWarning = "advisory" | "critical" | undefined;
 export type HandoffTerminalState = "finished" | "failed" | "cancelled";
 
+interface HandoffStatusUI {
+  setStatus(key: string, text: string | undefined): void;
+  setWorkingIndicator?(options?: { frames?: string[]; intervalMs?: number }): void;
+}
+
+const WRITING_INDICATOR = {
+  frames: ["·", "•", "●", "•"],
+  intervalMs: 120,
+};
+
 const terminalStates = new Map<string, HandoffTerminalState>();
 const protectedReplacementSessions = new Set<string>();
 
@@ -36,12 +46,26 @@ export function clearHandoffTerminalState(sessionFile: string | undefined): void
 export function persistentHandoffStatus(
   phase: HandoffFlowPhase,
   terminalState?: HandoffTerminalState,
+  writing = false,
 ): string | undefined {
   if (terminalState === "finished") return "Session Handoff Finished";
   if (terminalState === "failed") return "Session Handoff Failed";
   if (terminalState === "cancelled") return "Session Handoff Cancelled";
+  if (writing) return "Writing Session Handoff";
   if (phase === "inactive") return undefined;
   return "Waiting for Session Handoff";
+}
+
+export function updatePersistentHandoffStatus(
+  ui: HandoffStatusUI,
+  key: string,
+  phase: HandoffFlowPhase,
+  terminalState?: HandoffTerminalState,
+  writing = false,
+): void {
+  const showWriting = writing && terminalState === undefined;
+  ui.setStatus(key, persistentHandoffStatus(phase, terminalState, showWriting));
+  ui.setWorkingIndicator?.(showWriting ? WRITING_INDICATOR : undefined);
 }
 
 export function contextWarning(
@@ -74,8 +98,9 @@ export function formatPublicStatus(
     | "readinessRetrySeconds"
   >,
   terminalState?: HandoffTerminalState,
+  writing = false,
 ): string {
-  const persistent = persistentHandoffStatus(phase, terminalState);
+  const persistent = persistentHandoffStatus(phase, terminalState, writing);
   const handoff = persistent === undefined ? "No active session handoff." : `${persistent}.`;
   const context = formatContextUsage(usage);
   const automatic = automaticHandoffEnabled(
