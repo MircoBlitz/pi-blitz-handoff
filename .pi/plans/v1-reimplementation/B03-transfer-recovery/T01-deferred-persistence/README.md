@@ -9,9 +9,11 @@ Given the accepted-GO boundary, intercept ordinary user prompts before native re
 - `extensions/pi-simple-handoff/flow.ts`
 - `extensions/pi-simple-handoff/deferred.ts`
 - `extensions/pi-simple-handoff/recovery-store.ts`
+- `extensions/pi-simple-handoff/index.ts`
 - `test/flow.test.ts`
 - `test/deferred.test.ts`
 - `test/recovery-store.test.ts`
+- `test/extension.test.ts`
 
 ## Read first
 
