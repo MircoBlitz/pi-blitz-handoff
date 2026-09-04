@@ -1,11 +1,13 @@
 {
   "name": "pi-simple-handoff",
   "version": "1.0.0",
-  "description": "A Pi package for replacing a persisted session with a prepared continuation.",
+  "description": "Carry a prepared continuation dossier into a fresh, natively linked Pi session.",
   "type": "module",
   "files": [
     "extensions",
-    "default.cmpl"
+    "default.cmpl",
+    "README.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "test": "node --test --experimental-strip-types test/*.test.ts",
