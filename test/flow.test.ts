@@ -189,14 +189,20 @@ test("accepted GO captures ordinary prompts unchanged and ordered but ignores ex
   assert.deepEqual(flow.deferredSnapshot?.prompts, [first, second]);
 });
 
-test("writer completion can finish only the correlated active handoff", () => {
+test("transfer protection begins only at GO and ends with the correlated handoff", () => {
   const state: MutableContext = { idle: true, pending: false, sessionFile: "/sessions/source.jsonl" };
   const { flow, ctx } = setup(state);
 
   flow.start(ctx, "command");
+  assert.equal(flow.isTransferProtected, false);
+  flow.handleAssistantAnswer("go-1");
+  flow.handleSettled(ctx);
+  assert.equal(flow.isTransferProtected, true);
+
   assert.equal(flow.finish(ctx, "stale-handoff"), false);
-  assert.equal(flow.phase, "checking");
+  assert.equal(flow.isTransferProtected, true);
   assert.equal(flow.finish(ctx, "handoff-1"), true);
+  assert.equal(flow.isTransferProtected, false);
   assert.equal(flow.phase, "inactive");
 });
 

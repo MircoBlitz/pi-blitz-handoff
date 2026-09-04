@@ -6,8 +6,24 @@ import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } fro
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
 import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
-import { contextWarning, formatPublicStatus, persistentHandoffStatus, warningMessage } from "./status.ts";
+import {
+  clearHandoffTerminalState,
+  contextWarning,
+  formatPublicStatus,
+  getHandoffTerminalState,
+  persistentHandoffStatus,
+  protectReplacementSession,
+  replacementSessionIsProtected,
+  setHandoffTerminalState,
+  unprotectReplacementSession,
+  warningMessage,
+} from "./status.ts";
 import { resolveTemplate, shippedDefaultPath, synchronizeManagedDefault } from "./templates.ts";
+import {
+  NativeHandoffTransition,
+  nativeTransitionCommand,
+  registerNativeTransitionBridge,
+} from "./transition.ts";
 import { HandoffWriter, type WriterRuntime } from "./writer.ts";
 
 export * from "./config.ts";
@@ -20,6 +36,7 @@ export * from "./readiness.ts";
 export * from "./status.ts";
 export * from "./submission-tool.ts";
 export * from "./templates.ts";
+export * from "./transition.ts";
 export * from "./writer.ts";
 
 const STATUS_KEY = "pi-simple-handoff";
@@ -58,6 +75,34 @@ export function activateHandoffExtension(
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
 
+  const transition = new NativeHandoffTransition({
+    recoveryDirectory: config.recoveryDirectory,
+    async settleDeferredWrites() {
+      await recoveryWrites;
+    },
+    getDeferredSnapshot(handoffId) {
+      return flow.snapshot?.id === handoffId ? flow.deferredSnapshot : undefined;
+    },
+    onReplacementStarted(_request, ctx) {
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      protectReplacementSession(sessionFile);
+      setHandoffTerminalState(sessionFile, "finished");
+      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "finished"));
+    },
+    onFinished(_request, ctx) {
+      unprotectReplacementSession(ctx.sessionManager.getSessionFile());
+    },
+    onFailure(request, message, ctx) {
+      flow.finish(ctx, request.handoffId);
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      unprotectReplacementSession(sessionFile);
+      setHandoffTerminalState(sessionFile, "failed");
+      ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+      ctx.ui.notify(message, "error");
+    },
+  });
+  registerNativeTransitionBridge(pi, transition);
+
   const writerRuntime = writerRuntimeFrom(pi);
   const writer = writerRuntime === undefined
     ? undefined
@@ -82,10 +127,43 @@ export function activateHandoffExtension(
           }
         },
         onSuccess(result, ctx) {
+          const token = transition.prepare({
+            handoffId: result.handoff.id,
+            sourceSessionPath: result.handoff.sourceSessionPath,
+            dossier: result.submission.content,
+          });
+          if (token === undefined) {
+            flow.finish(ctx, result.handoff.id);
+            setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
+            ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+            ctx.ui.notify("Could not start the correlated session handoff transition.", "error");
+            return;
+          }
+
           ctx.ui.notify(`Session handoff dossier accepted on writer attempt ${result.attempt}.`, "info");
+          try {
+            pi.sendUserMessage(nativeTransitionCommand(token), {
+              deliverAs: "followUp",
+              expandPromptTemplates: true,
+            });
+          } catch (error) {
+            transition.cancel();
+            flow.finish(ctx, result.handoff.id);
+            setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
+            ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "failed"));
+            ctx.ui.notify(`Could not request native session replacement: ${errorMessage(error)}`, "error");
+          }
         },
         onTerminalFailure(reason, message, ctx) {
           flow.finish(ctx);
+          setHandoffTerminalState(
+            ctx.sessionManager.getSessionFile(),
+            reason === "cancelled" ? "cancelled" : "failed",
+          );
+          ctx.ui.setStatus(
+            STATUS_KEY,
+            persistentHandoffStatus("inactive", reason === "cancelled" ? "cancelled" : "failed"),
+          );
           if (reason !== "cancelled") {
             ctx.ui.notify(message, "error");
           }
@@ -131,6 +209,7 @@ export function activateHandoffExtension(
       return message;
     }
 
+    clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
     const message = "Session handoff requested. Waiting for readiness.";
     ctx.ui.notify(message, "info");
     return message;
@@ -145,12 +224,20 @@ export function activateHandoffExtension(
         return;
       }
       if (action === "cancel") {
+        const transitionCancellation = transition.cancel();
+        if (transitionCancellation === "committed") {
+          ctx.ui.notify("Session handoff cutover has started and can no longer be cancelled.", "warning");
+          return;
+        }
         const writerCancelled = writer?.cancel(ctx) ?? false;
         const flowCancelled = flow.cancel(ctx);
+        const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
+        if (cancelled) {
+          setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
+          ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus("inactive", "cancelled"));
+        }
         ctx.ui.notify(
-          writerCancelled || flowCancelled
-            ? "Session handoff cancelled."
-            : "No active session handoff to cancel.",
+          cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
           "info",
         );
         return;
@@ -161,7 +248,12 @@ export function activateHandoffExtension(
 
   registerPublicHandoffTool(pi, {
     status(ctx) {
-      const status = formatPublicStatus(flow.phase, ctx.getContextUsage(), config);
+      const status = formatPublicStatus(
+        flow.phase,
+        ctx.getContextUsage(),
+        config,
+        getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+      );
       return writer?.isActive
         ? status.replace(/^Waiting for Session Handoff\./, "Writing Session Handoff.")
         : status;
@@ -181,6 +273,10 @@ export function activateHandoffExtension(
   });
 
   pi.on("input", async (event, ctx) => {
+    if (event.source !== "extension" && flow.phase === "inactive") {
+      clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
+      ctx.ui.setStatus(STATUS_KEY, undefined);
+    }
     const result = flow.handleInput(event.text, event.source, ctx);
     if (result.action === "continue") {
       return { action: "continue" };
@@ -232,14 +328,49 @@ export function activateHandoffExtension(
     }
   });
 
+  pi.on("session_before_switch", (event, ctx) => {
+    if (
+      !flow.isTransferProtected &&
+      !transition.isProtected &&
+      !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
+    ) return;
+    if (transition.allowNativeNewSession(event.reason)) return;
+    ctx.ui.notify("Session replacement is blocked while the session handoff transfer is active.", "warning");
+    return { cancel: true };
+  });
+
+  pi.on("session_before_fork", (_event, ctx) => {
+    if (
+      !flow.isTransferProtected &&
+      !transition.isProtected &&
+      !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
+    ) return;
+    ctx.ui.notify("Session fork is blocked while the session handoff transfer is active.", "warning");
+    return { cancel: true };
+  });
+
+  pi.on("session_before_compact", (_event, ctx) => {
+    if (
+      !flow.isTransferProtected &&
+      !transition.isProtected &&
+      !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
+    ) return;
+    ctx.ui.notify("Session compaction is blocked while the session handoff transfer is active.", "warning");
+    return { cancel: true };
+  });
+
   pi.on("session_start", (_event, ctx) => {
     advisoryWarningShown = false;
-    ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(flow.phase));
+    const terminal = getHandoffTerminalState(ctx.sessionManager.getSessionFile());
+    ctx.ui.setStatus(STATUS_KEY, persistentHandoffStatus(flow.phase, terminal));
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
     writer?.invalidate();
     flow.invalidate();
+    transition.invalidate();
+    unprotectReplacementSession(ctx.sessionManager.getSessionFile());
+    clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
     ctx.ui.setStatus(STATUS_KEY, undefined);
   });
 

@@ -80,6 +80,10 @@ export class HandoffFlow {
     return this.active?.deferred?.snapshot;
   }
 
+  get isTransferProtected(): boolean {
+    return this.active?.phase === "ready";
+  }
+
   start(ctx: ExtensionContext, source: HandoffStartSource): HandoffStartResult {
     if (this.active !== undefined) {
       return { accepted: false, reason: "active", handoff: snapshot(this.active) };

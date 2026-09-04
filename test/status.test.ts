@@ -3,9 +3,15 @@ import test from "node:test";
 
 import { defaultConfig } from "../extensions/pi-simple-handoff/config.ts";
 import {
+  clearHandoffTerminalState,
   contextWarning,
   formatPublicStatus,
+  getHandoffTerminalState,
   persistentHandoffStatus,
+  protectReplacementSession,
+  replacementSessionIsProtected,
+  setHandoffTerminalState,
+  unprotectReplacementSession,
   warningMessage,
 } from "../extensions/pi-simple-handoff/status.ts";
 
@@ -18,6 +24,22 @@ test("persistent status is factual and does not invent numbered progress", () =>
     assert.equal(status, "Waiting for Session Handoff");
     assert.doesNotMatch(status, /\d+\s*\/\s*\d+|\d+%/);
   }
+});
+
+test("terminal status is factual, session-correlated, and overrides active wording", () => {
+  const sessionFile = "/sessions/replacement.jsonl";
+  setHandoffTerminalState(sessionFile, "finished");
+  protectReplacementSession(sessionFile);
+  assert.equal(getHandoffTerminalState(sessionFile), "finished");
+  assert.equal(replacementSessionIsProtected(sessionFile), true);
+  assert.equal(persistentHandoffStatus("inactive", "finished"), "Session Handoff Finished");
+  assert.equal(persistentHandoffStatus("ready", "failed"), "Session Handoff Failed");
+  assert.equal(persistentHandoffStatus("checking", "cancelled"), "Session Handoff Cancelled");
+  assert.match(formatPublicStatus("inactive", undefined, config, "finished"), /^Session Handoff Finished\./);
+  unprotectReplacementSession(sessionFile);
+  clearHandoffTerminalState(sessionFile);
+  assert.equal(replacementSessionIsProtected(sessionFile), false);
+  assert.equal(getHandoffTerminalState(sessionFile), undefined);
 });
 
 test("warning is advisory once while critical can repeat at settled turns", () => {

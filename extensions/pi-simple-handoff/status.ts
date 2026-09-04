@@ -4,10 +4,43 @@ import type { HandoffConfig } from "./config.ts";
 import { automaticHandoffEnabled, type HandoffFlowPhase } from "./flow.ts";
 
 export type ContextWarning = "advisory" | "critical" | undefined;
+export type HandoffTerminalState = "finished" | "failed" | "cancelled";
 
-export function persistentHandoffStatus(phase: HandoffFlowPhase): string | undefined {
+const terminalStates = new Map<string, HandoffTerminalState>();
+const protectedReplacementSessions = new Set<string>();
+
+export function protectReplacementSession(sessionFile: string | undefined): void {
+  if (sessionFile !== undefined) protectedReplacementSessions.add(sessionFile);
+}
+
+export function replacementSessionIsProtected(sessionFile: string | undefined): boolean {
+  return sessionFile !== undefined && protectedReplacementSessions.has(sessionFile);
+}
+
+export function unprotectReplacementSession(sessionFile: string | undefined): void {
+  if (sessionFile !== undefined) protectedReplacementSessions.delete(sessionFile);
+}
+
+export function setHandoffTerminalState(sessionFile: string | undefined, state: HandoffTerminalState): void {
+  if (sessionFile !== undefined) terminalStates.set(sessionFile, state);
+}
+
+export function getHandoffTerminalState(sessionFile: string | undefined): HandoffTerminalState | undefined {
+  return sessionFile === undefined ? undefined : terminalStates.get(sessionFile);
+}
+
+export function clearHandoffTerminalState(sessionFile: string | undefined): void {
+  if (sessionFile !== undefined) terminalStates.delete(sessionFile);
+}
+
+export function persistentHandoffStatus(
+  phase: HandoffFlowPhase,
+  terminalState?: HandoffTerminalState,
+): string | undefined {
+  if (terminalState === "finished") return "Session Handoff Finished";
+  if (terminalState === "failed") return "Session Handoff Failed";
+  if (terminalState === "cancelled") return "Session Handoff Cancelled";
   if (phase === "inactive") return undefined;
-  if (phase === "ready") return "Waiting for Session Handoff";
   return "Waiting for Session Handoff";
 }
 
@@ -40,8 +73,10 @@ export function formatPublicStatus(
     | "automaticSessionHandoffPercent"
     | "readinessRetrySeconds"
   >,
+  terminalState?: HandoffTerminalState,
 ): string {
-  const handoff = phase === "inactive" ? "No active session handoff." : `${persistentHandoffStatus(phase)}.`;
+  const persistent = persistentHandoffStatus(phase, terminalState);
+  const handoff = persistent === undefined ? "No active session handoff." : `${persistent}.`;
   const context = formatContextUsage(usage);
   const automatic = automaticHandoffEnabled(
     config.automaticSessionHandoff,

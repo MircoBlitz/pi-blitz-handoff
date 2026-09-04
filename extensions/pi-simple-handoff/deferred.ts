@@ -33,3 +33,13 @@ export function formatDeferredPrompts(prompts: readonly string[]): string {
     .map((prompt, index) => `--- Deferred Prompt ${index + 1} of ${prompts.length} ---\n${prompt}`)
     .join("\n");
 }
+
+export function assembleHandoffMarkdown(dossier: string, prompts: readonly string[]): string {
+  if (prompts.length === 0) return dossier;
+  return [
+    dossier,
+    "## Deferred Prompts",
+    "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
+    formatDeferredPrompts(prompts),
+  ].join("\n\n");
+}
