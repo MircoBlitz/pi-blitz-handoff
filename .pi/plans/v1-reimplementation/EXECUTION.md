@@ -12,8 +12,8 @@
 - Accepted through: B05/T01 at `624f67513fd5a23f41f7487f2732c46941e7cb93`
 - Completed blocks: B01 Foundation; B02 Handoff lifecycle; B03 Transfer and recovery; B04 User flows; B05 Integration
 - Local release gate: passed on `624f67513fd5a23f41f7487f2732c46941e7cb93`
-- B06/T01 status: blocked at clean-Pi startup; action method called during extension loading
-- Next allowed action: implement a narrowly scoped startup-activation FIX, then rerun B06/T01
+- B06/T01 startup blocker fixed and accepted at `985fb1fd06e5ab84cde4a3d90c84a2ce9535e739`
+- Next allowed action: rerun bounded B06/T01 Real-Pi validation in clean Docker
 
 ## Goal
 

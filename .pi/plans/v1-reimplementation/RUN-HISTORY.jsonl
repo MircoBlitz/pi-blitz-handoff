@@ -11,3 +11,4 @@
 {"timestamp":"2026-09-04T02:42:23Z","event":"task-accepted","task":"B05/T01","basis":"a09ca73fa7c74a213423f986b7b195bb5fa075bc","candidate":"624f67513fd5a23f41f7487f2732c46941e7cb93","block":"B05","localGate":"passed","next":"B06/T01 authorization required"}
 {"timestamp":"2026-09-04T12:39:14Z","event":"authorization-granted","task":"B06/T01","scope":"bounded real-model and real-session validation; no product edits or publication"}
 {"timestamp":"2026-09-04T13:07:37Z","event":"validation-blocked","task":"B06/T01","reason":"clean Pi rejects action method during extension loading","evidence":".pi-tmp/ephemeral/realpi-failure-evidence.log","next":"scoped startup activation fix"}
+{"timestamp":"2026-09-04T13:20:24Z","event":"fix-accepted","task":"B06/T01-startup","candidate":"985fb1fd06e5ab84cde4a3d90c84a2ce9535e739","review":"ACCEPT","next":"rerun B06/T01"}
