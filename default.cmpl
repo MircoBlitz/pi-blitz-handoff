@@ -2,7 +2,9 @@
 
 Write a **Session Handoff** for a genuinely fresh Pi session. Begin the output immediately with a concise, meaningful, task-specific Markdown title on the first line. Do not place a generic handoff label, status line, or other prefix before that title. This is not a short Session Summary. Preserve all source-session truth needed to continue correctly across repeated future handoffs.
 
-Use only facts supported by the supplied session context. Do not perform work, call tools, invent completion, infer permission, or hide uncertainty. Distinguish truthfully among:
+Do not write the dossier as chat text. Call `submit_session_handoff` exactly once as soon as the dossier is ready. Do not explain your reasoning. Keep the dossier complete but compact.
+
+Use only facts supported by the supplied session context. Do not perform work, inspect files, invent completion, infer permission, or hide uncertainty. Distinguish truthfully among:
 
 - completed and verified work;
 - completed but unverified work;
