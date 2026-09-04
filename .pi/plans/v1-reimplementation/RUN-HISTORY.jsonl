@@ -1,1 +1,2 @@
 {"timestamp":"2026-09-04T01:05:57Z","event":"specification-frozen","authorization":"B01-B05","next":"B01/T01","realPi":"not-authorized"}
+{"timestamp":"2026-09-04T01:11:36Z","event":"task-accepted","task":"B01/T01","basis":"a57c800ebb4889c0bf6c4d20311bb23bb1afcaff","candidate":"c41fa02ac6c9e3379635065e6602a3cb83220a43","next":"B01/T02"}
