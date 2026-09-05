@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { visibleWidth } from "@earendil-works/pi-tui";
+
 import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
 import {
   clearHandoffTerminalState,
@@ -83,6 +85,36 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(setWidgetCalls.length, 2);
   assert.equal(setWidgetCalls.at(-1), undefined);
   assert.equal(getHandoffActivityStartedAt("stable-handoff"), undefined);
+});
+
+test("persistent TUI component respects narrow widths for ANSI-colored status", () => {
+  type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+  type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
+  let component: WidgetComponent | undefined;
+  const ui = {
+    theme: {
+      fg(_color: "success" | "warning" | "error", text: string) {
+        return `\u001b[33m${text}\u001b[39m`;
+      },
+    },
+    setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+      if (typeof content === "function") {
+        component = content({ requestRender() {} });
+      }
+    },
+  };
+
+  registerPersistentHandoffStatus(ui, "narrow-handoff");
+  updatePersistentHandoffStatus(ui, "narrow-handoff", "retry-delay");
+  assert.equal(visibleWidth(component?.render(120)[0] ?? ""), 79);
+
+  for (const width of [0, 1, 20, 75]) {
+    const lines = component?.render(width) ?? [];
+    assert.equal(lines.length, 1);
+    assert.ok(visibleWidth(lines[0] ?? "") <= width);
+  }
+
+  disposePersistentHandoffStatus(ui, "narrow-handoff");
 });
 
 test("non-TUI status transport remains string arrays", () => {

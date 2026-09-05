@@ -1,4 +1,5 @@
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { HandoffConfig } from "./config.ts";
 import { automaticHandoffEnabled, type HandoffFlowPhase } from "./flow.ts";
@@ -34,8 +35,8 @@ class PersistentHandoffWidget implements HandoffWidgetComponent {
     this.requestRender();
   }
 
-  render(_width: number): string[] {
-    return this.text === undefined ? [] : [this.text];
+  render(width: number): string[] {
+    return this.text === undefined ? [] : [truncateToWidth(this.text, width)];
   }
 
   invalidate(): void {}
