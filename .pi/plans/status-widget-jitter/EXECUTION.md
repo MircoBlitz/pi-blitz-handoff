@@ -9,9 +9,11 @@
 - Product-code authorization: granted by the user on 2026-09-05 for the approved local fix and validation
 - T01 initial implementation: `REWORK` after local visual testing at `388e9ccd588e9780f389e93c3d35460245c9c490`
 - Rework authorization: granted by the user on 2026-09-05
-- Visual finding: periodic jitter is gone, but real phase changes still reinsert the widget and briefly move it below the Async agents widget
+- T01 corrected implementation: accepted at `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
+- Local validation gate: passed on `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
+- Corrected visual validation: pending with Handoff loaded before Subagents
 - Release authorization: not yet requested; corrected local visual testing comes first
-- Next allowed action: implement persistent in-place widget rendering as a forward commit
+- Next allowed action: user performs corrected local visual validation
 
 ## Goal
 
