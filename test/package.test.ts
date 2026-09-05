@@ -93,6 +93,7 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     .filter((name) => name.endsWith(".ts"))
     .map((name) => `extensions/pi-simple-handoff/${name}`);
   const expected = [
+    "LICENSE",
     "README.md",
     "SECURITY.md",
     "default.cmpl",
