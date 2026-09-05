@@ -9,11 +9,11 @@
 - Product-code authorization: granted by the user on 2026-09-05 for the approved local fix and validation
 - T01 initial implementation: `REWORK` after local visual testing at `388e9ccd588e9780f389e93c3d35460245c9c490`
 - Rework authorization: granted by the user on 2026-09-05
-- T01 corrected implementation: accepted at `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
-- Local validation gate: passed on `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
-- Corrected visual validation: pending with Handoff loaded before Subagents
+- T01 corrected implementation: `REWORK` after real-TUI crash at `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
+- Crash evidence: at terminal width 75, the custom component returned a line of visible width 79 and Pi terminated with an uncaught exception
+- Required correction: use Pi TUI's ANSI-aware `truncateToWidth()` in every component render and test narrow widths
 - Release authorization: not yet requested; corrected local visual testing comes first
-- Next allowed action: user performs corrected local visual validation
+- Next allowed action: implement width-safe rendering as a forward commit
 
 ## Goal
 
@@ -38,7 +38,7 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 
 | Task | Result | Paths |
 |---|---|---|
-| T01 Stable activity widget | Remove periodic updates and use one persistent in-place TUI component while retaining terminal duration and non-TUI transport | `extensions/pi-blitz-handoff/status.ts`, `extensions/pi-blitz-handoff/index.ts`, `test/status.test.ts`, `test/extension.test.ts`, `test/integration.test.ts` |
+| T01 Stable activity widget | Remove periodic updates and use one persistent, width-safe in-place TUI component while retaining terminal duration and non-TUI transport | `extensions/pi-blitz-handoff/status.ts`, `extensions/pi-blitz-handoff/index.ts`, `test/status.test.ts`, `test/extension.test.ts`, `test/integration.test.ts`, `test/package.test.ts`, `package.json`, `package-lock.json` |
 | T02 Verification and closeout | Run focused status tests and the complete local validation gate; record exact results | `.pi/plans/status-widget-jitter/EXECUTION.md`, `.pi/plans/status-widget-jitter/T01-stable-activity-widget/RESULT.md` |
 
 ## Acceptance
@@ -51,7 +51,9 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 6. Session shutdown clears the persistent component and its state.
 7. Writer activity continues to use the configured indeterminate working indicator.
 8. Existing public status, terminal-state precedence, cancellation, and cleanup behavior remain unchanged.
-9. `npm test`, `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`, `git diff --check`, and `npm pack --dry-run` pass on the candidate.
+9. Every custom component render uses the supplied width and returns no line wider than that width, including ANSI-colored text at widths narrower than the full status.
+10. The package declares `@earendil-works/pi-tui` as a core peer and development dependency rather than reimplementing ANSI width handling.
+11. `npm test`, `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`, `git diff --check`, and `npm pack --dry-run` pass on the candidate.
 
 ## External validation
 

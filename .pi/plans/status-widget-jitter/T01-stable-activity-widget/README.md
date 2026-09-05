@@ -9,7 +9,7 @@
 
 ## Result
 
-Stop all TUI reinsertion of the Session Handoff widget after session startup while retaining elapsed duration in the one-time terminal status. This is a forward correction of candidate `388e9ccd588e9780f389e93c3d35460245c9c490` after local visual testing found phase-change movement.
+Stop all TUI reinsertion of the Session Handoff widget after session startup while retaining elapsed duration in the one-time terminal status. The current forward candidate `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd` crashed Pi at terminal width 75 because its custom component ignored `render(width)` and returned visible width 79. Correct that candidate forward using Pi TUI's ANSI-aware truncation utility.
 
 ## Allowed changes
 
@@ -18,6 +18,9 @@ Stop all TUI reinsertion of the Session Handoff widget after session startup whi
 - `test/status.test.ts`
 - `test/extension.test.ts`
 - `test/integration.test.ts`
+- `test/package.test.ts`
+- `package.json`
+- `package-lock.json`
 
 No other file may be changed, staged, or committed by the writer.
 
@@ -31,10 +34,13 @@ No other file may be changed, staged, or committed by the writer.
 6. The handoff start time remains available until terminal status is rendered.
 7. Finished, failed, and cancelled status includes total elapsed seconds once.
 8. Existing colors, writer working indicator, public status semantics, and terminal precedence remain.
+9. Every TUI render truncates ANSI-colored output to the supplied width with `truncateToWidth()` from `@earendil-works/pi-tui`.
+10. Narrow-width regression tests assert visible output never exceeds the render width.
+11. `@earendil-works/pi-tui` is declared as a `"*"` peer dependency and a compatible development dependency; do not hand-roll ANSI parsing or truncation.
 
 ## Checks
 
-- focused status, extension, and integration tests covering TUI registration count, in-place rendering, non-TUI fallback, shutdown cleanup, and terminal duration
+- focused status, extension, integration, and package tests covering TUI registration count, in-place rendering, narrow-width ANSI-safe truncation, non-TUI fallback, shutdown cleanup, terminal duration, and dependency metadata
 - `npm run typecheck`
 - inspect the complete assigned diff and index before committing
 
