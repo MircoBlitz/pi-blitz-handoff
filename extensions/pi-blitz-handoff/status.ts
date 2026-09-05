@@ -18,12 +18,7 @@ const WRITING_INDICATOR = {
 };
 
 const terminalStates = new Map<string, HandoffTerminalState>();
-const handoffActivity = new Map<string, {
-  startedAt: number;
-  phase: HandoffFlowPhase;
-  writing: boolean;
-  timer?: ReturnType<typeof setInterval>;
-}>();
+const handoffActivity = new Map<string, { startedAt: number }>();
 const protectedReplacementSessions = new Set<string>();
 
 export function protectReplacementSession(sessionFile: string | undefined): void {
@@ -73,42 +68,19 @@ export function updatePersistentHandoffStatus(
 ): void {
   const showWriting = writing && terminalState === undefined;
   const active = terminalState === undefined && phase !== "inactive";
-  const activity = active ? getHandoffActivity(key, phase, showWriting) : handoffActivity.get(key);
-  if (activity !== undefined && active) {
-    activity.phase = phase;
-    activity.writing = showWriting;
-  }
+  const activity = active ? getHandoffActivity(key) : handoffActivity.get(key);
   const elapsedSeconds = activity === undefined
     ? startedAtOverride === undefined ? undefined : elapsedSince(startedAtOverride)
     : elapsedSince(activity.startedAt);
 
   const text = terminalState === undefined && phase !== "inactive"
-    ? colorizeActivity(
-        ui,
-        formatHandoffActivity(showWriting, phase, elapsedSeconds ?? 0),
-        showWriting ? undefined : "warning",
-      )
+    ? colorizeActivity(ui, formatHandoffActivity(showWriting, phase), showWriting ? undefined : "warning")
     : terminalState === undefined
       ? undefined
       : colorizeTerminal(ui, terminalState, elapsedSeconds);
   ui.setWidget?.(key, text === undefined ? undefined : [text]);
   ui.setWorkingIndicator?.(showWriting ? WRITING_INDICATOR : undefined);
 
-  if (active && activity?.timer === undefined) {
-    const timer = setInterval(() => {
-      const current = handoffActivity.get(key);
-      if (current === undefined) return;
-      ui.setWidget?.(key, [
-        colorizeActivity(
-          ui,
-          formatHandoffActivity(current.writing, current.phase, elapsedSince(current.startedAt)),
-          current.writing ? undefined : "warning",
-        ),
-      ]);
-    }, 1000);
-    timer.unref?.();
-    if (activity !== undefined) activity.timer = timer;
-  }
   if (!active) stopHandoffActivity(key);
 }
 
@@ -116,22 +88,16 @@ export function getHandoffActivityStartedAt(key: string): number | undefined {
   return handoffActivity.get(key)?.startedAt;
 }
 
-function getHandoffActivity(
-  key: string,
-  phase: HandoffFlowPhase,
-  writing: boolean,
-): { startedAt: number; phase: HandoffFlowPhase; writing: boolean; timer?: ReturnType<typeof setInterval> } {
+function getHandoffActivity(key: string): { startedAt: number } {
   const existing = handoffActivity.get(key);
   if (existing !== undefined) return existing;
-  const created = { startedAt: Date.now(), phase, writing };
+  const created = { startedAt: Date.now() };
   handoffActivity.set(key, created);
   return created;
 }
 
 function stopHandoffActivity(key: string): void {
-  const activity = handoffActivity.get(key);
-  if (activity?.timer !== undefined) clearInterval(activity.timer);
-  if (activity !== undefined) handoffActivity.delete(key);
+  handoffActivity.delete(key);
 }
 
 function elapsedSince(startedAt: number): number {
@@ -156,14 +122,14 @@ function colorizeTerminal(ui: HandoffStatusUI, state: HandoffTerminalState, elap
   return ui.theme.fg(state === "finished" ? "success" : state === "failed" ? "error" : "warning", text);
 }
 
-function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, elapsedSeconds: number): string {
+function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase): string {
   const activity = writing
     ? "starting session export"
     : phase === "retry-delay"
       ? "waiting before readiness retry"
       : "waiting for readiness";
   const input = phase === "ready" || writing ? "Input deferred" : "Input available";
-  return `Session Handoff · ${activity} · ${input} · ${elapsedSeconds} sec · /sh cancel`;
+  return `Session Handoff · ${activity} · ${input} · /sh cancel`;
 }
 
 export function contextWarning(

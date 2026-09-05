@@ -348,7 +348,7 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
   await startRig.commands.get("sh")?.("", startRig.context);
-  assert.match(startRig.statuses.at(-1) ?? "", /^Session Handoff · waiting for readiness · Input available · \d+ sec · \/sh cancel$/);
+  assert.equal(startRig.statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {
