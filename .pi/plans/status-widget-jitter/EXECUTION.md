@@ -9,11 +9,13 @@
 - Product-code authorization: granted by the user on 2026-09-05 for the approved local fix and validation
 - T01 initial implementation: `REWORK` after local visual testing at `388e9ccd588e9780f389e93c3d35460245c9c490`
 - Rework authorization: granted by the user on 2026-09-05
-- T01 corrected implementation: `REWORK` after real-TUI crash at `8c1c35a80ddc8457e2cb5b5ebe23ed6e657837cd`
-- Crash evidence: at terminal width 75, the custom component returned a line of visible width 79 and Pi terminated with an uncaught exception
-- Required correction: use Pi TUI's ANSI-aware `truncateToWidth()` in every component render and test narrow widths
+- T01 corrected implementation: accepted at `56ca7711acbd94da2074c65493b36fb3e4c7eb1b`
+- Prior crash evidence: at terminal width 75, candidate `8c1c35a` returned visible width 79 and Pi terminated with an uncaught exception
+- Width regression: passes at widths 0, 1, 20, and 75 with ANSI-aware `truncateToWidth()`
+- Local validation gate: passed on `56ca7711acbd94da2074c65493b36fb3e4c7eb1b`
+- Corrected visual validation: pending with Handoff loaded before Subagents
 - Release authorization: not yet requested; corrected local visual testing comes first
-- Next allowed action: implement width-safe rendering as a forward commit
+- Next allowed action: user performs corrected local visual validation
 
 ## Goal
 
