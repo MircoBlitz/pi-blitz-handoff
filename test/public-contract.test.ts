@@ -6,8 +6,8 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths } from "../extensions/pi-simple-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
+import { defaultConfig, handoffPaths } from "../extensions/pi-blitz-handoff/config.ts";
+import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
 
 interface RegisteredCommand {
   description?: string;
@@ -85,7 +85,7 @@ function captureRegistration() {
     },
   } as unknown as ExtensionAPI;
 
-  const agentDirectory = "/tmp/pi-simple-handoff-public-contract";
+  const agentDirectory = "/tmp/pi-blitz-handoff-public-contract";
   activateHandoffExtension(api, defaultConfig(agentDirectory), handoffPaths(agentDirectory));
   return {
     commands,
@@ -105,7 +105,7 @@ test("handoff commands expose the main command and separate documented helpers",
   const rig = captureRegistration();
   assert.deepEqual(
     [...rig.commands.keys()].sort(),
-    ["__pi_simple_handoff_transition", "sh", "sh-cancel", "sh-config", "sh-help", "sh-recover"],
+    ["__pi_blitz_handoff_transition", "sh", "sh-cancel", "sh-config", "sh-help", "sh-recover"],
   );
 
   const advertised = [...rig.commands.entries()]
@@ -113,19 +113,19 @@ test("handoff commands expose the main command and separate documented helpers",
     .map(([name]) => name);
   assert.deepEqual(advertised, ["sh", "sh-help", "sh-cancel", "sh-recover", "sh-config"]);
   assert.match(rig.commands.get("sh")?.description ?? "", /Start a session handoff/);
-  assert.equal(rig.commands.get("__pi_simple_handoff_transition")?.description, undefined);
+  assert.equal(rig.commands.get("__pi_blitz_handoff_transition")?.description, undefined);
 
   await rig.commands.get("sh")?.handler("retry", rig.context);
   assert.equal(rig.notifications.at(-1), "Usage: /sh, /sh-help, /sh-recover, /sh-config, or /sh-cancel");
   assert.deepEqual([...rig.commands.keys()].filter((name) => ["shconfig", "sh-retry", "sh-cleanup"].includes(name)), []);
 });
 
-test("simple_handoff exposes only status and initializes the writer submission tool at session_start", async () => {
+test("blitz_handoff exposes only status and initializes the writer submission tool at session_start", async () => {
   const rig = captureRegistration();
   await rig.startSession();
-  assert.deepEqual([...rig.tools.keys()].sort(), ["simple_handoff", "submit_session_handoff"]);
+  assert.deepEqual([...rig.tools.keys()].sort(), ["blitz_handoff", "submit_session_handoff"]);
 
-  const publicTool = rig.tools.get("simple_handoff");
+  const publicTool = rig.tools.get("blitz_handoff");
   assert.ok(publicTool);
   assert.deepEqual(publicTool.parameters.properties?.action?.enum, ["status", "start"]);
   assert.deepEqual(publicTool.parameters.required, ["action"]);
@@ -135,7 +135,7 @@ test("simple_handoff exposes only status and initializes the writer submission t
 
 test("the private correlated transition rejects direct or stale invocation and is not an initiation path", async () => {
   const rig = captureRegistration();
-  const privateCommand = rig.commands.get("__pi_simple_handoff_transition");
+  const privateCommand = rig.commands.get("__pi_blitz_handoff_transition");
   assert.ok(privateCommand);
 
   await privateCommand.handler("invented-token", rig.context);

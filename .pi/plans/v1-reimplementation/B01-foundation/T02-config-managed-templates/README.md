@@ -6,10 +6,10 @@ Given the package baseline and an agent directory, load validated defaults/confi
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/config.ts`
-- `extensions/pi-simple-handoff/filesystem.ts`
-- `extensions/pi-simple-handoff/templates.ts`
-- `extensions/pi-simple-handoff/index.ts`
+- `extensions/pi-blitz-handoff/config.ts`
+- `extensions/pi-blitz-handoff/filesystem.ts`
+- `extensions/pi-blitz-handoff/templates.ts`
+- `extensions/pi-blitz-handoff/index.ts`
 - `test/config.test.ts`
 - `test/filesystem.test.ts`
 - `test/templates.test.ts`

@@ -8,10 +8,10 @@ import {
   catalogueTemplates,
   resolveTemplate,
   synchronizeManagedDefault,
-} from "../extensions/pi-simple-handoff/templates.ts";
+} from "../extensions/pi-blitz-handoff/templates.ts";
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-templates-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-templates-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }

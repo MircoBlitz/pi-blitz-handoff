@@ -3,14 +3,14 @@ import test from "node:test";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-simple-handoff/submission-tool.ts";
+import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-blitz-handoff/submission-tool.ts";
 import {
   HandoffWriter,
   writerPrompt,
   type WriterPhase,
   type WriterRuntime,
   type WriterTerminalReason,
-} from "../extensions/pi-simple-handoff/writer.ts";
+} from "../extensions/pi-blitz-handoff/writer.ts";
 
 interface ContextState {
   idle: boolean;

@@ -18,13 +18,13 @@ interface PublicToolResult {
 
 export function registerPublicHandoffTool(pi: ExtensionAPI, handlers: PublicHandoffToolHandlers): void {
   const tool = {
-    name: "simple_handoff",
-    label: "Simple Handoff",
+    name: "blitz_handoff",
+    label: "Blitz Handoff",
     description:
       "Report simple session handoff status, or start one only when the user explicitly requested a handoff.",
     promptSnippet: "Report handoff status or start an explicitly requested session handoff",
     promptGuidelines: [
-      "Use simple_handoff with action start only when the user explicitly requests a session handoff; discussion, questions, criticism, testing, and mentions are not start requests.",
+      "Use blitz_handoff with action start only when the user explicitly requests a session handoff; discussion, questions, criticism, testing, and mentions are not start requests.",
     ],
     parameters: {
       type: "object",

@@ -26,7 +26,7 @@ No behavior changes in extension source. Any discovered source defect is `BLOCK`
 
 ## Acceptance
 
-- Only `/sh`, `/sh cancel`, `/sh recover`, `/sh config`, and `simple_handoff` are public.
+- Only `/sh`, `/sh cancel`, `/sh recover`, `/sh config`, and `blitz_handoff` are public.
 - Package contains required runtime files and excludes local/test artifacts.
 - Documentation is English and matches verified current behavior.
 - Full local gate passes on the unchanged candidate commit.

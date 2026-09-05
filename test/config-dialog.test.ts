@@ -6,14 +6,14 @@ import test from "node:test";
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-import { ConfigDialog } from "../extensions/pi-simple-handoff/config-dialog.ts";
+import { ConfigDialog } from "../extensions/pi-blitz-handoff/config-dialog.ts";
 import {
   defaultConfig,
   handoffPaths,
   loadConfig,
   saveConfig,
   type HandoffConfig,
-} from "../extensions/pi-simple-handoff/config.ts";
+} from "../extensions/pi-blitz-handoff/config.ts";
 
 interface Notification {
   message: string;
@@ -26,7 +26,7 @@ type DialogStep =
   | { method: "confirm"; answer: boolean; check?: (title: string, message: string) => void };
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-dialog-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-dialog-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }
@@ -79,7 +79,7 @@ function chooseSetting(label: string, check?: (options: string[]) => void): Dial
     method: "select",
     answer: label,
     check(title, options) {
-      assert.equal(title, "Configure pi-simple-handoff");
+      assert.equal(title, "Configure pi-blitz-handoff");
       check?.(options);
     },
   };

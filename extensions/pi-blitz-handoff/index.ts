@@ -51,8 +51,8 @@ export * from "./templates.ts";
 export * from "./transition.ts";
 export * from "./writer.ts";
 
-const STATUS_KEY = "pi-simple-handoff";
-const READINESS_MESSAGE_TYPE = "pi-simple-handoff-readiness";
+const STATUS_KEY = "pi-blitz-handoff";
+const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
 const HANDOFF_HELP = [
   "Session handoff commands:",
   "  /sh              Start a session handoff",
@@ -466,7 +466,7 @@ export function activateHandoffExtension(
   return flow;
 }
 
-export default async function piSimpleHandoff(pi: ExtensionAPI): Promise<void> {
+export default async function piBlitzHandoff(pi: ExtensionAPI): Promise<void> {
   const { config, paths } = await initializeHandoffStorage(getAgentDir());
   if (typeof pi.registerCommand === "function") {
     activateHandoffExtension(pi, config, paths);

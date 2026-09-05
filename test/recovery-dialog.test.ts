@@ -10,7 +10,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   assembleRecoveryTurn,
   RecoveryDialog,
-} from "../extensions/pi-simple-handoff/recovery-dialog.ts";
+} from "../extensions/pi-blitz-handoff/recovery-dialog.ts";
 
 interface Notification {
   message: string;
@@ -23,7 +23,7 @@ interface SelectStep {
 }
 
 async function recoveryDirectory(t: test.TestContext): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-recover-dialog-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-recover-dialog-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }

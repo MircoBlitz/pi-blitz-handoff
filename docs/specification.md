@@ -1,4 +1,4 @@
-# pi-simple-handoff v1.0 Product Specification
+# pi-blitz-handoff v1.0 Product Specification
 
 > **FROZEN v1.0 — Approved product authority.**
 >
@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-`pi-simple-handoff` carries the material continuation context of a Pi session into a genuinely fresh, natively linked Pi session and starts that replacement session with the handoff.
+`pi-blitz-handoff` carries the material continuation context of a Pi session into a genuinely fresh, natively linked Pi session and starts that replacement session with the handoff.
 
 The handoff is a self-contained continuation dossier, not a short summary. It preserves authorization boundaries: continuation context is not a new request and grants no new permission.
 
@@ -33,7 +33,7 @@ There is no public transition command, `/sh retry`, `/sh cleanup`, `/shconfig`, 
 
 ### Model-callable tool
 
-The extension exposes `simple_handoff` with two actions:
+The extension exposes `blitz_handoff` with two actions:
 
 - `status` — report context usage, relevant configuration, and handoff status.
 - `start` — record an explicit handoff request and let the current model work settle.
@@ -45,19 +45,19 @@ The model calls `start` when the user explicitly requests a handoff. Discussion,
 Exactly three initiation paths exist:
 
 1. `/sh`;
-2. `simple_handoff start`;
+2. `blitz_handoff start`;
 3. optional automatic initiation.
 
 At most one handoff may be active. A second start request is rejected visibly and does not replace active IDs or state.
 
-Explicit `/sh` and explicit `simple_handoff start` are never blocked by a context threshold. Only automatic initiation uses the configured automatic threshold.
+Explicit `/sh` and explicit `blitz_handoff start` are never blocked by a context threshold. Only automatic initiation uses the configured automatic threshold.
 
 ## 4. Configuration and managed data
 
 Managed data lives below:
 
 ```text
-<getAgentDir()>/pi-simple-handoff/
+<getAgentDir()>/pi-blitz-handoff/
 ├── config.json
 ├── recovery/
 └── templates/
@@ -79,7 +79,7 @@ Internally generated filenames cannot contain path traversal. New private files 
   "readinessRetrySeconds": 60,
   "writerAttempts": 3,
   "writerRetryDelaySeconds": 30,
-  "recoveryDirectory": "<getAgentDir()>/pi-simple-handoff/recovery/",
+  "recoveryDirectory": "<getAgentDir()>/pi-blitz-handoff/recovery/",
   "templateDirectory": null,
   "handoffTemplate": "default.cmpl"
 }
@@ -91,7 +91,7 @@ Warning thresholds satisfy:
 1 <= contextWarningPercent < criticalWarningPercent <= 100
 ```
 
-Automatic handoff is disabled when `automaticSessionHandoff` is false or `automaticSessionHandoffPercent` is `0`. When enabled with a nonzero threshold, the threshold is from `1` through `100`. A zero automatic threshold never gates explicit `/sh` or `simple_handoff start`.
+Automatic handoff is disabled when `automaticSessionHandoff` is false or `automaticSessionHandoffPercent` is `0`. When enabled with a nonzero threshold, the threshold is from `1` through `100`. A zero automatic threshold never gates explicit `/sh` or `blitz_handoff start`.
 
 Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a positive integer and means total attempts including the first.
 
@@ -297,7 +297,7 @@ Recovery has no per-prompt selection, `pending`/`dispatching` states, checkpoint
 
 ## 13. Status and failures
 
-The extension exposes concise factual status in chat and through `simple_handoff status`. The small persistent status surface has three principal states:
+The extension exposes concise factual status in chat and through `blitz_handoff status`. The small persistent status surface has three principal states:
 
 - `Waiting for Session Handoff`;
 - `Writing Session Handoff` with an indeterminate activity indicator;

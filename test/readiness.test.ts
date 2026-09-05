@@ -5,7 +5,7 @@ import {
   classifyReadinessAnswer,
   createReadinessIdentifiers,
   readinessPrompt,
-} from "../extensions/pi-simple-handoff/readiness.ts";
+} from "../extensions/pi-blitz-handoff/readiness.ts";
 
 test("readiness identifiers are fresh, distinct, and UUID-backed", () => {
   const first = createReadinessIdentifiers();

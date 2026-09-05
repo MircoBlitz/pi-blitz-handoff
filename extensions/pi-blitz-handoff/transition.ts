@@ -10,7 +10,7 @@ import type {
 import { assembleHandoffMarkdown, type DeferredPromptSnapshot } from "./deferred.ts";
 import { deleteRecoveryFile, recoveryFileName } from "./recovery-store.ts";
 
-const PRIVATE_TRANSITION_COMMAND = "__pi_simple_handoff_transition";
+const PRIVATE_TRANSITION_COMMAND = "__pi_blitz_handoff_transition";
 
 type NewSessionOptions = NonNullable<Parameters<ExtensionCommandContext["newSession"]>[0]>;
 type ReplacementContext = NonNullable<NewSessionOptions["withSession"]> extends (

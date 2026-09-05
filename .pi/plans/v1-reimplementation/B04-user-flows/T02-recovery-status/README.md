@@ -6,11 +6,11 @@ Given leftover recovery files, implement `/sh recover` for one-file-at-a-time li
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/recovery-dialog.ts`
-- `extensions/pi-simple-handoff/status.ts`
-- `extensions/pi-simple-handoff/flow.ts`
-- `extensions/pi-simple-handoff/index.ts`
-- `extensions/pi-simple-handoff/public-tool.ts`
+- `extensions/pi-blitz-handoff/recovery-dialog.ts`
+- `extensions/pi-blitz-handoff/status.ts`
+- `extensions/pi-blitz-handoff/flow.ts`
+- `extensions/pi-blitz-handoff/index.ts`
+- `extensions/pi-blitz-handoff/public-tool.ts`
 - `test/recovery-dialog.test.ts`
 - `test/status.test.ts`
 - `test/extension.test.ts`
@@ -33,5 +33,5 @@ No per-prompt selection, automatic replay, pending/dispatching/outbox protocol, 
 - Execute sends one combined turn preserving boundaries and sequential-input instruction, then deletes after no immediate dispatch error.
 - Discard deletes only the selected file; return/cancel are nonmutating.
 - Persistent states and failure/cancellation overrides match the specification.
-- `simple_handoff status` is concise and factual.
+- `blitz_handoff status` is concise and factual.
 - All user-facing text is English.

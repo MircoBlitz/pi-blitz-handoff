@@ -1,5 +1,5 @@
 {
-  "name": "pi-simple-handoff",
+  "name": "pi-blitz-handoff",
   "version": "1.0.0",
   "description": "Carry focused task context into a genuinely fresh, natively linked Pi session.",
   "type": "module",
@@ -7,11 +7,11 @@
   "author": "Mirco Blitz",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MircoBlitz/pi-simple-handoff.git"
+    "url": "git+https://github.com/MircoBlitz/pi-blitz-handoff.git"
   },
-  "homepage": "https://github.com/MircoBlitz/pi-simple-handoff#readme",
+  "homepage": "https://github.com/MircoBlitz/pi-blitz-handoff#readme",
   "bugs": {
-    "url": "https://github.com/MircoBlitz/pi-simple-handoff/issues"
+    "url": "https://github.com/MircoBlitz/pi-blitz-handoff/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -19,6 +19,7 @@
   "files": [
     "extensions",
     "docs",
+    "assets",
     "default.cmpl",
     "README.md",
     "LICENSE",
@@ -50,7 +51,8 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/pi-simple-handoff/index.ts"
-    ]
+      "./extensions/pi-blitz-handoff/index.ts"
+    ],
+    "image": "https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/logo.png"
   }
 }

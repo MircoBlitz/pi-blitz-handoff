@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { defaultConfig } from "../extensions/pi-simple-handoff/config.ts";
+import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
 import {
   clearHandoffTerminalState,
   contextWarning,
@@ -14,7 +14,7 @@ import {
   unprotectReplacementSession,
   updatePersistentHandoffStatus,
   warningMessage,
-} from "../extensions/pi-simple-handoff/status.ts";
+} from "../extensions/pi-blitz-handoff/status.ts";
 
 const config = defaultConfig("/tmp/agent");
 

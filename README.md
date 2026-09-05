@@ -1,6 +1,10 @@
-# pi-simple-handoff
+# pi-blitz-handoff
 
-`pi-simple-handoff` carries the material continuation context of a persisted Pi session into a fresh Pi session. It asks the current model to prepare a structured handoff dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
+<p align="center">
+  <img src="assets/logo.png" alt="pi-blitz-handoff logo" width="320">
+</p>
+
+`pi-blitz-handoff` carries the material continuation context of a persisted Pi session into a fresh Pi session. It asks the current model to prepare a structured handoff dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
 
 A handoff preserves authorization boundaries: continuation context is not a new request and grants no new permission. The supplied default template tells the writer to distinguish verified work, unverified or partial work, currently authorized work, work requiring fresh approval, blockers, and unresolved questions.
 
@@ -18,19 +22,19 @@ A handoff preserves authorization boundaries: continuation context is not a new 
 Install from npm:
 
 ```text
-pi install npm:pi-simple-handoff
+pi install npm:pi-blitz-handoff
 ```
 
 Try it for one run without installing it globally:
 
 ```text
-pi -e npm:pi-simple-handoff
+pi -e npm:pi-blitz-handoff
 ```
 
 Or install directly from GitHub:
 
 ```text
-pi install git:github.com/MircoBlitz/pi-simple-handoff
+pi install git:github.com/MircoBlitz/pi-blitz-handoff
 ```
 
 Pi reads the extension entry point from `package.json`. Review third-party extensions before installing them: Pi extensions run with the permissions of the Pi process.
@@ -50,7 +54,7 @@ There is no public retry command, cleanup command, or public transition command.
 
 ### Model-callable tool
 
-The `simple_handoff` tool has two actions:
+The `blitz_handoff` tool has two actions:
 
 - `status` — report context usage, warning and automatic thresholds, readiness retry delay, and current handoff status.
 - `start` — request a handoff only when the user explicitly requested one.
@@ -59,7 +63,7 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 
 ## How a handoff works
 
-1. An explicit `/sh` or `simple_handoff start` records the request. Explicit starts ignore all context thresholds.
+1. An explicit `/sh` or `blitz_handoff start` records the request. Explicit starts ignore all context thresholds.
 2. Automatic initiation is optional. When enabled, it starts only at or above its configured threshold on an idle `agent_settled` boundary with no pending message.
 3. Readiness waits for settled source-session work. It accepts only the exact current generated `GO` identifier after that answering run settles with no pending message. User or RPC input before `GO` passes unchanged to the source session and invalidates the current readiness identifiers.
 4. After accepted `GO`, ordinary interactive and RPC prompts are deferred: they do not reach the source writer, remain unchanged and ordered in memory, and are also atomically written to one recovery Markdown file.
@@ -129,7 +133,7 @@ Automatic session handoff is disabled by default. When using persisted subagents
 The extension manages:
 
 ```text
-<getAgentDir()>/pi-simple-handoff/
+<getAgentDir()>/pi-blitz-handoff/
 ├── config.json
 ├── recovery/
 └── templates/

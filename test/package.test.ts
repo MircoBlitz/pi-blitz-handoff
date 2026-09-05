@@ -9,7 +9,7 @@ import test from "node:test";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig } from "../extensions/pi-simple-handoff/config.ts";
+import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
 import { loadExtension } from "./extension-harness.ts";
 
 interface PackageManifest {
@@ -21,7 +21,7 @@ interface PackageManifest {
   files?: string[];
   keywords?: string[];
   peerDependencies?: Record<string, string>;
-  pi?: { extensions?: string[] };
+  pi?: { extensions?: string[]; image?: string };
   scripts?: Record<string, string>;
 }
 
@@ -50,7 +50,7 @@ async function readManifest(): Promise<PackageManifest> {
 test("package metadata declares the supported runtime and complete Pi package resources", async () => {
   const manifest = await readManifest();
 
-  assert.equal(manifest.name, "pi-simple-handoff");
+  assert.equal(manifest.name, "pi-blitz-handoff");
   assert.equal(manifest.version, "1.0.0");
   assert.equal(
     manifest.description,
@@ -60,8 +60,12 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
   assert.equal(manifest.engines?.node, ">=22.19.0");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
-  assert.deepEqual(manifest.files, ["extensions", "docs", "default.cmpl", "README.md", "LICENSE", "SECURITY.md"]);
-  assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-simple-handoff/index.ts"]);
+  assert.deepEqual(manifest.files, ["extensions", "docs", "assets", "default.cmpl", "README.md", "LICENSE", "SECURITY.md"]);
+  assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-blitz-handoff/index.ts"]);
+  assert.equal(
+    manifest.pi?.image,
+    "https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/logo.png",
+  );
   assert.equal(manifest.scripts?.test, "node --test --experimental-strip-types test/*.test.ts");
   assert.equal(manifest.scripts?.typecheck, "tsc --noEmit");
   assert.equal(manifest.scripts?.validate, "npm test && npm run typecheck");
@@ -89,13 +93,14 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
   const result = (JSON.parse(stdout) as PackDryRunResult[])[0];
   assert.ok(result);
   const packed = result.files.map((file) => file.path).sort();
-  const extensionFiles = (await readdir(join(projectRoot, "extensions", "pi-simple-handoff")))
+  const extensionFiles = (await readdir(join(projectRoot, "extensions", "pi-blitz-handoff")))
     .filter((name) => name.endsWith(".ts"))
-    .map((name) => `extensions/pi-simple-handoff/${name}`);
+    .map((name) => `extensions/pi-blitz-handoff/${name}`);
   const expected = [
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "assets/logo.png",
     "default.cmpl",
     "docs/specification.md",
     "docs/specification.sha256",
@@ -109,7 +114,7 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
 });
 
 test("loading the package entrypoint initializes and validates managed storage", async (t) => {
-  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-package-"));
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-package-"));
   const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDirectory;
   t.after(() => {
@@ -124,7 +129,7 @@ test("loading the package entrypoint initializes and validates managed storage",
   const baselineApi = Object.freeze({}) as ExtensionAPI;
   await loadExtension(baselineApi);
 
-  const baseDirectory = join(agentDirectory, "pi-simple-handoff");
+  const baseDirectory = join(agentDirectory, "pi-blitz-handoff");
   const recoveryDirectory = join(baseDirectory, "recovery");
   const templateDirectory = join(baseDirectory, "templates");
   assert.equal((await stat(baseDirectory)).isDirectory(), true);

@@ -6,7 +6,7 @@ The current 1.0 code line is the supported and tested package contract. It requi
 
 ## Trust boundary
 
-`pi-simple-handoff` is a Pi extension and runs with the full operating-system permissions of the Pi process. Installing it is equivalent to trusting its TypeScript code with that access. Pi project trust is not a sandbox for an installed extension.
+`pi-blitz-handoff` is a Pi extension and runs with the full operating-system permissions of the Pi process. Installing it is equivalent to trusting its TypeScript code with that access. Pi project trust is not a sandbox for an installed extension.
 
 The extension preserves authorization in its writer instructions: continuation context does not grant new permission, and proposed, paused, or approval-dependent work must remain distinguished from executable work. This is an instruction to the model, not a deterministic semantic guarantee. The extension validates submission correlation, nonempty content, and absence of NUL, but it does not parse the dossier structure or detect authorization mistakes.
 
@@ -26,7 +26,7 @@ Deferred prompts are preserved unchanged and in arrival order. When any exist, t
 
 ## Filesystem behavior
 
-Managed data defaults to `<getAgentDir()>/pi-simple-handoff/`. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Configuration and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
+Managed data defaults to `<getAgentDir()>/pi-blitz-handoff/`. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Configuration and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
 
 These controls reduce accidental local exposure; they are not a general filesystem security framework. In particular:
 

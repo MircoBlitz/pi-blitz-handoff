@@ -7,7 +7,7 @@ import {
   HandoffFlow,
   shouldStartAutomaticHandoff,
   type ActiveHandoffSnapshot,
-} from "../extensions/pi-simple-handoff/flow.ts";
+} from "../extensions/pi-blitz-handoff/flow.ts";
 
 interface MutableContext {
   idle: boolean;

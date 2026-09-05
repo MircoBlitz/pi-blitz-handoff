@@ -2,15 +2,15 @@
 
 ## Worker result
 
-Given valid configuration, make `/sh`, `simple_handoff start`, and optional automatic initiation enter one pending handoff and use the correlated GO/NOT-YET readiness exchange only at settled, no-pending boundaries.
+Given valid configuration, make `/sh`, `blitz_handoff start`, and optional automatic initiation enter one pending handoff and use the correlated GO/NOT-YET readiness exchange only at settled, no-pending boundaries.
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/index.ts`
-- `extensions/pi-simple-handoff/flow.ts`
-- `extensions/pi-simple-handoff/readiness.ts`
-- `extensions/pi-simple-handoff/public-tool.ts`
-- `extensions/pi-simple-handoff/status.ts`
+- `extensions/pi-blitz-handoff/index.ts`
+- `extensions/pi-blitz-handoff/flow.ts`
+- `extensions/pi-blitz-handoff/readiness.ts`
+- `extensions/pi-blitz-handoff/public-tool.ts`
+- `extensions/pi-blitz-handoff/status.ts`
 - `test/extension.test.ts`
 - `test/flow.test.ts`
 - `test/readiness.test.ts`

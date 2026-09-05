@@ -71,7 +71,7 @@ export class ConfigDialog {
 
       while (!controller.signal.aborted) {
         const options = settingOptions(draft);
-        const choice = await ctx.ui.select("Configure pi-simple-handoff", options, {
+        const choice = await ctx.ui.select("Configure pi-blitz-handoff", options, {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;

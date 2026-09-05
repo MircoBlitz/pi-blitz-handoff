@@ -16,10 +16,10 @@ import type {
   SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
-import { setHandoffTerminalState } from "../extensions/pi-simple-handoff/status.ts";
-import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-simple-handoff/submission-tool.ts";
+import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
+import { setHandoffTerminalState } from "../extensions/pi-blitz-handoff/status.ts";
+import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-blitz-handoff/submission-tool.ts";
 
 interface RuntimeState {
   idle: boolean;
@@ -66,7 +66,7 @@ type ToolExecute = (
 function createRig(
   configChanges: Partial<HandoffConfig> = {},
   stateChanges: Partial<RuntimeState> = {},
-  agentDirectory = "/tmp/pi-simple-handoff-test-agent",
+  agentDirectory = "/tmp/pi-blitz-handoff-test-agent",
   toolRuntime?: ToolRuntimeOptions,
 ) {
   const state: RuntimeState = {
@@ -184,7 +184,7 @@ test("defers writer tool initialization until the first session_start", async ()
     setCalls: [],
   };
 
-  const rig = createRig({}, {}, "/tmp/pi-simple-handoff-extension-tools", toolRuntime);
+  const rig = createRig({}, {}, "/tmp/pi-blitz-handoff-extension-tools", toolRuntime);
   assert.deepEqual(toolRuntime.setCalls, []);
 
   toolRuntime.loading = false;
@@ -229,7 +229,7 @@ test("/sh help displays subcommands and usage", async () => {
   assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh config/);
 });
 
-test("simple_handoff start records intent during a run while status remains factual", async () => {
+test("blitz_handoff start records intent during a run while status remains factual", async () => {
   const rig = createRig({}, { idle: false, percent: 65 });
   const execute = rig.getToolExecute();
 
@@ -260,7 +260,7 @@ test("persisted-session prerequisite is visible for command and tool starts", as
 });
 
 test("/sh recover routes through extension UI and executes one selected recovery file", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-recover-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-recover-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const recoveryDirectory = join(root, "recovery");
   await mkdir(recoveryDirectory);
@@ -284,7 +284,7 @@ test("/sh recover routes through extension UI and executes one selected recovery
 });
 
 test("/sh recover reports an empty recovery directory factually", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-empty-recover-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-empty-recover-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const recoveryDirectory = join(root, "recovery");
   await mkdir(recoveryDirectory);
@@ -297,7 +297,7 @@ test("/sh recover reports an empty recovery directory factually", async (t) => {
 });
 
 test("/sh config stays in extension UI and reload or session replacement discards its draft", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-config-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
   for (const reason of ["reload", "new"] as const) {
@@ -308,7 +308,7 @@ test("/sh config stays in extension UI and reload or session replacement discard
       markPromptStarted = resolve;
     });
     rig.setSelectHandler(async (title, options, opts) => {
-      assert.equal(title, "Configure pi-simple-handoff");
+      assert.equal(title, "Configure pi-blitz-handoff");
       assert.equal(options.length, 12);
       observedSignal = opts?.signal;
       markPromptStarted?.();
@@ -413,7 +413,7 @@ test("steering and follow-up input invalidate readiness IDs and pass unchanged",
 });
 
 test("post-GO interactive and RPC prompts are handled, preserved, and persisted in one file", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const recoveryDirectory = join(root, "recovery");
   await mkdir(recoveryDirectory);
@@ -464,7 +464,7 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
 });
 
 test("post-GO persistence failure is visible and still handles the captured prompt", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-extension-failure-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-failure-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const notDirectory = join(root, "not-a-directory");
   await writeFile(notDirectory, "occupied");

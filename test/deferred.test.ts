@@ -5,7 +5,7 @@ import {
   assembleHandoffMarkdown,
   DeferredPromptWindow,
   formatDeferredPrompts,
-} from "../extensions/pi-simple-handoff/deferred.ts";
+} from "../extensions/pi-blitz-handoff/deferred.ts";
 
 test("deferred window preserves exact prompt strings, boundaries, and order", () => {
   const timestamp = new Date("2026-02-03T04:05:06.007Z");

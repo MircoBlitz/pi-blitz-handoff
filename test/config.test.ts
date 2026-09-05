@@ -11,10 +11,10 @@ import {
   saveConfig,
   validateConfig,
   type HandoffConfig,
-} from "../extensions/pi-simple-handoff/config.ts";
+} from "../extensions/pi-blitz-handoff/config.ts";
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-simple-handoff-config-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-config-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }

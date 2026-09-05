@@ -37,7 +37,7 @@ const CONFIG_KEYS = [
 ] as const;
 
 export function handoffPaths(agentDirectory: string): HandoffPaths {
-  const baseDirectory = join(agentDirectory, "pi-simple-handoff");
+  const baseDirectory = join(agentDirectory, "pi-blitz-handoff");
   return {
     baseDirectory,
     configFile: join(baseDirectory, "config.json"),

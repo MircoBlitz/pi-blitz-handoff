@@ -6,8 +6,8 @@ Given the configuration service, implement `/sh config` as a simple extension-ow
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/config-dialog.ts`
-- `extensions/pi-simple-handoff/index.ts`
+- `extensions/pi-blitz-handoff/config-dialog.ts`
+- `extensions/pi-blitz-handoff/index.ts`
 - `test/config-dialog.test.ts`
 - `test/extension.test.ts`
 

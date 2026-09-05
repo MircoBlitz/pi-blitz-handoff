@@ -10,8 +10,8 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-simple-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-simple-handoff/index.ts";
+import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
 
 interface Notification {
   message: string;
@@ -41,7 +41,7 @@ async function activateIntegrationRig(
   configChanges: Partial<HandoffConfig> = {},
   sessionFile: string | undefined = "/sessions/source.jsonl",
 ) {
-  const root = await mkdtemp(join(tmpdir(), "pi-simple-handoff-integration-"));
+  const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-integration-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const paths = handoffPaths(root);
   await mkdir(paths.recoveryDirectory, { recursive: true });
@@ -222,7 +222,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   assert.deepEqual(rig.getActiveTools(), ["read", "bash"]);
 
   const transitionRequest = rig.userMessages.at(-1)?.content;
-  assert.match(transitionRequest ?? "", /^\/__pi_simple_handoff_transition /);
+  assert.match(transitionRequest ?? "", /^\/__pi_blitz_handoff_transition /);
   const [commandName, token] = (transitionRequest ?? "").slice(1).split(" ");
   assert.ok(commandName);
   assert.ok(token);

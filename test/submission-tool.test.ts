@@ -8,7 +8,7 @@ import {
   SUBMIT_SESSION_HANDOFF_TOOL,
   validateSubmission,
   type SessionHandoffSubmission,
-} from "../extensions/pi-simple-handoff/submission-tool.ts";
+} from "../extensions/pi-blitz-handoff/submission-tool.ts";
 
 test("submission validation checks only exact correlation, nonempty content, and NUL absence", () => {
   assert.equal(validateSubmission({ id: "current", content: "# Handoff" }, "current"), undefined);

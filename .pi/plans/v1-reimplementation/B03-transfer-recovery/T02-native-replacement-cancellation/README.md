@@ -6,11 +6,11 @@ Given a settled valid dossier and optional deferred prompts, use one private cor
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/flow.ts`
-- `extensions/pi-simple-handoff/transition.ts`
-- `extensions/pi-simple-handoff/deferred.ts`
-- `extensions/pi-simple-handoff/index.ts`
-- `extensions/pi-simple-handoff/status.ts`
+- `extensions/pi-blitz-handoff/flow.ts`
+- `extensions/pi-blitz-handoff/transition.ts`
+- `extensions/pi-blitz-handoff/deferred.ts`
+- `extensions/pi-blitz-handoff/index.ts`
+- `extensions/pi-blitz-handoff/status.ts`
 - `test/flow.test.ts`
 - `test/transition.test.ts`
 - `test/deferred.test.ts`

@@ -10,7 +10,7 @@ Given an empty implementation tree, create an installable Node 22/TypeScript Pi 
 - `package-lock.json`
 - `tsconfig.json`
 - `.gitignore`
-- `extensions/pi-simple-handoff/index.ts`
+- `extensions/pi-blitz-handoff/index.ts`
 - `test/extension-harness.ts`
 - `test/package.test.ts`
 

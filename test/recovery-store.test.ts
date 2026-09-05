@@ -10,10 +10,10 @@ import {
   normalizeSourceSessionId,
   persistDeferredPrompts,
   recoveryFileName,
-} from "../extensions/pi-simple-handoff/recovery-store.ts";
+} from "../extensions/pi-blitz-handoff/recovery-store.ts";
 
 async function temporaryDirectory(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "pi-simple-handoff-recovery-"));
+  return mkdtemp(join(tmpdir(), "pi-blitz-handoff-recovery-"));
 }
 
 test("recovery filenames use safe UTC milliseconds and normalized transcript basenames", () => {

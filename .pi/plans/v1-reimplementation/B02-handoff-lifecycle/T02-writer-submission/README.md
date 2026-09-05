@@ -6,10 +6,10 @@ Given accepted readiness, run the configured number of template-driven writer at
 
 ## Allowed result paths
 
-- `extensions/pi-simple-handoff/flow.ts`
-- `extensions/pi-simple-handoff/writer.ts`
-- `extensions/pi-simple-handoff/submission-tool.ts`
-- `extensions/pi-simple-handoff/index.ts`
+- `extensions/pi-blitz-handoff/flow.ts`
+- `extensions/pi-blitz-handoff/writer.ts`
+- `extensions/pi-blitz-handoff/submission-tool.ts`
+- `extensions/pi-blitz-handoff/index.ts`
 - `test/flow.test.ts`
 - `test/writer.test.ts`
 - `test/submission-tool.test.ts`

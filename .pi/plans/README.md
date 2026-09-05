@@ -1,4 +1,4 @@
-# pi-simple-handoff Plan Contract
+# pi-blitz-handoff Plan Contract
 
 ## Authority
 
