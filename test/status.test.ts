@@ -31,8 +31,8 @@ test("writing status uses an indeterminate public activity indicator and termina
   const statuses: Array<string | undefined> = [];
   const indicators: Array<{ frames?: string[]; intervalMs?: number } | undefined> = [];
   const ui = {
-    setStatus(_key: string, text: string | undefined) {
-      statuses.push(text);
+    setWidget(_key: string, content: string[] | undefined) {
+      statuses.push(content?.join("\n"));
     },
     setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }) {
       indicators.push(options);
@@ -40,13 +40,13 @@ test("writing status uses an indeterminate public activity indicator and termina
   };
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
-  assert.equal(statuses.at(-1), "Writing Session Handoff");
+  assert.match(statuses.at(-1) ?? "", /^Session Handoff · starting session export · Input deferred · \d+ sec · \/sh cancel$/);
   assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
   assert.equal(indicators.at(-1)?.intervalMs, 120);
   assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
 
   updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
-  assert.equal(statuses.at(-1), "Session Handoff Failed");
+  assert.match(statuses.at(-1) ?? "", /^Session Handoff · failed · \d+ sec$/);
   assert.equal(indicators.at(-1), undefined);
   assert.equal(persistentHandoffStatus("ready", undefined, true), "Writing Session Handoff");
   assert.match(formatPublicStatus("ready", undefined, config, undefined, true), /^Writing Session Handoff\./);

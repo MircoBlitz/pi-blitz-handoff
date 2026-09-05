@@ -15,24 +15,38 @@ A handoff preserves authorization boundaries: continuation context is not a new 
 
 ## Installation
 
-No npm or public Git publication coordinate is declared here. From a trusted local checkout, install the package by path:
+Install from npm:
 
 ```text
-pi install /absolute/path/to/pi-simple-handoff
+pi install npm:pi-simple-handoff
 ```
 
-Pi reads the extension entry point from `package.json`. Review the extension before installing it: Pi extensions run with the permissions of the Pi process.
+Try it for one run without installing it globally:
+
+```text
+pi -e npm:pi-simple-handoff
+```
+
+Or install directly from GitHub:
+
+```text
+pi install git:github.com/MircoBlitz/pi-simple-handoff
+```
+
+Pi reads the extension entry point from `package.json`. Review third-party extensions before installing them: Pi extensions run with the permissions of the Pi process.
 
 ## Public interface
 
 ### Commands
 
 - `/sh` — request a handoff.
-- `/sh cancel` — cancel the active handoff when cutover has not started.
-- `/sh recover` — inspect, execute, or discard leftover deferred-prompt files.
-- `/sh config` — edit configuration in an extension-owned chat dialog.
+- `/sh-help` — show handoff commands and usage.
+- `/sh-cancel` — cancel the active handoff when cutover has not started.
+- `/sh-recover` — inspect, execute, or discard leftover deferred-prompt files.
+- `/sh-config` — edit configuration in an extension-owned chat dialog.
+- The `/sh cancel`, `/sh recover`, `/sh config`, and `/sh help` forms remain available as subcommand aliases.
 
-There are no public aliases, retry command, cleanup command, or public transition command.
+There is no public retry command, cleanup command, or public transition command.
 
 ### Model-callable tool
 
@@ -60,7 +74,7 @@ At most one handoff is active. A second start is rejected without replacing acti
 
 ## Status and cancellation
 
-The persistent status uses these factual states:
+The activity line is rendered as a Pi widget directly above the input editor. It does not depend on the configured footer or powerline. The persistent status uses these factual states:
 
 - `Waiting for Session Handoff`
 - `Writing Session Handoff`
@@ -104,6 +118,12 @@ Saved configuration takes effect after `/reload`; the currently loaded extension
 
 The warning threshold produces one advisory warning. Critical warnings may repeat on settled turns. Neither warning threshold nor the automatic threshold gates explicit starts.
 
+### Subagents
+
+`pi-subagents` normally starts foreground child agents with `--no-session`. The extension therefore rejects a handoff in those children because there is no persisted source session. Persisted children (for example, runs configured with a `sessionFile` or `sessionDir`) can load this extension and run their own independent handoff; that replacement affects only the child session and does not replace or transfer the parent session.
+
+Automatic session handoff is disabled by default. When using persisted subagents, leave it disabled unless child-session handoff is deliberate, or configure those child agents not to load this extension. This avoids an unplanned child replacement that the parent orchestration does not automatically follow.
+
 ## Managed paths and templates
 
 The extension manages:
@@ -132,7 +152,13 @@ Handoff dossiers may contain sensitive project and conversation context. Deferre
 
 See [SECURITY.md](SECURITY.md) for the security and data-handling model.
 
-## Local validation
+## Package development
+
+Clone the repository and install its development dependencies:
+
+```text
+npm install
+```
 
 The deterministic test suite is classified as unit, integration, and package testing; it is not end-to-end Real-Pi testing.
 

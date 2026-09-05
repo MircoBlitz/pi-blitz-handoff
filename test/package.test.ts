@@ -54,16 +54,18 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.0.0");
   assert.equal(
     manifest.description,
-    "Carry a prepared continuation dossier into a fresh, natively linked Pi session.",
+    "Carry focused task context into a genuinely fresh, natively linked Pi session.",
   );
   assert.equal(manifest.type, "module");
-  assert.deepEqual(manifest.keywords, ["pi-package"]);
+  assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
   assert.equal(manifest.engines?.node, ">=22.19.0");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
-  assert.deepEqual(manifest.files, ["extensions", "default.cmpl", "README.md", "SECURITY.md"]);
+  assert.deepEqual(manifest.files, ["extensions", "docs", "default.cmpl", "README.md", "LICENSE", "SECURITY.md"]);
   assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-simple-handoff/index.ts"]);
   assert.equal(manifest.scripts?.test, "node --test --experimental-strip-types test/*.test.ts");
   assert.equal(manifest.scripts?.typecheck, "tsc --noEmit");
+  assert.equal(manifest.scripts?.validate, "npm test && npm run typecheck");
+  assert.equal(manifest.scripts?.prepublishOnly, "npm run validate");
 });
 
 test("package lock root metadata remains coherent with the manifest", async () => {
@@ -94,6 +96,8 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "README.md",
     "SECURITY.md",
     "default.cmpl",
+    "docs/specification.md",
+    "docs/specification.sha256",
     "package.json",
     ...extensionFiles,
   ].sort();

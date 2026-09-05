@@ -1,20 +1,41 @@
 {
   "name": "pi-simple-handoff",
   "version": "1.0.0",
-  "description": "Carry a prepared continuation dossier into a fresh, natively linked Pi session.",
+  "description": "Carry focused task context into a genuinely fresh, natively linked Pi session.",
   "type": "module",
+  "license": "MIT",
+  "author": "Mirco Blitz <mail@mircoblitz.de>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MircoBlitz/pi-simple-handoff.git"
+  },
+  "homepage": "https://github.com/MircoBlitz/pi-simple-handoff#readme",
+  "bugs": {
+    "url": "https://github.com/MircoBlitz/pi-simple-handoff/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "extensions",
+    "docs",
     "default.cmpl",
     "README.md",
+    "LICENSE",
     "SECURITY.md"
   ],
   "scripts": {
     "test": "node --test --experimental-strip-types test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate": "npm test && npm run typecheck",
+    "prepublishOnly": "npm run validate"
   },
   "keywords": [
-    "pi-package"
+    "pi-package",
+    "pi-extension",
+    "handoff",
+    "context-window",
+    "compaction"
   ],
   "engines": {
     "node": ">=22.19.0"

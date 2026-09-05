@@ -115,8 +115,8 @@ function createRig(
       notify(message: string, type?: "info" | "warning" | "error") {
         notifications.push({ message, type });
       },
-      setStatus(_key: string, text: string | undefined) {
-        statuses.push(text);
+      setWidget(_key: string, content: string[] | undefined) {
+        statuses.push(content?.join("\n"));
       },
     },
   } as unknown as ExtensionCommandContext;
@@ -219,6 +219,14 @@ test("/sh starts immediately only at an idle, no-pending boundary and duplicate 
   assert.equal(rig.sentMessages.length, 1);
   assert.deepEqual(rig.flow.snapshot, identity);
   assert.equal(rig.notifications.at(-1)?.message, "A session handoff is already active.");
+});
+
+test("/sh help displays subcommands and usage", async () => {
+  const rig = createRig();
+  await rig.commands.get("sh")?.("help", rig.context);
+  assert.equal(rig.notifications.at(-1)?.type, "info");
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh recover/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh config/);
 });
 
 test("simple_handoff start records intent during a run while status remains factual", async () => {
@@ -326,7 +334,7 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   const inputRig = createRig({}, { sessionFile: inputSession });
   setHandoffTerminalState(inputSession, "finished");
   await inputRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, inputRig.context);
-  assert.equal(inputRig.statuses.at(-1), "Session Handoff Finished");
+  assert.match(inputRig.statuses.at(-1) ?? "", /^Session Handoff · finished(?: · \d+ sec)?$/);
 
   await inputRig.handlers.input?.({
     type: "input",
@@ -340,7 +348,7 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
   await startRig.commands.get("sh")?.("", startRig.context);
-  assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff");
+  assert.match(startRig.statuses.at(-1) ?? "", /^Session Handoff · waiting for readiness · Input available · \d+ sec · \/sh cancel$/);
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {

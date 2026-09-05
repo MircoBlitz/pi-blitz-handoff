@@ -86,8 +86,8 @@ async function activateIntegrationRig(
       notify(message: string, type?: Notification["type"]) {
         notifications.push({ message, type });
       },
-      setStatus(_key: string, text: string | undefined) {
-        statuses.push(text);
+      setWidget(_key: string, content: string[] | undefined) {
+        statuses.push(content?.join("\n"));
       },
       setWorkingIndicator() {},
     },
@@ -237,7 +237,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   ].join("\n\n")]);
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
   assert.equal(rig.flow.phase, "inactive");
-  assert.equal(rig.statuses.at(-1), "Session Handoff Finished");
+  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · finished(?: · \d+ sec)?$/);
 });
 
 test("integrated starts reject an unpersisted source and writer exhaustion fails visibly with tools restored", async (t) => {
@@ -255,7 +255,7 @@ test("integrated starts reject an unpersisted source and writer exhaustion fails
   assert.equal(failed.flow.phase, "inactive");
   assert.deepEqual(failed.getActiveTools(), ["read", "bash"]);
   assert.equal(failed.replacementPrompts.length, 0);
-  assert.equal(failed.statuses.at(-1), "Session Handoff Failed");
+  assert.match(failed.statuses.at(-1) ?? "", /^Session Handoff · failed(?: · \d+ sec)?$/);
   assert.match(failed.notifications.at(-1)?.message ?? "", /exhausted 1 attempt/);
 });
 

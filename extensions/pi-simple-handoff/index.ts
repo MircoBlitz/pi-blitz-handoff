@@ -1,6 +1,11 @@
 import { dirname } from "node:path";
 
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  getAgentDir,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 
 import { ConfigDialog } from "./config-dialog.ts";
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
@@ -14,6 +19,7 @@ import {
   clearHandoffTerminalState,
   contextWarning,
   formatPublicStatus,
+  getHandoffActivityStartedAt,
   getHandoffTerminalState,
   protectReplacementSession,
   replacementSessionIsProtected,
@@ -47,6 +53,14 @@ export * from "./writer.ts";
 
 const STATUS_KEY = "pi-simple-handoff";
 const READINESS_MESSAGE_TYPE = "pi-simple-handoff-readiness";
+const HANDOFF_HELP = [
+  "Session handoff commands:",
+  "  /sh              Start a session handoff",
+  "  /sh cancel       Cancel the active handoff",
+  "  /sh recover      Inspect or replay deferred prompts",
+  "  /sh config       Configure handoff settings",
+  "  /sh help         Show this help",
+].join("\\n");
 
 export interface InitializedHandoffStorage {
   config: HandoffConfig;
@@ -97,11 +111,11 @@ export function activateHandoffExtension(
     onReplacementStarted(_request, ctx) {
       protectReplacementSession(ctx.sessionManager.getSessionFile());
     },
-    onFinished(_request, ctx) {
+    onFinished(request, ctx) {
       const sessionFile = ctx.sessionManager.getSessionFile();
       unprotectReplacementSession(sessionFile);
       setHandoffTerminalState(sessionFile, "finished");
-      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "finished");
+      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "finished", false, request.startedAt);
     },
     onFailure(request, message, ctx) {
       flow.finish(ctx, request.handoffId);
@@ -147,6 +161,7 @@ export function activateHandoffExtension(
             handoffId: result.handoff.id,
             sourceSessionPath: result.handoff.sourceSessionPath,
             dossier: result.submission.content,
+            startedAt: getHandoffActivityStartedAt(STATUS_KEY),
           });
           if (token === undefined) {
             flow.finish(ctx, result.handoff.id);
@@ -252,44 +267,70 @@ export function activateHandoffExtension(
     return message;
   };
 
+  const handleHandoffAction = async (action: string, ctx: ExtensionCommandContext): Promise<void> => {
+    if (action === "help" || action === "?") {
+      ctx.ui.notify(HANDOFF_HELP, "info");
+      return;
+    }
+    if (action === "") {
+      requestStart(ctx, "command");
+      return;
+    }
+    if (action === "config") {
+      await configDialog.run(ctx);
+      return;
+    }
+    if (action === "recover") {
+      await recoveryDialog.run(ctx);
+      return;
+    }
+    if (action === "cancel") {
+      const transitionCancellation = transition.cancel();
+      if (transitionCancellation === "committed") {
+        ctx.ui.notify("Session handoff cutover has started and can no longer be cancelled.", "warning");
+        return;
+      }
+      const writerCancelled = writer?.cancel(ctx) ?? false;
+      const flowCancelled = flow.cancel(ctx);
+      const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
+      if (cancelled) {
+        setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
+        updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled");
+      }
+      ctx.ui.notify(
+        cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
+        "info",
+      );
+      return;
+    }
+    ctx.ui.notify("Usage: /sh, /sh-help, /sh-recover, /sh-config, or /sh-cancel", "warning");
+  };
+
   pi.registerCommand("sh", {
-    description: "Start, cancel, recover, or configure a session handoff",
+    description: "Start a session handoff (use /sh-help for commands)",
+    getArgumentCompletions: (prefix: string) =>
+      ["cancel", "recover", "config", "help"].filter((value) => value.startsWith(prefix)).map((value) => ({
+        value,
+        label: value,
+      })),
     handler: async (args, ctx) => {
-      const action = args.trim();
-      if (action === "") {
-        requestStart(ctx, "command");
-        return;
-      }
-      if (action === "config") {
-        await configDialog.run(ctx);
-        return;
-      }
-      if (action === "recover") {
-        await recoveryDialog.run(ctx);
-        return;
-      }
-      if (action === "cancel") {
-        const transitionCancellation = transition.cancel();
-        if (transitionCancellation === "committed") {
-          ctx.ui.notify("Session handoff cutover has started and can no longer be cancelled.", "warning");
-          return;
-        }
-        const writerCancelled = writer?.cancel(ctx) ?? false;
-        const flowCancelled = flow.cancel(ctx);
-        const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
-        if (cancelled) {
-          setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
-          updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled");
-        }
-        ctx.ui.notify(
-          cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
-          "info",
-        );
-        return;
-      }
-      ctx.ui.notify("Usage: /sh, /sh cancel, /sh recover, or /sh config", "warning");
+      await handleHandoffAction(args.trim(), ctx);
     },
   });
+
+  for (const [command, action, description] of [
+    ["sh-help", "help", "Show session handoff help"],
+    ["sh-cancel", "cancel", "Cancel the active session handoff"],
+    ["sh-recover", "recover", "Recover deferred session handoff prompts"],
+    ["sh-config", "config", "Configure session handoff settings"],
+  ] as const) {
+    pi.registerCommand(command, {
+      description,
+      handler: async (_args, ctx) => {
+        await handleHandoffAction(action, ctx);
+      },
+    });
+  }
 
   registerPublicHandoffTool(pi, {
     status(ctx) {

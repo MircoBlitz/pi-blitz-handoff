@@ -23,6 +23,7 @@ export interface NativeTransitionRequest {
   handoffId: string;
   sourceSessionPath: string;
   dossier: string;
+  startedAt?: number;
 }
 
 export interface NativeHandoffTransitionOptions {
