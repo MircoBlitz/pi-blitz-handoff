@@ -6,10 +6,44 @@ import { automaticHandoffEnabled, type HandoffFlowPhase } from "./flow.ts";
 export type ContextWarning = "advisory" | "critical" | undefined;
 export type HandoffTerminalState = "finished" | "failed" | "cancelled";
 
+interface HandoffWidgetComponent {
+  render(width: number): string[];
+  invalidate(): void;
+}
+
 interface HandoffStatusUI {
-  setWidget?(key: string, content: string[] | undefined): void;
+  setWidget?(
+    key: string,
+    content: string[] | ((tui: { requestRender(): void }) => HandoffWidgetComponent) | undefined,
+  ): void;
   setWorkingIndicator?(options?: { frames?: string[]; intervalMs?: number }): void;
   theme?: { fg(color: "success" | "warning" | "error", text: string): string };
+}
+
+class PersistentHandoffWidget implements HandoffWidgetComponent {
+  private text: string | undefined;
+  private readonly requestRender: () => void;
+
+  constructor(text: string | undefined, requestRender: () => void) {
+    this.text = text;
+    this.requestRender = requestRender;
+  }
+
+  update(text: string | undefined): void {
+    this.text = text;
+    this.requestRender();
+  }
+
+  render(_width: number): string[] {
+    return this.text === undefined ? [] : [this.text];
+  }
+
+  invalidate(): void {}
+}
+
+interface PersistentHandoffWidgetState {
+  text: string | undefined;
+  component?: PersistentHandoffWidget;
 }
 
 const WRITING_INDICATOR = {
@@ -20,6 +54,7 @@ const WRITING_INDICATOR = {
 const terminalStates = new Map<string, HandoffTerminalState>();
 const handoffActivity = new Map<string, { startedAt: number }>();
 const protectedReplacementSessions = new Set<string>();
+const persistentWidgets = new WeakMap<HandoffStatusUI, Map<string, PersistentHandoffWidgetState>>();
 
 export function protectReplacementSession(sessionFile: string | undefined): void {
   if (sessionFile !== undefined) protectedReplacementSessions.add(sessionFile);
@@ -58,6 +93,32 @@ export function persistentHandoffStatus(
   return "Waiting for Session Handoff";
 }
 
+export function registerPersistentHandoffStatus(ui: HandoffStatusUI, key: string): void {
+  let widgets = persistentWidgets.get(ui);
+  if (widgets === undefined) {
+    widgets = new Map();
+    persistentWidgets.set(ui, widgets);
+  }
+  if (widgets.has(key)) return;
+
+  const state: PersistentHandoffWidgetState = { text: undefined };
+  widgets.set(key, state);
+  ui.setWidget?.(key, (tui) => {
+    const component = new PersistentHandoffWidget(state.text, () => tui.requestRender());
+    state.component = component;
+    return component;
+  });
+}
+
+export function disposePersistentHandoffStatus(ui: HandoffStatusUI, key: string): void {
+  const widgets = persistentWidgets.get(ui);
+  widgets?.delete(key);
+  if (widgets?.size === 0) persistentWidgets.delete(ui);
+  stopHandoffActivity(key);
+  ui.setWorkingIndicator?.(undefined);
+  ui.setWidget?.(key, undefined);
+}
+
 export function updatePersistentHandoffStatus(
   ui: HandoffStatusUI,
   key: string,
@@ -78,7 +139,13 @@ export function updatePersistentHandoffStatus(
     : terminalState === undefined
       ? undefined
       : colorizeTerminal(ui, terminalState, elapsedSeconds);
-  ui.setWidget?.(key, text === undefined ? undefined : [text]);
+  const widget = persistentWidgets.get(ui)?.get(key);
+  if (widget === undefined) {
+    ui.setWidget?.(key, text === undefined ? undefined : [text]);
+  } else {
+    widget.text = text;
+    widget.component?.update(text);
+  }
   ui.setWorkingIndicator?.(showWriting ? WRITING_INDICATOR : undefined);
 
   if (!active) stopHandoffActivity(key);

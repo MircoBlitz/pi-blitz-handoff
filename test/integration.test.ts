@@ -35,6 +35,8 @@ interface RegisteredTool {
 }
 
 type EventHandler = (event: unknown, ctx: ExtensionContext) => unknown | Promise<unknown>;
+type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
 
 async function activateIntegrationRig(
   t: test.TestContext,
@@ -58,6 +60,8 @@ async function activateIntegrationRig(
   const handlers = new Map<string, EventHandler>();
   const notifications: Notification[] = [];
   const statuses: Array<string | undefined> = [];
+  const widgetSetCalls: Array<string[] | WidgetFactory | undefined> = [];
+  let widgetComponent: WidgetComponent | undefined;
   const customMessages: string[] = [];
   const userMessages: Array<{ content: string; options?: { deliverAs?: string } }> = [];
   const replacementPrompts: string[] = [];
@@ -86,7 +90,18 @@ async function activateIntegrationRig(
       notify(message: string, type?: Notification["type"]) {
         notifications.push({ message, type });
       },
-      setWidget(_key: string, content: string[] | undefined) {
+      setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+        widgetSetCalls.push(content);
+        if (typeof content === "function") {
+          widgetComponent = content({
+            requestRender() {
+              const lines = widgetComponent?.render(120) ?? [];
+              statuses.push(lines.length === 0 ? undefined : lines.join("\n"));
+            },
+          });
+          return;
+        }
+        if (content === undefined) widgetComponent = undefined;
         statuses.push(content?.join("\n"));
       },
       setWorkingIndicator() {},
@@ -102,6 +117,7 @@ async function activateIntegrationRig(
         context,
       );
       state.sessionFile = "/sessions/replacement.jsonl";
+      await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, context);
       const replacementContext = {
         ...context,
         async sendUserMessage(content: string) {
@@ -143,6 +159,7 @@ async function activateIntegrationRig(
     ...configChanges,
   };
   const flow = activateHandoffExtension(api, config, paths);
+  await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, context);
 
   return {
     state,
@@ -152,6 +169,7 @@ async function activateIntegrationRig(
     handlers,
     notifications,
     statuses,
+    widgetSetCalls,
     customMessages,
     userMessages,
     replacementPrompts,
@@ -198,6 +216,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   });
   const submissionId = await reachWriter(rig);
   assert.deepEqual(rig.getActiveTools(), ["submit_session_handoff"]);
+  assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 1);
 
   const deferred = "  continue with this\nthen verify  ";
   assert.deepEqual(
@@ -237,7 +256,9 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   ].join("\n\n")]);
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
   assert.equal(rig.flow.phase, "inactive");
-  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · finished(?: · \d+ sec)?$/);
+  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · finished · \d+ sec$/);
+  assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 2);
+  assert.equal(rig.widgetSetCalls.filter((content) => content === undefined).length, 1);
 });
 
 test("integrated starts reject an unpersisted source and writer exhaustion fails visibly with tools restored", async (t) => {

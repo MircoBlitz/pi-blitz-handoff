@@ -5,11 +5,13 @@ import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
 import {
   clearHandoffTerminalState,
   contextWarning,
+  disposePersistentHandoffStatus,
   formatPublicStatus,
   getHandoffActivityStartedAt,
   getHandoffTerminalState,
   persistentHandoffStatus,
   protectReplacementSession,
+  registerPersistentHandoffStatus,
   replacementSessionIsProtected,
   setHandoffTerminalState,
   unprotectReplacementSession,
@@ -28,30 +30,76 @@ test("persistent status is factual and does not invent numbered progress", () =>
   }
 });
 
-test("persistent status does not tick between real phase changes", async () => {
-  const statuses: Array<string | undefined> = [];
+test("persistent TUI component registers once and renders phase, terminal, and clear updates in place", async () => {
+  type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+  type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
+  const setWidgetCalls: Array<string[] | WidgetFactory | undefined> = [];
+  let component: WidgetComponent | undefined;
+  let renderRequests = 0;
   const ui = {
-    setWidget(_key: string, content: string[] | undefined) {
-      statuses.push(content?.join("\n"));
+    setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+      setWidgetCalls.push(content);
+      if (typeof content === "function") {
+        component = content({ requestRender: () => { renderRequests += 1; } });
+      }
     },
   };
 
-  try {
-    updatePersistentHandoffStatus(ui, "stable-handoff", "waiting");
-    assert.equal(statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
-    const startedAt = getHandoffActivityStartedAt("stable-handoff");
-    assert.notEqual(startedAt, undefined);
+  registerPersistentHandoffStatus(ui, "stable-handoff");
+  assert.equal(setWidgetCalls.length, 1);
+  assert.deepEqual(component?.render(120), []);
 
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    assert.equal(statuses.length, 1);
+  updatePersistentHandoffStatus(ui, "stable-handoff", "waiting");
+  assert.equal(setWidgetCalls.length, 1);
+  assert.equal(renderRequests, 1);
+  assert.deepEqual(component?.render(120), [
+    "Session Handoff · waiting for readiness · Input available · /sh cancel",
+  ]);
+  const startedAt = getHandoffActivityStartedAt("stable-handoff");
+  assert.notEqual(startedAt, undefined);
 
-    updatePersistentHandoffStatus(ui, "stable-handoff", "retry-delay");
-    assert.equal(statuses.length, 2);
-    assert.equal(statuses.at(-1), "Session Handoff · waiting before readiness retry · Input available · /sh cancel");
-    assert.equal(getHandoffActivityStartedAt("stable-handoff"), startedAt);
-  } finally {
-    updatePersistentHandoffStatus(ui, "stable-handoff", "inactive", "cancelled");
-  }
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(renderRequests, 1);
+
+  updatePersistentHandoffStatus(ui, "stable-handoff", "retry-delay");
+  assert.equal(setWidgetCalls.length, 1);
+  assert.equal(renderRequests, 2);
+  assert.deepEqual(component?.render(120), [
+    "Session Handoff · waiting before readiness retry · Input available · /sh cancel",
+  ]);
+  assert.equal(getHandoffActivityStartedAt("stable-handoff"), startedAt);
+
+  updatePersistentHandoffStatus(ui, "stable-handoff", "inactive", "finished");
+  assert.equal(setWidgetCalls.length, 1);
+  assert.equal(renderRequests, 3);
+  assert.match(component?.render(120)[0] ?? "", /^Session Handoff · finished · \d+ sec$/);
+
+  updatePersistentHandoffStatus(ui, "stable-handoff", "inactive");
+  assert.equal(setWidgetCalls.length, 1);
+  assert.equal(renderRequests, 4);
+  assert.deepEqual(component?.render(120), []);
+
+  disposePersistentHandoffStatus(ui, "stable-handoff");
+  assert.equal(setWidgetCalls.length, 2);
+  assert.equal(setWidgetCalls.at(-1), undefined);
+  assert.equal(getHandoffActivityStartedAt("stable-handoff"), undefined);
+});
+
+test("non-TUI status transport remains string arrays", () => {
+  const updates: Array<string[] | undefined> = [];
+  const ui = {
+    setWidget(_key: string, content: string[] | undefined) {
+      updates.push(content);
+    },
+  };
+
+  updatePersistentHandoffStatus(ui, "non-tui-handoff", "waiting");
+  updatePersistentHandoffStatus(ui, "non-tui-handoff", "inactive", "cancelled");
+  updatePersistentHandoffStatus(ui, "non-tui-handoff", "inactive");
+
+  assert.equal(Array.isArray(updates[0]), true);
+  assert.equal(Array.isArray(updates[1]), true);
+  assert.equal(updates[2], undefined);
 });
 
 test("writing status uses an indeterminate public activity indicator and terminal states override it", () => {
