@@ -21,6 +21,7 @@ interface PackageManifest {
   files?: string[];
   keywords?: string[];
   peerDependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   pi?: { extensions?: string[]; image?: string };
   scripts?: Record<string, string>;
 }
@@ -33,6 +34,7 @@ interface PackageLock {
     version?: string;
     engines?: Record<string, string>;
     peerDependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
   }>;
 }
 
@@ -60,6 +62,8 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
   assert.equal(manifest.engines?.node, ">=22.19.0");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
+  assert.equal(manifest.peerDependencies?.["@earendil-works/pi-tui"], "*");
+  assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^0.84.2");
   assert.deepEqual(manifest.files, ["extensions", "docs", "assets", "default.cmpl", "README.md", "LICENSE", "SECURITY.md"]);
   assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-blitz-handoff/index.ts"]);
   assert.equal(
@@ -83,6 +87,7 @@ test("package lock root metadata remains coherent with the manifest", async () =
   assert.equal(root?.version, manifest.version);
   assert.deepEqual(root?.engines, manifest.engines);
   assert.deepEqual(root?.peerDependencies, manifest.peerDependencies);
+  assert.deepEqual(root?.devDependencies, manifest.devDependencies);
 });
 
 test("npm pack includes the runtime and documentation only, excluding tests and local artifacts", async () => {

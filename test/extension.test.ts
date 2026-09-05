@@ -50,6 +50,8 @@ type SettledHandler = (event: AgentSettledEvent, ctx: ExtensionContext) => void 
 type MessageEndHandler = (event: MessageEndEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionStartHandler = (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionShutdownHandler = (event: SessionShutdownEvent, ctx: ExtensionContext) => void | Promise<void>;
+type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
 type SelectHandler = (
   title: string,
   options: string[],
@@ -78,6 +80,9 @@ function createRig(
   };
   const notifications: Notification[] = [];
   const statuses: Array<string | undefined> = [];
+  const widgetSetCalls: Array<string[] | WidgetFactory | undefined> = [];
+  let widgetComponent: WidgetComponent | undefined;
+  let renderRequests = 0;
   const sentMessages: SentMessage[] = [];
   const sentUserMessages: string[] = [];
   const commands = new Map<string, CommandHandler>();
@@ -115,7 +120,19 @@ function createRig(
       notify(message: string, type?: "info" | "warning" | "error") {
         notifications.push({ message, type });
       },
-      setWidget(_key: string, content: string[] | undefined) {
+      setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+        widgetSetCalls.push(content);
+        if (typeof content === "function") {
+          widgetComponent = content({
+            requestRender() {
+              renderRequests += 1;
+              const lines = widgetComponent?.render(120) ?? [];
+              statuses.push(lines.length === 0 ? undefined : lines.join("\n"));
+            },
+          });
+          return;
+        }
+        if (content === undefined) widgetComponent = undefined;
         statuses.push(content?.join("\n"));
       },
     },
@@ -161,12 +178,15 @@ function createRig(
     state,
     notifications,
     statuses,
+    widgetSetCalls,
     sentMessages,
     sentUserMessages,
     commands,
     handlers,
     context,
     flow,
+    getRenderRequests: () => renderRequests,
+    hasWidgetComponent: () => widgetComponent !== undefined,
     setSelectHandler(handler: SelectHandler) {
       selectHandler = handler;
     },
@@ -176,6 +196,31 @@ function createRig(
     },
   };
 }
+
+test("TUI session startup reserves one widget that active and terminal updates render in place", async () => {
+  const rig = createRig();
+  assert.equal(rig.widgetSetCalls.length, 0);
+
+  await rig.handlers.session_start?.({ type: "session_start", reason: "startup" }, rig.context);
+  assert.equal(rig.widgetSetCalls.length, 1);
+  assert.equal(typeof rig.widgetSetCalls[0], "function");
+  assert.equal(rig.hasWidgetComponent(), true);
+  assert.equal(rig.statuses.at(-1), undefined);
+
+  await rig.commands.get("sh")?.("", rig.context);
+  assert.equal(rig.widgetSetCalls.length, 1);
+  assert.equal(rig.statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
+
+  await rig.commands.get("sh")?.("cancel", rig.context);
+  assert.equal(rig.widgetSetCalls.length, 1);
+  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · cancelled · \d+ sec$/);
+  assert.ok(rig.getRenderRequests() >= 3);
+
+  await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason: "reload" }, rig.context);
+  assert.equal(rig.widgetSetCalls.length, 2);
+  assert.equal(rig.widgetSetCalls.at(-1), undefined);
+  assert.equal(rig.hasWidgetComponent(), false);
+});
 
 test("defers writer tool initialization until the first session_start", async () => {
   const toolRuntime: ToolRuntimeOptions = {
@@ -348,7 +393,7 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
   await startRig.commands.get("sh")?.("", startRig.context);
-  assert.match(startRig.statuses.at(-1) ?? "", /^Session Handoff · waiting for readiness · Input available · \d+ sec · \/sh cancel$/);
+  assert.equal(startRig.statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {

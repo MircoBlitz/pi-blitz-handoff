@@ -18,10 +18,12 @@ import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submissio
 import {
   clearHandoffTerminalState,
   contextWarning,
+  disposePersistentHandoffStatus,
   formatPublicStatus,
   getHandoffActivityStartedAt,
   getHandoffTerminalState,
   protectReplacementSession,
+  registerPersistentHandoffStatus,
   replacementSessionIsProtected,
   setHandoffTerminalState,
   unprotectReplacementSession,
@@ -122,7 +124,7 @@ export function activateHandoffExtension(
       const sessionFile = ctx.sessionManager.getSessionFile();
       unprotectReplacementSession(sessionFile);
       setHandoffTerminalState(sessionFile, "failed");
-      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
+      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, request.startedAt);
       ctx.ui.notify(message, "error");
     },
   });
@@ -157,16 +159,17 @@ export function activateHandoffExtension(
           );
         },
         onSuccess(result, ctx) {
+          const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
           const token = transition.prepare({
             handoffId: result.handoff.id,
             sourceSessionPath: result.handoff.sourceSessionPath,
             dossier: result.submission.content,
-            startedAt: getHandoffActivityStartedAt(STATUS_KEY),
+            startedAt,
           });
           if (token === undefined) {
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
-            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
+            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, startedAt);
             ctx.ui.notify("Could not start the correlated session handoff transition.", "error");
             return;
           }
@@ -181,11 +184,12 @@ export function activateHandoffExtension(
             transition.cancel();
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
-            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed");
+            updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, startedAt);
             ctx.ui.notify(`Could not request native session replacement: ${errorMessage(error)}`, "error");
           }
         },
         onTerminalFailure(reason, message, ctx) {
+          const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
           flow.finish(ctx);
           setHandoffTerminalState(
             ctx.sessionManager.getSessionFile(),
@@ -196,6 +200,8 @@ export function activateHandoffExtension(
             STATUS_KEY,
             "inactive",
             reason === "cancelled" ? "cancelled" : "failed",
+            false,
+            startedAt,
           );
           if (reason !== "cancelled") {
             ctx.ui.notify(message, "error");
@@ -285,6 +291,7 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "cancel") {
+      const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
       const transitionCancellation = transition.cancel();
       if (transitionCancellation === "committed") {
         ctx.ui.notify("Session handoff cutover has started and can no longer be cancelled.", "warning");
@@ -295,7 +302,7 @@ export function activateHandoffExtension(
       const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
       if (cancelled) {
         setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
-        updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled");
+        updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled", false, startedAt);
       }
       ctx.ui.notify(
         cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
@@ -448,6 +455,7 @@ export function activateHandoffExtension(
     configDialog.discard();
     recoveryDialog.discard();
     advisoryWarningShown = false;
+    if (ctx.mode === "tui") registerPersistentHandoffStatus(ctx.ui, STATUS_KEY);
     const terminal = getHandoffTerminalState(ctx.sessionManager.getSessionFile());
     updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, flow.phase, terminal);
   });
@@ -460,7 +468,7 @@ export function activateHandoffExtension(
     transition.invalidate();
     unprotectReplacementSession(ctx.sessionManager.getSessionFile());
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
-    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
+    disposePersistentHandoffStatus(ctx.ui, STATUS_KEY);
   });
 
   return flow;
