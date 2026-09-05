@@ -7,8 +7,11 @@
 - Planning basis: frozen `docs/specification.md`, user-provided screenshots, Pi 0.84.2 project dependency, and current Pi 0.85.0 runtime behavior
 - Plan authorization: granted by the user on 2026-09-05
 - Product-code authorization: granted by the user on 2026-09-05 for the approved local fix and validation
+- T01 implementation: accepted at `388e9ccd588e9780f389e93c3d35460245c9c490`
+- Local validation gate: passed on `388e9ccd588e9780f389e93c3d35460245c9c490`
+- Visual validation: pending user test in refreshed local Pi sessions
 - Release authorization: not yet requested; local visual testing comes first
-- Next allowed action: implement T01 on the current branch
+- Next allowed action: user performs local visual validation
 
 ## Goal
 
