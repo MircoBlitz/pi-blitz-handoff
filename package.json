@@ -4,7 +4,7 @@
   "description": "Carry focused task context into a genuinely fresh, natively linked Pi session.",
   "type": "module",
   "license": "MIT",
-  "author": "Mirco Blitz <mail@mircoblitz.de>",
+  "author": "Mirco Blitz",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MircoBlitz/pi-simple-handoff.git"
