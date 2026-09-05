@@ -30,7 +30,7 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 
 | Task | Result | Paths |
 |---|---|---|
-| T01 Stable activity widget | Remove periodic widget reinsertion while retaining one terminal duration calculation and current status semantics | `extensions/pi-blitz-handoff/status.ts`, `test/status.test.ts` |
+| T01 Stable activity widget | Remove periodic widget reinsertion while retaining one terminal duration calculation and current status semantics | `extensions/pi-blitz-handoff/status.ts`, `test/status.test.ts`, `test/extension.test.ts` |
 | T02 Verification and closeout | Run focused status tests and the complete local validation gate; record exact results | `.pi/plans/status-widget-jitter/EXECUTION.md`, `.pi/plans/status-widget-jitter/T01-stable-activity-widget/RESULT.md` |
 
 ## Acceptance

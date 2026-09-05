@@ -15,6 +15,7 @@ Stop periodic reinsertion of the Session Handoff widget while retaining elapsed 
 
 - `extensions/pi-blitz-handoff/status.ts`
 - `test/status.test.ts`
+- `test/extension.test.ts`
 
 No other file may be changed, staged, or committed by the writer.
 
@@ -28,7 +29,7 @@ No other file may be changed, staged, or committed by the writer.
 
 ## Checks
 
-- `npm test -- --test-name-pattern="persistent status|writing status|terminal status"`
+- `node --test --experimental-strip-types --test-name-pattern="persistent status|writing status|terminal status|finished status" test/status.test.ts test/extension.test.ts`
 - `npm run typecheck`
 - inspect the complete assigned diff and index before committing
 
