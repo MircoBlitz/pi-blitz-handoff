@@ -147,10 +147,13 @@ test("writing status uses an indeterminate public activity indicator and termina
   };
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
-  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Input deferred · /sh cancel");
+  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (0) · /sh cancel");
   assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
   assert.equal(indicators.at(-1)?.intervalMs, 120);
   assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
+
+  updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true, undefined, 2);
+  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (2) · /sh cancel");
 
   updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
   assert.match(statuses.at(-1) ?? "", /^Session Handoff · failed · \d+ sec$/);

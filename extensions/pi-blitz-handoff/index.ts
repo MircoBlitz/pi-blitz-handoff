@@ -156,6 +156,8 @@ export function activateHandoffExtension(
             flow.phase,
             getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
             writing,
+            undefined,
+            flow.deferredSnapshot?.prompts.length ?? 0,
           );
         },
         onSuccess(result, ctx) {
@@ -249,6 +251,9 @@ export function activateHandoffExtension(
         STATUS_KEY,
         handoff?.phase ?? "inactive",
         getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+        false,
+        undefined,
+        flow.deferredSnapshot?.prompts.length ?? 0,
       );
     },
   });
@@ -372,6 +377,16 @@ export function activateHandoffExtension(
     if (result.action === "continue") {
       return { action: "continue" };
     }
+
+    updatePersistentHandoffStatus(
+      ctx.ui,
+      STATUS_KEY,
+      flow.phase,
+      getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
+      writer?.isActive ?? false,
+      undefined,
+      result.snapshot.prompts.length,
+    );
 
     const recoveryWrite = recoveryWrites.then(() =>
       persistDeferredPrompts(config.recoveryDirectory, result.snapshot),

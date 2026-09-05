@@ -127,6 +127,7 @@ export function updatePersistentHandoffStatus(
   terminalState?: HandoffTerminalState,
   writing = false,
   startedAtOverride?: number,
+  deferredInputCount = 0,
 ): void {
   const showWriting = writing && terminalState === undefined;
   const active = terminalState === undefined && phase !== "inactive";
@@ -136,7 +137,11 @@ export function updatePersistentHandoffStatus(
     : elapsedSince(activity.startedAt);
 
   const text = terminalState === undefined && phase !== "inactive"
-    ? colorizeActivity(ui, formatHandoffActivity(showWriting, phase), showWriting ? undefined : "warning")
+    ? colorizeActivity(
+        ui,
+        formatHandoffActivity(showWriting, phase, deferredInputCount),
+        showWriting ? undefined : "warning",
+      )
     : terminalState === undefined
       ? undefined
       : colorizeTerminal(ui, terminalState, elapsedSeconds);
@@ -190,13 +195,15 @@ function colorizeTerminal(ui: HandoffStatusUI, state: HandoffTerminalState, elap
   return ui.theme.fg(state === "finished" ? "success" : state === "failed" ? "error" : "warning", text);
 }
 
-function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase): string {
+function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, deferredInputCount: number): string {
   const activity = writing
     ? "starting session export"
     : phase === "retry-delay"
       ? "waiting before readiness retry"
       : "waiting for readiness";
-  const input = phase === "ready" || writing ? "Input deferred" : "Input available";
+  const input = phase === "ready" || writing
+    ? `Inputs deferred (${deferredInputCount})`
+    : "Input available";
   return `Session Handoff · ${activity} · ${input} · /sh cancel`;
 }
 
