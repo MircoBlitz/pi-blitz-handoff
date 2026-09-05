@@ -42,6 +42,6 @@ Final candidate evidence:
 - `npm pack --dry-run`: passed, 23 package files reported;
 - reviewer observed a clean worktree and index.
 
-## Remaining evidence
+## Real-TUI acceptance
 
-A new live Pi run must confirm visual ordering with the Async agents widget and actual rendering at the user's terminal width. Version bump and publication remain pending that acceptance and immediate target confirmation.
+The user confirmed the final candidate remains visually stable with Handoff loaded before the Async agents widget and does not reproduce the terminal-width crash. Version 1.0.1 and publication to GitHub and npm were then explicitly authorized.

@@ -13,9 +13,9 @@
 - Prior crash evidence: at terminal width 75, candidate `8c1c35a` returned visible width 79 and Pi terminated with an uncaught exception
 - Width regression: passes at widths 0, 1, 20, and 75 with ANSI-aware `truncateToWidth()`
 - Local validation gate: passed on `56ca7711acbd94da2074c65493b36fb3e4c7eb1b`
-- Corrected visual validation: pending with Handoff loaded before Subagents
-- Release authorization: not yet requested; corrected local visual testing comes first
-- Next allowed action: user performs corrected local visual validation
+- Corrected visual validation: passed with Handoff loaded before Subagents
+- Release authorization: granted for version 1.0.1, GitHub main/tag push, and npm publication
+- Release candidate: version 1.0.1 validated and authorized for the recorded targets
 
 ## Goal
 
@@ -59,4 +59,4 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 
 ## External validation
 
-After deterministic validation, the user will test the candidate in already-open local Pi sessions that need a refresh. Version bump, GitHub/npm publication, and any non-NAS push occur only after that visual acceptance and immediate target confirmation.
+The user confirmed the corrected candidate is visually stable in a real local Pi TUI. Version 1.0.1 and publication to GitHub and npm were then explicitly authorized.
