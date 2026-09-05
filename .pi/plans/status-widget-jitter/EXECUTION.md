@@ -7,11 +7,11 @@
 - Planning basis: frozen `docs/specification.md`, user-provided screenshots, Pi 0.84.2 project dependency, and current Pi 0.85.0 runtime behavior
 - Plan authorization: granted by the user on 2026-09-05
 - Product-code authorization: granted by the user on 2026-09-05 for the approved local fix and validation
-- T01 implementation: accepted at `388e9ccd588e9780f389e93c3d35460245c9c490`
-- Local validation gate: passed on `388e9ccd588e9780f389e93c3d35460245c9c490`
-- Visual validation: pending user test in refreshed local Pi sessions
-- Release authorization: not yet requested; local visual testing comes first
-- Next allowed action: user performs local visual validation
+- T01 initial implementation: `REWORK` after local visual testing at `388e9ccd588e9780f389e93c3d35460245c9c490`
+- Rework authorization: granted by the user on 2026-09-05
+- Visual finding: periodic jitter is gone, but real phase changes still reinsert the widget and briefly move it below the Async agents widget
+- Release authorization: not yet requested; corrected local visual testing comes first
+- Next allowed action: implement persistent in-place widget rendering as a forward commit
 
 ## Goal
 
@@ -20,9 +20,12 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 ## Confirmed behavior
 
 - Active handoff phases do not update the widget once per second.
-- Active status changes only on real handoff phase changes.
+- In TUI mode, the Handoff widget is registered once per session and all later state changes update that same component in place.
+- The extension reserves its widget slot at session start; when Handoff is loaded before Subagents, the Handoff widget remains above the Async agents widget.
+- Non-TUI modes retain their normal string-array status transport.
 - Terminal `finished`, `failed`, and `cancelled` status reports the total elapsed duration once.
 - Existing status colors and the writer's indeterminate activity indicator remain.
+- Session shutdown disposes the reserved widget cleanly.
 - No Pi-core patch, compatibility layer, or alternate status surface is introduced.
 
 ## Root cause
@@ -33,17 +36,20 @@ Keep the persistent Session Handoff widget visually stable while other Pi widget
 
 | Task | Result | Paths |
 |---|---|---|
-| T01 Stable activity widget | Remove periodic widget reinsertion while retaining one terminal duration calculation and current status semantics | `extensions/pi-blitz-handoff/status.ts`, `test/status.test.ts`, `test/extension.test.ts` |
+| T01 Stable activity widget | Remove periodic updates and use one persistent in-place TUI component while retaining terminal duration and non-TUI transport | `extensions/pi-blitz-handoff/status.ts`, `extensions/pi-blitz-handoff/index.ts`, `test/status.test.ts`, `test/extension.test.ts`, `test/integration.test.ts` |
 | T02 Verification and closeout | Run focused status tests and the complete local validation gate; record exact results | `.pi/plans/status-widget-jitter/EXECUTION.md`, `.pi/plans/status-widget-jitter/T01-stable-activity-widget/RESULT.md` |
 
 ## Acceptance
 
-1. An active handoff creates or updates its widget only when the handoff state actually changes.
-2. Active widget text contains no ticking elapsed-seconds value.
-3. Terminal status contains the elapsed duration measured from handoff start.
-4. Writer activity continues to use the configured indeterminate working indicator.
-5. Existing public status, terminal-state precedence, cancellation, and cleanup behavior remain unchanged.
-6. `npm test`, `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`, `git diff --check`, and `npm pack --dry-run` pass on the candidate.
+1. TUI session startup registers exactly one persistent Handoff widget component, including while its content is empty.
+2. Active and terminal phase changes update that component without another `setWidget` call.
+3. Active widget text contains no ticking elapsed-seconds value.
+4. Terminal status contains the elapsed duration measured from handoff start.
+5. Non-TUI status transport remains a string array and does not depend on TUI components.
+6. Session shutdown clears the persistent component and its state.
+7. Writer activity continues to use the configured indeterminate working indicator.
+8. Existing public status, terminal-state precedence, cancellation, and cleanup behavior remain unchanged.
+9. `npm test`, `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals --noUnusedParameters`, `git diff --check`, and `npm pack --dry-run` pass on the candidate.
 
 ## External validation
 

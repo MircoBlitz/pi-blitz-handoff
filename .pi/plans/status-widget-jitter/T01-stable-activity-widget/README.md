@@ -9,27 +9,32 @@
 
 ## Result
 
-Stop periodic reinsertion of the Session Handoff widget while retaining elapsed duration in the one-time terminal status.
+Stop all TUI reinsertion of the Session Handoff widget after session startup while retaining elapsed duration in the one-time terminal status. This is a forward correction of candidate `388e9ccd588e9780f389e93c3d35460245c9c490` after local visual testing found phase-change movement.
 
 ## Allowed changes
 
 - `extensions/pi-blitz-handoff/status.ts`
+- `extensions/pi-blitz-handoff/index.ts`
 - `test/status.test.ts`
 - `test/extension.test.ts`
+- `test/integration.test.ts`
 
 No other file may be changed, staged, or committed by the writer.
 
 ## Required behavior
 
 1. Active status has no per-second timer and no ticking seconds text.
-2. Phase changes may update the widget normally.
-3. The handoff start time remains available until terminal status is rendered.
-4. Finished, failed, and cancelled status includes total elapsed seconds once.
-5. Existing colors, writer working indicator, public status semantics, and terminal precedence remain.
+2. TUI session startup registers one persistent widget component even while inactive.
+3. Later active, phase, terminal, and clear updates mutate that component in place and request rendering without another `setWidget` call.
+4. Non-TUI contexts continue receiving string-array widget updates.
+5. Session shutdown disposes the reserved widget and associated state.
+6. The handoff start time remains available until terminal status is rendered.
+7. Finished, failed, and cancelled status includes total elapsed seconds once.
+8. Existing colors, writer working indicator, public status semantics, and terminal precedence remain.
 
 ## Checks
 
-- `node --test --experimental-strip-types --test-name-pattern="persistent status|writing status|terminal status|finished status" test/status.test.ts test/extension.test.ts`
+- focused status, extension, and integration tests covering TUI registration count, in-place rendering, non-TUI fallback, shutdown cleanup, and terminal duration
 - `npm run typecheck`
 - inspect the complete assigned diff and index before committing
 
