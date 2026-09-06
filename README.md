@@ -111,6 +111,8 @@ Recovery is always explicit. It never automatically executes leftover prompts. E
 
 Run `/sh-config` in an interactive UI. Changes remain an in-memory draft until **Save configuration**. **Cancel configuration**, `/reload`, or session replacement discards an unsaved draft. Saving validates the complete draft and asks before creating a missing configured directory.
 
+Call and handoff template settings list the available readable, nonempty templates for their role: `call_*.cmpl` for Call Templates and `handoff_*.cmpl` for dossier templates. **Enter another filename** remains available for manual `.cmpl` filename entry.
+
 Saved configuration takes effect after `/reload`; the currently loaded extension instance is not dynamically rebuilt.
 
 | Setting | Default | Constraint |

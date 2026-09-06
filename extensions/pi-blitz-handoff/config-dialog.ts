@@ -2,8 +2,9 @@ import { isAbsolute } from "node:path";
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-import { loadConfig, saveConfig, validateConfig, type HandoffConfig } from "./config.ts";
+import { handoffPaths, loadConfig, saveConfig, validateConfig, type HandoffConfig } from "./config.ts";
 import { isMissing, requireDirectory } from "./filesystem.ts";
+import { catalogueTemplates } from "./templates.ts";
 
 type ConfigDialogContext = Pick<ExtensionCommandContext, "hasUI" | "ui">;
 type SettingKey = keyof HandoffConfig;
@@ -38,6 +39,7 @@ const SETTING_LABELS: Record<SettingKey, string> = {
 
 const SAVE_OPTION = "Save configuration";
 const CANCEL_OPTION = "Cancel configuration";
+const ENTER_TEMPLATE_OPTION = "Enter another filename";
 
 export class ConfigDialog {
   private activeController: AbortController | undefined;
@@ -93,7 +95,7 @@ export class ConfigDialog {
         const settingIndex = options.indexOf(choice);
         const key = SETTING_KEYS[settingIndex];
         if (key !== undefined) {
-          draft = await editSetting(draft, key, ctx, controller.signal);
+          draft = await editSetting(this.agentDirectory, draft, key, ctx, controller.signal);
         }
       }
     } catch (error) {
@@ -126,6 +128,7 @@ function formatValue(key: SettingKey, value: HandoffConfig[SettingKey]): string 
 }
 
 async function editSetting(
+  agentDirectory: string,
   draft: HandoffConfig,
   key: SettingKey,
   ctx: ConfigDialogContext,
@@ -141,6 +144,27 @@ async function editSetting(
     );
     if (signal.aborted || answer === undefined) return draft;
     candidate = { ...draft, automaticSessionHandoff: answer === "Enabled" };
+  } else if (key === "callTemplate" || key === "handoffTemplate") {
+    const paths = handoffPaths(agentDirectory);
+    const prefix = key === "callTemplate" ? "call_" : "handoff_";
+    const entries = await catalogueTemplates(paths.templateDirectory, draft.templateDirectory);
+    const options = entries
+      .map(({ filename }) => filename)
+      .filter((filename) => filename.startsWith(prefix));
+    options.push(ENTER_TEMPLATE_OPTION);
+
+    let answer = await ctx.ui.select(questionFor(key, draft), options, { signal });
+    if (signal.aborted || answer === undefined) return draft;
+    if (answer === ENTER_TEMPLATE_OPTION) {
+      answer = await ctx.ui.input("What .cmpl filename should be used? Enter a filename, not a path.", inputPlaceholder(draft[key]), { signal });
+      if (signal.aborted || answer === undefined) return draft;
+    }
+
+    candidate = candidateForAnswer(draft, key, answer);
+    if (candidate === undefined) {
+      ctx.ui.notify(validationMessage(key, draft), "warning");
+      return draft;
+    }
   } else {
     const answer = await ctx.ui.input(questionFor(key, draft), inputPlaceholder(draft[key]), { signal });
     if (signal.aborted || answer === undefined) return draft;
@@ -179,9 +203,9 @@ function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff">, draft:
     case "templateDirectory":
       return "What absolute addendum template directory should be used? Leave blank for no addendum directory.";
     case "callTemplate":
-      return "What .cmpl filename should be used as the session handoff call template? Enter a filename, not a path.";
+      return "Which session handoff call template should be used?";
     case "handoffTemplate":
-      return "What .cmpl filename should be used as the handoff dossier template? Enter a filename, not a path.";
+      return "Which handoff dossier template should be used?";
   }
 }
 

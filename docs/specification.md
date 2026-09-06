@@ -103,7 +103,7 @@ Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a p
 
 ### In-chat configuration
 
-`/sh-config` starts an extension-owned chat dialog. It shows the available settings and the current draft values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order.
+`/sh-config` starts an extension-owned chat dialog. It shows the available settings and the current draft values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
 
 The dialog ends only with:
 
