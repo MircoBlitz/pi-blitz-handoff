@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -33,7 +33,11 @@ async function temporaryDirectory(t: test.TestContext): Promise<string> {
 
 async function persistedConfig(agentDirectory: string, changes: Partial<HandoffConfig> = {}): Promise<HandoffConfig> {
   const recoveryDirectory = join(agentDirectory, "existing-recovery");
+  const templateDirectory = handoffPaths(agentDirectory).templateDirectory;
   await mkdir(recoveryDirectory);
+  await mkdir(templateDirectory, { recursive: true });
+  await writeFile(join(templateDirectory, "call_default.cmpl"), "call default");
+  await writeFile(join(templateDirectory, "handoff_default.cmpl"), "handoff default");
   const config = { ...defaultConfig(agentDirectory), recoveryDirectory, ...changes };
   await saveConfig(agentDirectory, config);
   return config;
@@ -241,6 +245,14 @@ test("invalid answers show clear feedback and retain the previous draft values",
     chooseSetting("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)", (options) => {
       assert.ok(options.includes("Writer attempts: 3"));
     }),
+    {
+      method: "select",
+      answer: "Enter another filename",
+      check(title, options) {
+        assert.equal(title, "Which handoff dossier template should be used?");
+        assert.deepEqual(options, ["handoff_default.cmpl", "Enter another filename"]);
+      },
+    },
     { method: "input", answer: "nested/file.cmpl" },
     chooseSetting("Automatic session handoff: disabled", (options) => {
       assert.ok(options.includes("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)"));
@@ -255,6 +267,53 @@ test("invalid answers show clear feedback and retain the previous draft values",
 
   assert.ok(rig.notifications.some(({ message }) => message === "Enter a positive integer."));
   assert.ok(rig.notifications.some(({ message }) => message === "Enter a .cmpl filename without a directory path."));
+});
+
+test("template settings list role-prefixed templates and allow manual entry", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const addendumDirectory = join(agentDirectory, "addendum");
+  await mkdir(addendumDirectory);
+  await writeFile(join(addendumDirectory, "call_fast.cmpl"), "call fast");
+  await writeFile(join(addendumDirectory, "handoff_compact.cmpl"), "handoff compact");
+  await writeFile(join(addendumDirectory, "unrelated.cmpl"), "not role prefixed");
+  await persistedConfig(agentDirectory, { templateDirectory: addendumDirectory });
+
+  const rig = scriptedContext([
+    chooseSetting("Call template: call_default.cmpl"),
+    {
+      method: "select",
+      answer: "call_fast.cmpl",
+      check(title, options) {
+        assert.equal(title, "Which session handoff call template should be used?");
+        assert.deepEqual(options, ["call_default.cmpl", "call_fast.cmpl", "Enter another filename"]);
+      },
+    },
+    chooseSetting("Handoff template: handoff_default.cmpl", (options) => {
+      assert.ok(options.includes("Call template: call_fast.cmpl"));
+    }),
+    {
+      method: "select",
+      answer: "Enter another filename",
+      check(title, options) {
+        assert.equal(title, "Which handoff dossier template should be used?");
+        assert.deepEqual(options, ["handoff_compact.cmpl", "handoff_default.cmpl", "Enter another filename"]);
+      },
+    },
+    {
+      method: "input",
+      answer: "handoff_custom.cmpl",
+      check(title) {
+        assert.equal(title, "What .cmpl filename should be used? Enter a filename, not a path.");
+      },
+    },
+    chooseSetting("Cancel configuration", (options) => {
+      assert.ok(options.includes("Handoff template: handoff_custom.cmpl"));
+    }),
+  ]);
+
+  await new ConfigDialog(agentDirectory).run(rig.context);
+
+  rig.assertFinished();
 });
 
 test("discard aborts an active extension-owned question", async (t) => {

@@ -1,0 +1,5 @@
+Prepare this session for transfer at the next genuinely safe boundary.
+
+Finish only required model-owned work, tool execution, subagents, background work, and required output that is already in flight. While any of those are still in flight, call neither readiness tool. Unfinished future work and ordinary unanswered or resumable questions are not blockers.
+
+When the transfer boundary is safe, use direct GO unless the current exchange shows that you and the user are actively working through a live interaction that could be disrupted by replacing the session now. Examples include the user currently running or observing an interactive test, or supplying input to an ongoing process. The mere existence of a conversation, a future approval, or an ordinary unanswered question is not enough. Prefer direct GO when uncertain rather than inventing user deferral. Do not perform extra task work merely to make the session look complete.

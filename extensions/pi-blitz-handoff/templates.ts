@@ -199,7 +199,13 @@ async function attemptTemplate(
 }
 
 async function templateNames(directory: string): Promise<string[]> {
-  const names = await readdir(directory);
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
   const valid: string[] = [];
   for (const name of names) {
     if (!isTemplateFilename(name)) continue;
