@@ -1,8 +1,8 @@
-# pi-blitz-handoff v1.0 Product Specification
+# pi-blitz-handoff Product Specification
 
-> **FROZEN v1.0 — Approved product authority.**
+> **Current approved product authority.**
 >
-> This specification was approved with the v1.0 reimplementation authorization. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details that are clearly implied by the approved concept may be resolved by the orchestrator.
+> This specification incorporates the explicitly approved keyed-readiness redesign. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
@@ -25,11 +25,12 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 ### Commands
 
 - `/sh` — request a handoff.
-- `/sh cancel` — cancel the active handoff.
-- `/sh recover` — inspect and act on leftover deferred-prompt files.
-- `/sh config` — configure the extension through an in-chat question-and-answer flow.
+- `/sh-help` — show handoff commands and usage.
+- `/sh-cancel` — cancel the active handoff.
+- `/sh-recover` — inspect and act on leftover deferred-prompt files.
+- `/sh-config` — configure the extension through an in-chat question-and-answer flow.
 
-There is no public transition command, `/sh retry`, `/sh cleanup`, `/shconfig`, or compatibility alias. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
+The spaced `/sh help`, `/sh cancel`, `/sh recover`, and `/sh config` forms remain quietly accepted as subcommand aliases. There is no public transition command, `/sh retry`, `/sh cleanup`, or `/shconfig`. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
 
 ### Model-callable tool
 
@@ -61,6 +62,8 @@ Managed data lives below:
 ├── config.json
 ├── recovery/
 └── templates/
+    ├── call_default.cmpl
+    ├── handoff_default.cmpl
     └── default.cmpl
 ```
 
@@ -81,7 +84,8 @@ Internally generated filenames cannot contain path traversal. New private files 
   "writerRetryDelaySeconds": 30,
   "recoveryDirectory": "<getAgentDir()>/pi-blitz-handoff/recovery/",
   "templateDirectory": null,
-  "handoffTemplate": "default.cmpl"
+  "callTemplate": "call_default.cmpl",
+  "handoffTemplate": "handoff_default.cmpl"
 }
 ```
 
@@ -95,11 +99,11 @@ Automatic handoff is disabled when `automaticSessionHandoff` is false or `automa
 
 Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a positive integer and means total attempts including the first.
 
-`recoveryDirectory` and an optional `templateDirectory` are absolute directory paths. `handoffTemplate` is a `.cmpl` filename, not a path. A directory setting must resolve to a directory; when it does not exist, the config dialog asks whether `save` may create it. Deliberate directory symlinks are valid.
+`recoveryDirectory` and an optional `templateDirectory` are absolute directory paths. `callTemplate` and `handoffTemplate` are `.cmpl` filenames, not paths. A directory setting must resolve to a directory; when it does not exist, the config dialog asks whether `save` may create it. Deliberate directory symlinks are valid.
 
 ### In-chat configuration
 
-`/sh config` starts an extension-owned chat dialog. It shows the available settings and the current draft values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order.
+`/sh-config` starts an extension-owned chat dialog. It shows the available settings and the current draft values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order.
 
 The dialog ends only with:
 
@@ -108,25 +112,27 @@ The dialog ends only with:
 
 Nothing is persisted before `save`. Confirmed missing directories are created as part of saving the validated draft. Dialog questions and answers do not enter model context. `/reload` or session replacement discards an unsaved draft. A TUI overlay is not part of v1.0.
 
-## 5. Managed default and template catalogue
+## 5. Managed defaults and template catalogue
 
-The package ships the root asset `default.cmpl`. On load, the extension compares it with managed `templates/default.cmpl`:
+The package ships `call_default.cmpl`, `handoff_default.cmpl`, and the compatible legacy dossier asset `default.cmpl`. On load, each package asset is compared with its same-name file in the managed template directory:
 
 - equal content: do not write;
 - missing managed file: install the package file;
-- different content: rename the managed file beside itself to `default.cmpl.backup-<UTC timestamp>`, then install the package file.
+- different content: rename the managed file beside itself to `<filename>.backup-<UTC timestamp>`, then install the package file.
 
 The timestamp uses filesystem-safe UTC with millisecond precision. Backups do not end in `.cmpl`, never enter the template catalogue, and are not automatically deleted. Other managed templates are preserved.
 
-Catalogue scans are nonrecursive. An optional configured addendum directory may shadow a managed template with the same filename.
-
-Every writer attempt resolves the current template in this order:
+Catalogue scans are nonrecursive. An optional configured addendum directory may shadow a managed template with the same filename. Call and dossier templates have separate configuration fields but share the same resolver. Each resolution uses:
 
 1. the selected filename from the addendum directory when configured and present, otherwise the selected filename from the managed directory;
-2. addendum `default.cmpl`, when configured;
-3. managed `templates/default.cmpl`.
+2. the role-specific addendum default (`call_default.cmpl` or `handoff_default.cmpl`), when configured;
+3. the corresponding managed role-specific default.
 
-Each physical candidate path is attempted at most once. A valid template is a readable, nonempty `.cmpl` file. Every failed candidate is reported. There is no embedded TypeScript template and no fourth fallback.
+Each physical candidate path is attempted at most once. A valid template is a readable, nonempty `.cmpl` file. Every failed candidate is reported. There is no placeholder engine, embedded TypeScript template, or fourth fallback.
+
+Both configured roles are health-checked during extension startup and whenever `/sh-config` or `/sh config` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
+
+An exact older configuration lacking only `callTemplate` loads with `call_default.cmpl` added in memory and is not rewritten automatically. `handoffTemplate: "default.cmpl"` remains valid while its content is compatible; the configuration dialog labels it as the legacy name and identifies `handoff_default.cmpl` as the new default.
 
 ## 6. Warnings and automatic initiation
 
@@ -138,36 +144,43 @@ Manual and model-requested starts ignore all context percentages.
 
 ## 7. Readiness
 
-A start request records pending intent. It does not poll `ctx.isIdle()`.
+A start request records pending intent. It does not infer the current working style from whether initiation came from `/sh`, `blitz_handoff start`, or the automatic threshold.
 
-Readiness begins only when Pi is settled and no user or system continuation is outstanding:
+The initial readiness instruction begins only when Pi is settled and no user or system continuation is outstanding:
 
 - a request made during a model run waits for `agent_settled`;
 - a request made while Pi is already settled may dispatch immediately;
 - `ctx.hasPendingMessages()` must be false before dispatch.
 
-For each readiness attempt the extension creates two new unpredictable identifiers: one for `GO` and one for `NOT YET`. The readiness prompt asks only whether session-owned work is still active and requires exactly one current identifier as its answer.
+The extension creates one unpredictable correlation key and sends one resolved Call Template. Deterministic code appends the exact tool protocol and interaction rules; editable template prose does not own correlation, user-choice, timer, or state invariants.
 
-Only the exact current `GO` identifier is accepted as readiness. The writer may begin only after that response's model run also reaches `agent_settled` and no pending message remains.
+The current model makes the bounded semantic decision:
 
-The exact current `NOT YET` identifier, a malformed answer, or no valid answer leaves the handoff pending. Another check is scheduled after `readinessRetrySeconds`. Retry uses one timer, not periodic idle polling.
+- while required model-owned work, tool execution, subagents, background work, or required output is still in flight, call neither readiness tool;
+- unfinished future work and ordinary unanswered or resumable questions are not blockers;
+- at a safe boundary, prefer direct GO when uncertain rather than inventing user deferral;
+- use user deferral only for a concrete active collaboration or user interaction that may still matter before replacement.
 
-If ordinary interactive or RPC model input that reaches Pi's `input` event arrives while readiness is active:
+Two correlated tools exist:
 
-1. invalidate the current GO and NOT-YET identifiers;
-2. let the input pass unchanged to the source agent;
-3. wait for the resulting work to reach `agent_settled`;
-4. start a fresh readiness attempt with fresh identifiers.
+- `session_handoff_go({ key })` accepts direct GO;
+- `session_handoff_go_with_user_deferral({ key, reason })` supplies a short concrete reason and opens an extension-owned **Ready / Wait / Cancel** selection.
 
-Slash commands retain Pi's native command behavior because Pi dispatches them before the `input` event.
+The extension does not parse free-form user text or build a working-style detector. The deferral selection resolves deterministically:
 
-Steering is recognized through the Pi input event's `streamingBehavior === "steer"`. Follow-up input has the same invalidating effect. Before an accepted GO, user input is normal source-session work and is not deferred.
+- **Ready** accepts GO;
+- **Wait** keeps ordinary input normal, suspends the reminder for this handoff, and adds the status line `Awaiting User GO · Tell your LLM to start when ready`;
+- **Cancel** ends the handoff.
 
-There is no separate active-questioning detector or questioning state. An unfinished question-and-answer exchange is ordinary session-owned work: readiness returns NOT YET, the user's answer passes through normally, and readiness is tried again after the resulting settled boundary.
+After **Wait**, no timer or dialog runs automatically. A later ordinary user message may explicitly indicate readiness; the model then calls direct GO with the same key. The extension does not parse that message.
+
+After the initial instruction, one timer is scheduled for `readinessRetrySeconds`. If neither tool has resolved readiness when it fires, one short visible reminder triggers a model turn. The model calls the appropriate keyed tool if ready or produces no normal text while required work remains in flight. This one-shot reminder prevents deadlock when background work finishes without otherwise producing a new turn. There is no periodic polling.
+
+Before accepted GO, interactive and RPC input passes unchanged and is not deferred. Slash commands retain Pi's native command behavior because Pi dispatches them before the `input` event.
 
 ## 8. GO boundary and deferred prompts
 
-The accepted GO followed by its settled boundary starts the handoff writer and the deferred-prompt window.
+Accepted direct GO or **Ready** from the user-deferral selection starts the deferred-prompt window immediately. The writer starts only after the answering tool run reaches an idle `agent_settled` boundary with no pending message.
 
 From that boundary until the native replacement begins:
 
@@ -205,7 +218,7 @@ At each attempt the extension:
 3. allows only `submit_session_handoff`;
 4. sends the writer prompt to the source model.
 
-The writer prompt includes the complete template, exact current submission ID, and exact source-session transcript path. It instructs the model to do no further task work and to submit exactly once.
+The writer prompt includes the complete dossier template, exact current submission ID, and exact source-session transcript path. It instructs the model to do no further task work and to submit exactly once.
 
 `submit_session_handoff` accepts only:
 
@@ -236,7 +249,7 @@ The built-in template retains these continuation sections after its meaningful t
 14. `Integrity notes`
 15. `Post-Handoff Initial Action`
 
-The final writer-produced dossier section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff. An unanswered question currently awaiting user input remains source-session work and produces `NOT YET`; continued questioning is appropriate when the prior exchange is complete and the next authorized question is due.
+The final writer-produced dossier section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff. An ordinary unanswered question is resumable continuation context rather than an automatic readiness blocker. Only a concrete active collaboration that may still matter before replacement justifies the user-deferral entry point.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -266,9 +279,9 @@ The source transcript remains available through native parent-session lineage an
 
 ## 11. Cancellation and lifecycle
 
-Before GO, `/sh cancel` clears the pending request and invalidates readiness identifiers.
+Before GO, canonical `/sh-cancel` clears the pending request, correlation key, timer, and any user-wait state.
 
-After GO and before native replacement starts, `/sh cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
+After GO and before native replacement starts, `/sh-cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh-recover`. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
 Before GO, user session navigation may discard the pending handoff. From GO until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked because they would invalidate the active transfer. The extension's own native replacement is allowed.
 
@@ -297,11 +310,14 @@ Recovery has no per-prompt selection, `pending`/`dispatching` states, checkpoint
 
 ## 13. Status and failures
 
-The extension exposes concise factual status in chat and through `blitz_handoff status`. The small persistent status surface has three principal states:
+The extension exposes concise factual status in chat and through `blitz_handoff status`. The persistent status surface distinguishes:
 
-- `Waiting for Session Handoff`;
+- yellow `Waiting for Session Handoff`;
+- red `User Input Required` while the extension-owned selection is open;
 - `Writing Session Handoff` with an indeterminate activity indicator;
 - `Session Handoff Finished` in the replacement session until the next ordinary user input or another handoff begins.
+
+The active widget advertises canonical `/sh-cancel`. After **Wait**, the normal first activity line remains and a second width-safe line reads `Awaiting User GO · Tell your LLM to start when ready`.
 
 Failure and cancellation override those states. A successful final status adds a second line with `Wait Time`, measured from initiation to accepted `GO`, and `Handoff Time`, measured from `GO` to successful completion. After `GO`, the persistent activity line shows `Inputs deferred (0)` and increments that factual count for every captured prompt. Concrete attempt information may appear in factual chat or tool status, but the persistent indicator does not invent fractional or numbered progress.
 
@@ -318,7 +334,7 @@ Automated tests cover the actual deterministic contracts:
 - configuration validation, atomic save, and in-chat draft/save/cancel behavior;
 - managed default comparison, backup, catalogue, and fallback;
 - explicit versus automatic initiation;
-- event-driven readiness, exact identifier correlation, timer retry, and input invalidation;
+- one-instruction readiness, exact keyed tool correlation, user-deferral choices, one-shot reminder, and normal pre-GO input;
 - writer prompt, tool isolation/restoration, submission validation, and configured attempts;
 - deferred-prompt ordering, one-file persistence, and deterministic assembly;
 - direct native replacement and parent-session lineage inputs;
@@ -346,7 +362,8 @@ v1.0 excludes:
 
 - a TUI or overlay configuration editor;
 - a public transition command or a parallel replacement mechanism beyond the one private bridge required by Pi's command-only session API;
-- idle polling;
+- periodic readiness polling;
+- deterministic free-form user-text parsing or a working-style detection engine;
 - a separate session-name field;
 - an intermediate handoff transport file;
 - one recovery file per prompt;
@@ -358,11 +375,11 @@ v1.0 excludes:
 - a generic extra continuation turn;
 - strict dossier heading validation;
 - an arbitrary dossier size limit;
-- optional-extension-specific readiness logic;
+- optional-extension-specific readiness rules beyond the general in-flight-work boundary;
 - GitHub CI.
 
 ## 16. Review status and authority
 
-This document is the frozen v1.0 product authority, approved together with the autonomous reimplementation request.
+This document is the current product authority, including the approved keyed-readiness refinement.
 
 Git history, previous plan text, and previous implementation code are not product authority and must not be used as implementation context. Workers may report a concrete gap but must not edit or reinterpret this specification. The orchestrator may approve a small implementation detail when it is clearly implied by the approved concept and does not materially change public behavior, UX, authorization, security, data lifecycle, or scope. Material changes, uncertainty, and genuine product decisions go to the user. Contradictory proposals are rejected rather than incorporated.

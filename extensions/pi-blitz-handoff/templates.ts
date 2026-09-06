@@ -4,6 +4,10 @@ import { join, resolve } from "node:path";
 
 import { atomicWriteFile, ensureDirectory, isMissing } from "./filesystem.ts";
 
+export const CALL_DEFAULT_TEMPLATE = "call_default.cmpl";
+export const HANDOFF_DEFAULT_TEMPLATE = "handoff_default.cmpl";
+export const LEGACY_HANDOFF_DEFAULT_TEMPLATE = "default.cmpl";
+
 export interface TemplateCatalogueEntry {
   filename: string;
   path: string;
@@ -26,36 +30,69 @@ export interface TemplateDirectories {
   addendumDirectory: string | null;
 }
 
-export function shippedDefaultPath(): string {
-  return fileURLToPath(new URL("../../default.cmpl", import.meta.url));
+export interface TemplateHealth {
+  resolved: ResolvedTemplate;
+  warning?: string;
 }
 
-export async function synchronizeManagedDefault(
+export async function checkTemplateHealth(
+  role: "Call" | "Handoff",
+  selectedFilename: string,
+  defaultFilename: string,
+  directories: TemplateDirectories,
+): Promise<TemplateHealth> {
+  let roleDefault: ResolvedTemplate;
+  try {
+    roleDefault = await resolveTemplate(defaultFilename, directories, defaultFilename);
+  } catch (error) {
+    throw new Error(`${role} template default "${defaultFilename}" could not resolve: ${errorMessage(error)}`);
+  }
+  if (selectedFilename === defaultFilename) return { resolved: roleDefault };
+
+  const resolved = await resolveTemplate(selectedFilename, directories, defaultFilename);
+  if (resolved.failures.length === 0) return { resolved };
+  const failures = resolved.failures
+    .map((failure) => `${failure.path}: ${failure.reason}`)
+    .join("; ");
+  return {
+    resolved,
+    warning: `${role} template "${selectedFilename}" could not be used: ${failures}. Using fallback ${resolved.path}.`,
+  };
+}
+
+export function shippedTemplatePath(filename: string): string {
+  if (!isTemplateFilename(filename)) {
+    throw new Error("Shipped template must be a .cmpl filename, not a path");
+  }
+  return fileURLToPath(new URL(`../../${filename}`, import.meta.url));
+}
+
+export async function synchronizeManagedTemplate(
   managedDirectory: string,
-  packageDefault = shippedDefaultPath(),
+  filename: string,
+  packageTemplate = shippedTemplatePath(filename),
   now = new Date(),
 ): Promise<{ status: "equal" | "installed" | "updated"; backupPath?: string }> {
+  if (!isTemplateFilename(filename)) {
+    throw new Error("Managed template must be a .cmpl filename, not a path");
+  }
   await ensureDirectory(managedDirectory);
-  const source = await readFile(packageDefault);
-  const managedPath = join(managedDirectory, "default.cmpl");
+  const source = await readFile(packageTemplate);
+  const managedPath = join(managedDirectory, filename);
 
   let current: Buffer;
   try {
     current = await readFile(managedPath);
   } catch (error) {
-    if (!isMissing(error)) {
-      throw error;
-    }
+    if (!isMissing(error)) throw error;
     await atomicWriteFile(managedPath, source);
     return { status: "installed" };
   }
 
-  if (current.equals(source)) {
-    return { status: "equal" };
-  }
+  if (current.equals(source)) return { status: "equal" };
 
   const timestamp = now.toISOString().replaceAll(":", "-");
-  const backupPath = join(managedDirectory, `default.cmpl.backup-${timestamp}`);
+  const backupPath = join(managedDirectory, `${filename}.backup-${timestamp}`);
   await rename(managedPath, backupPath);
   await atomicWriteFile(managedPath, source);
   return { status: "updated", backupPath };
@@ -82,9 +119,10 @@ export async function catalogueTemplates(
 export async function resolveTemplate(
   selectedFilename: string,
   directories: TemplateDirectories,
+  defaultFilename = HANDOFF_DEFAULT_TEMPLATE,
 ): Promise<ResolvedTemplate> {
-  if (!isTemplateFilename(selectedFilename)) {
-    throw new Error("Selected template must be a .cmpl filename, not a path");
+  if (!isTemplateFilename(selectedFilename) || !isTemplateFilename(defaultFilename)) {
+    throw new Error("Selected and default templates must be .cmpl filenames, not paths");
   }
 
   const failures: TemplateFailure[] = [];
@@ -93,11 +131,9 @@ export async function resolveTemplate(
   if (directories.addendumDirectory !== null) {
     const addendumSelected = join(directories.addendumDirectory, selectedFilename);
     const selected = await attemptTemplate(addendumSelected, failures, attempted, true);
-    if (selected.status === "valid") {
-      return { path: selected.path, content: selected.content, failures };
-    }
+    if (selected.status === "valid") return { path: selected.path, content: selected.content, failures };
     if (selected.status !== "missing") {
-      return resolveDefaults(directories, failures, attempted);
+      return resolveDefaults(directories, defaultFilename, failures, attempted);
     }
   }
 
@@ -110,29 +146,28 @@ export async function resolveTemplate(
     return { path: managedSelected.path, content: managedSelected.content, failures };
   }
 
-  return resolveDefaults(directories, failures, attempted);
+  return resolveDefaults(directories, defaultFilename, failures, attempted);
 }
 
 async function resolveDefaults(
   directories: TemplateDirectories,
+  defaultFilename: string,
   failures: TemplateFailure[],
   attempted: Set<string>,
 ): Promise<ResolvedTemplate> {
   const candidates: string[] = [];
   if (directories.addendumDirectory !== null) {
-    candidates.push(join(directories.addendumDirectory, "default.cmpl"));
+    candidates.push(join(directories.addendumDirectory, defaultFilename));
   }
-  candidates.push(join(directories.managedDirectory, "default.cmpl"));
+  candidates.push(join(directories.managedDirectory, defaultFilename));
 
   for (const candidate of candidates) {
     const result = await attemptTemplate(candidate, failures, attempted);
-    if (result.status === "valid") {
-      return { path: result.path, content: result.content, failures };
-    }
+    if (result.status === "valid") return { path: result.path, content: result.content, failures };
   }
 
   const details = failures.map((failure) => `${failure.path}: ${failure.reason}`).join("; ");
-  throw new Error(`No valid handoff template found${details.length === 0 ? "" : `: ${details}`}`);
+  throw new Error(`No valid template found${details.length === 0 ? "" : `: ${details}`}`);
 }
 
 type TemplateAttempt =
@@ -146,9 +181,7 @@ async function attemptTemplate(
   ignoreMissing = false,
 ): Promise<TemplateAttempt> {
   const candidate = resolve(path);
-  if (attempted.has(candidate)) {
-    return { status: "failed" };
-  }
+  if (attempted.has(candidate)) return { status: "failed" };
   attempted.add(candidate);
 
   try {
@@ -159,9 +192,7 @@ async function attemptTemplate(
     }
     return { status: "valid", path: candidate, content };
   } catch (error) {
-    if (ignoreMissing && isMissing(error)) {
-      return { status: "missing" };
-    }
+    if (ignoreMissing && isMissing(error)) return { status: "missing" };
     failures.push({ path: candidate, reason: errorMessage(error) });
     return { status: isMissing(error) ? "missing" : "failed" };
   }
@@ -171,13 +202,9 @@ async function templateNames(directory: string): Promise<string[]> {
   const names = await readdir(directory);
   const valid: string[] = [];
   for (const name of names) {
-    if (!isTemplateFilename(name)) {
-      continue;
-    }
+    if (!isTemplateFilename(name)) continue;
     try {
-      if ((await readFile(join(directory, name))).length > 0) {
-        valid.push(name);
-      }
+      if ((await readFile(join(directory, name))).length > 0) valid.push(name);
     } catch {
       // Invalid catalogue entries are omitted; resolution reports candidate failures.
     }

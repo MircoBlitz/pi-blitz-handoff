@@ -11,6 +11,7 @@ import { ConfigDialog } from "./config-dialog.ts";
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
 import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
+import { registerSessionHandoffGoTools } from "./go-tool.ts";
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
@@ -31,7 +32,15 @@ import {
   updatePersistentHandoffStatus,
   warningMessage,
 } from "./status.ts";
-import { resolveTemplate, shippedDefaultPath, synchronizeManagedDefault } from "./templates.ts";
+import {
+  CALL_DEFAULT_TEMPLATE,
+  HANDOFF_DEFAULT_TEMPLATE,
+  LEGACY_HANDOFF_DEFAULT_TEMPLATE,
+  checkTemplateHealth,
+  resolveTemplate,
+  shippedTemplatePath,
+  synchronizeManagedTemplate,
+} from "./templates.ts";
 import {
   NativeHandoffTransition,
   nativeTransitionCommand,
@@ -44,6 +53,7 @@ export * from "./config.ts";
 export * from "./deferred.ts";
 export * from "./filesystem.ts";
 export * from "./flow.ts";
+export * from "./go-tool.ts";
 export * from "./recovery-store.ts";
 export * from "./public-tool.ts";
 export * from "./readiness.ts";
@@ -59,26 +69,62 @@ const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
 const HANDOFF_HELP = [
   "Session handoff commands:",
   "  /sh              Start a session handoff",
-  "  /sh cancel       Cancel the active handoff",
-  "  /sh recover      Inspect or replay deferred prompts",
-  "  /sh config       Configure handoff settings",
-  "  /sh help         Show this help",
-].join("\\n");
+  "  /sh-cancel       Cancel the active handoff",
+  "  /sh-recover      Inspect or replay deferred prompts",
+  "  /sh-config       Configure handoff settings",
+  "  /sh-help         Show this help",
+].join("\n");
 
-export interface InitializedHandoffStorage {
+export interface HandoffTemplateHealth {
+  callTemplate: string;
+  warnings: string[];
+}
+
+export interface InitializedHandoffStorage extends HandoffTemplateHealth {
   config: HandoffConfig;
   paths: HandoffPaths;
 }
 
+export async function resolveHandoffTemplateHealth(
+  config: Pick<HandoffConfig, "callTemplate" | "handoffTemplate" | "templateDirectory">,
+  paths: Pick<HandoffPaths, "templateDirectory">,
+): Promise<HandoffTemplateHealth> {
+  const directories = {
+    managedDirectory: paths.templateDirectory,
+    addendumDirectory: config.templateDirectory,
+  };
+  const call = await checkTemplateHealth(
+    "Call",
+    config.callTemplate,
+    CALL_DEFAULT_TEMPLATE,
+    directories,
+  );
+  const handoff = await checkTemplateHealth(
+    "Handoff",
+    config.handoffTemplate,
+    HANDOFF_DEFAULT_TEMPLATE,
+    directories,
+  );
+  return {
+    callTemplate: call.resolved.content,
+    warnings: [call.warning, handoff.warning].filter((warning): warning is string => warning !== undefined),
+  };
+}
+
 export async function initializeHandoffStorage(
   agentDirectory: string,
-  packageDefault = shippedDefaultPath(),
 ): Promise<InitializedHandoffStorage> {
   const paths = handoffPaths(agentDirectory);
   await ensureDirectory(paths.baseDirectory);
   await ensureDirectory(paths.recoveryDirectory);
   await ensureDirectory(paths.templateDirectory);
-  await synchronizeManagedDefault(paths.templateDirectory, packageDefault);
+  for (const filename of [
+    LEGACY_HANDOFF_DEFAULT_TEMPLATE,
+    CALL_DEFAULT_TEMPLATE,
+    HANDOFF_DEFAULT_TEMPLATE,
+  ]) {
+    await synchronizeManagedTemplate(paths.templateDirectory, filename, shippedTemplatePath(filename));
+  }
 
   const config = await loadConfig(agentDirectory);
   await requireDirectory(config.recoveryDirectory);
@@ -86,15 +132,19 @@ export async function initializeHandoffStorage(
     await requireDirectory(config.templateDirectory);
   }
 
-  return { config, paths };
+  const templateHealth = await resolveHandoffTemplateHealth(config, paths);
+  return { config, paths, ...templateHealth };
 }
 
 export function activateHandoffExtension(
   pi: ExtensionAPI,
   config: HandoffConfig,
-  paths: HandoffPaths = handoffPaths(getAgentDir()),
+  paths: HandoffPaths,
+  callTemplate: string,
+  startupTemplateWarnings: readonly string[] = [],
 ): HandoffFlow {
   let advisoryWarningShown = false;
+  let pendingStartupTemplateWarnings = [...startupTemplateWarnings];
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
   const configDialog = new ConfigDialog(dirname(paths.baseDirectory));
@@ -148,10 +198,14 @@ export function activateHandoffExtension(
         writerRetryDelaySeconds: config.writerRetryDelaySeconds,
         runtime: writerRuntime,
         resolveTemplate: () =>
-          resolveTemplate(config.handoffTemplate, {
-            managedDirectory: paths.templateDirectory,
-            addendumDirectory: config.templateDirectory,
-          }),
+          resolveTemplate(
+            config.handoffTemplate,
+            {
+              managedDirectory: paths.templateDirectory,
+              addendumDirectory: config.templateDirectory,
+            },
+            HANDOFF_DEFAULT_TEMPLATE,
+          ),
         onTemplateFailure(failure, attempt, ctx) {
           ctx.ui.notify(
             `Writer attempt ${attempt} could not use template ${failure.path}: ${failure.reason}`,
@@ -242,7 +296,18 @@ export function activateHandoffExtension(
 
   flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
+    callTemplate,
     onReadinessPrompt(prompt) {
+      pi.sendMessage(
+        {
+          customType: READINESS_MESSAGE_TYPE,
+          content: prompt,
+          display: true,
+        },
+        { deliverAs: "followUp", triggerTurn: true },
+      );
+    },
+    onReadinessReminder(prompt) {
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -265,8 +330,15 @@ export function activateHandoffExtension(
         false,
         undefined,
         flow.deferredSnapshot?.prompts.length ?? 0,
+        undefined,
+        handoff?.awaitingUserGo ?? false,
       );
     },
+  });
+  registerSessionHandoffGoTools(pi, {
+    accept: (key, ctx) => flow.acceptGo(key, ctx),
+    beginUserDeferral: (key, ctx) => flow.beginUserDeferral(key, ctx),
+    resolveUserDeferral: (key, choice, ctx) => flow.resolveUserDeferral(key, choice, ctx),
   });
 
   const requestStart = (ctx: ExtensionContext, source: HandoffStartSource): string => {
@@ -299,6 +371,14 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "config") {
+      try {
+        const configured = await loadConfig(dirname(paths.baseDirectory));
+        const templateHealth = await resolveHandoffTemplateHealth(configured, paths);
+        for (const warning of templateHealth.warnings) ctx.ui.notify(warning, "warning");
+      } catch (error) {
+        ctx.ui.notify(`Template health check failed: ${errorMessage(error)}`, "error");
+        return;
+      }
       await configDialog.run(ctx);
       return;
     }
@@ -331,11 +411,6 @@ export function activateHandoffExtension(
 
   pi.registerCommand("sh", {
     description: "Start a session handoff (use /sh-help for commands)",
-    getArgumentCompletions: (prefix: string) =>
-      ["cancel", "recover", "config", "help"].filter((value) => value.startsWith(prefix)).map((value) => ({
-        value,
-        label: value,
-      })),
     handler: async (args, ctx) => {
       await handleHandoffAction(args.trim(), ctx);
     },
@@ -368,15 +443,6 @@ export function activateHandoffExtension(
     start(ctx) {
       return requestStart(ctx, "tool");
     },
-  });
-
-  pi.on("message_end", (event) => {
-    if (event.message.role !== "assistant") return;
-    const answer = event.message.content
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("");
-    flow.handleAssistantAnswer(answer);
   });
 
   pi.on("input", async (event, ctx) => {
@@ -478,6 +544,8 @@ export function activateHandoffExtension(
 
   pi.on("session_start", (_event, ctx) => {
     initializeWriterTools(ctx);
+    for (const warning of pendingStartupTemplateWarnings) ctx.ui.notify(warning, "warning");
+    pendingStartupTemplateWarnings = [];
     configDialog.discard();
     recoveryDialog.discard();
     advisoryWarningShown = false;
@@ -501,9 +569,9 @@ export function activateHandoffExtension(
 }
 
 export default async function piBlitzHandoff(pi: ExtensionAPI): Promise<void> {
-  const { config, paths } = await initializeHandoffStorage(getAgentDir());
+  const { config, paths, callTemplate, warnings } = await initializeHandoffStorage(getAgentDir());
   if (typeof pi.registerCommand === "function") {
-    activateHandoffExtension(pi, config, paths);
+    activateHandoffExtension(pi, config, paths, callTemplate, warnings);
   }
 }
 

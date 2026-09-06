@@ -5,9 +5,12 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import {
+  CALL_DEFAULT_TEMPLATE,
+  HANDOFF_DEFAULT_TEMPLATE,
   catalogueTemplates,
+  checkTemplateHealth,
   resolveTemplate,
-  synchronizeManagedDefault,
+  synchronizeManagedTemplate,
 } from "../extensions/pi-blitz-handoff/templates.ts";
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
@@ -22,13 +25,13 @@ test("managed default is installed when missing and untouched when equal", async
   const packaged = join(root, "package.cmpl");
   await writeFile(packaged, "shipped default");
 
-  assert.deepEqual(await synchronizeManagedDefault(managed, packaged), { status: "installed" });
+  assert.deepEqual(await synchronizeManagedTemplate(managed, "default.cmpl", packaged), { status: "installed" });
   const managedPath = join(managed, "default.cmpl");
   const before = await stat(managedPath);
   assert.equal(await readFile(managedPath, "utf8"), "shipped default");
   assert.equal(before.mode & 0o777, 0o600);
 
-  assert.deepEqual(await synchronizeManagedDefault(managed, packaged), { status: "equal" });
+  assert.deepEqual(await synchronizeManagedTemplate(managed, "default.cmpl", packaged), { status: "equal" });
   assert.equal((await stat(managedPath)).ino, before.ino);
   assert.deepEqual(await readdir(managed), ["default.cmpl"]);
 });
@@ -44,7 +47,7 @@ test("a different managed default is timestamp-backed up before replacement", as
   const now = new Date("2025-06-07T08:09:10.123Z");
   const backupPath = join(managed, "default.cmpl.backup-2025-06-07T08-09-10.123Z");
 
-  assert.deepEqual(await synchronizeManagedDefault(managed, packaged, now), {
+  assert.deepEqual(await synchronizeManagedTemplate(managed, "default.cmpl", packaged, now), {
     status: "updated",
     backupPath,
   });
@@ -108,7 +111,7 @@ test("resolution reports failures through addendum and managed default fallbacks
   await writeFile(join(addendum, "default.cmpl"), "");
   await writeFile(join(managed, "default.cmpl"), "managed default");
 
-  const result = await resolveTemplate("team.cmpl", { managedDirectory: managed, addendumDirectory: addendum });
+  const result = await resolveTemplate("team.cmpl", { managedDirectory: managed, addendumDirectory: addendum }, "default.cmpl");
   assert.equal(result.path, resolve(managed, "default.cmpl"));
   assert.equal(result.content, "managed default");
   assert.deepEqual(result.failures, [
@@ -126,11 +129,67 @@ test("the same physical fallback candidate is attempted at most once", async (t)
   await writeFile(join(addendum, "default.cmpl"), "");
   await writeFile(join(managed, "default.cmpl"), "managed default");
 
-  const result = await resolveTemplate("default.cmpl", { managedDirectory: managed, addendumDirectory: addendum });
+  const result = await resolveTemplate("default.cmpl", { managedDirectory: managed, addendumDirectory: addendum }, "default.cmpl");
   assert.equal(result.path, resolve(managed, "default.cmpl"));
   assert.deepEqual(result.failures, [
     { path: resolve(addendum, "default.cmpl"), reason: "template is empty" },
   ]);
+});
+
+test("role-specific defaults do not fall back through the other role", async (t) => {
+  const root = await temporaryDirectory(t);
+  const managed = join(root, "managed");
+  await mkdir(managed);
+  await writeFile(join(managed, CALL_DEFAULT_TEMPLATE), "call fallback");
+  await writeFile(join(managed, HANDOFF_DEFAULT_TEMPLATE), "handoff fallback");
+
+  assert.equal((await resolveTemplate("missing.cmpl", { managedDirectory: managed, addendumDirectory: null }, CALL_DEFAULT_TEMPLATE)).content, "call fallback");
+  assert.equal((await resolveTemplate("missing.cmpl", { managedDirectory: managed, addendumDirectory: null }, HANDOFF_DEFAULT_TEMPLATE)).content, "handoff fallback");
+  await rm(join(managed, CALL_DEFAULT_TEMPLATE));
+  await assert.rejects(resolveTemplate("missing.cmpl", { managedDirectory: managed, addendumDirectory: null }, CALL_DEFAULT_TEMPLATE));
+});
+
+test("health check warns only when a non-default selection falls back", async (t) => {
+  const root = await temporaryDirectory(t);
+  const managed = join(root, "managed");
+  await mkdir(managed);
+  await writeFile(join(managed, CALL_DEFAULT_TEMPLATE), "call fallback");
+
+  const fallback = await checkTemplateHealth(
+    "Call",
+    "missing.cmpl",
+    CALL_DEFAULT_TEMPLATE,
+    { managedDirectory: managed, addendumDirectory: null },
+  );
+  assert.equal(fallback.resolved.path, resolve(managed, CALL_DEFAULT_TEMPLATE));
+  assert.match(fallback.warning ?? "", /Call template "missing\.cmpl" could not be used/);
+  assert.match(fallback.warning ?? "", /managed\/missing\.cmpl/);
+  assert.match(fallback.warning ?? "", /Using fallback .*call_default\.cmpl/);
+
+  const configuredDefault = await checkTemplateHealth(
+    "Call",
+    CALL_DEFAULT_TEMPLATE,
+    CALL_DEFAULT_TEMPLATE,
+    { managedDirectory: managed, addendumDirectory: null },
+  );
+  assert.equal(configuredDefault.warning, undefined);
+});
+
+test("health check identifies a role default that cannot resolve", async (t) => {
+  const root = await temporaryDirectory(t);
+  const managed = join(root, "managed");
+  await mkdir(managed);
+  await writeFile(join(managed, "custom.cmpl"), "valid custom template");
+
+  await assert.rejects(
+    checkTemplateHealth(
+      "Handoff",
+      "custom.cmpl",
+      HANDOFF_DEFAULT_TEMPLATE,
+      { managedDirectory: managed, addendumDirectory: null },
+    ),
+    /Handoff template default "handoff_default\.cmpl" could not resolve/,
+  );
 });
 
 test("resolution has exactly three tiers and no embedded fallback", async (t) => {
@@ -142,10 +201,10 @@ test("resolution has exactly three tiers and no embedded fallback", async (t) =>
   await writeFile(join(addendum, "team.cmpl"), "");
 
   await assert.rejects(
-    resolveTemplate("team.cmpl", { managedDirectory: managed, addendumDirectory: addendum }),
+    resolveTemplate("team.cmpl", { managedDirectory: managed, addendumDirectory: addendum }, "default.cmpl"),
     (error: unknown) => {
       assert.ok(error instanceof Error);
-      assert.match(error.message, /No valid handoff template found/);
+      assert.match(error.message, /No valid template found/);
       assert.match(error.message, /addendum\/team\.cmpl/);
       assert.match(error.message, /addendum\/default\.cmpl/);
       assert.match(error.message, /managed\/default\.cmpl/);

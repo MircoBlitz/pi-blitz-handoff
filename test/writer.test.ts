@@ -45,6 +45,8 @@ function handoff() {
     source: "command" as const,
     sourceSessionPath: "/sessions/exact-source.jsonl",
     phase: "ready" as const,
+    readinessKey: "key-1",
+    awaitingUserGo: false,
   };
 }
 

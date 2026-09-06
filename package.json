@@ -20,7 +20,10 @@
     "extensions",
     "docs",
     "assets",
+    "call_default.cmpl",
+    "handoff_default.cmpl",
     "default.cmpl",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE",
     "SECURITY.md"

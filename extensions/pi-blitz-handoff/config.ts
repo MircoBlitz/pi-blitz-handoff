@@ -13,6 +13,7 @@ export interface HandoffConfig {
   writerRetryDelaySeconds: number;
   recoveryDirectory: string;
   templateDirectory: string | null;
+  callTemplate: string;
   handoffTemplate: string;
 }
 
@@ -33,6 +34,7 @@ const CONFIG_KEYS = [
   "writerRetryDelaySeconds",
   "recoveryDirectory",
   "templateDirectory",
+  "callTemplate",
   "handoffTemplate",
 ] as const;
 
@@ -58,7 +60,8 @@ export function defaultConfig(agentDirectory: string): HandoffConfig {
     writerRetryDelaySeconds: 30,
     recoveryDirectory: `${paths.recoveryDirectory}${sep}`,
     templateDirectory: null,
-    handoffTemplate: "default.cmpl",
+    callTemplate: "call_default.cmpl",
+    handoffTemplate: "handoff_default.cmpl",
   };
 }
 
@@ -96,16 +99,8 @@ export function validateConfig(value: unknown): HandoffConfig {
     throw new Error("templateDirectory must be null or an absolute path");
   }
 
-  const handoffTemplate = record.handoffTemplate;
-  if (
-    typeof handoffTemplate !== "string" ||
-    !handoffTemplate.endsWith(".cmpl") ||
-    handoffTemplate.includes("/") ||
-    handoffTemplate.includes("\\") ||
-    handoffTemplate.includes("\0")
-  ) {
-    throw new Error("handoffTemplate must be a .cmpl filename, not a path");
-  }
+  const callTemplate = templateSetting(record, "callTemplate");
+  const handoffTemplate = templateSetting(record, "handoffTemplate");
 
   return {
     contextWarningPercent,
@@ -117,6 +112,7 @@ export function validateConfig(value: unknown): HandoffConfig {
     writerRetryDelaySeconds,
     recoveryDirectory,
     templateDirectory: templateValue,
+    callTemplate,
     handoffTemplate,
   };
 }
@@ -124,7 +120,8 @@ export function validateConfig(value: unknown): HandoffConfig {
 export async function loadConfig(agentDirectory: string): Promise<HandoffConfig> {
   const { configFile } = handoffPaths(agentDirectory);
   try {
-    return validateConfig(JSON.parse(await readFile(configFile, "utf8")) as unknown);
+    const persisted = JSON.parse(await readFile(configFile, "utf8")) as unknown;
+    return validateConfig(withLegacyCallTemplate(persisted));
   } catch (error) {
     if (isMissing(error)) {
       return defaultConfig(agentDirectory);
@@ -161,6 +158,32 @@ export async function saveConfig(
 
   await atomicWriteFile(paths.configFile, `${JSON.stringify(config, null, 2)}\n`);
   return config;
+}
+
+function withLegacyCallTemplate(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (record.callTemplate !== undefined) return value;
+  const legacyKeys = CONFIG_KEYS.filter((key) => key !== "callTemplate").sort();
+  const actualKeys = Object.keys(record).sort();
+  if (actualKeys.length !== legacyKeys.length || actualKeys.some((key, index) => key !== legacyKeys[index])) {
+    return value;
+  }
+  return { ...record, callTemplate: "call_default.cmpl" };
+}
+
+function templateSetting(record: Record<string, unknown>, name: "callTemplate" | "handoffTemplate"): string {
+  const value = record[name];
+  if (
+    typeof value !== "string" ||
+    !value.endsWith(".cmpl") ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    value.includes("\0")
+  ) {
+    throw new Error(`${name} must be a .cmpl filename, not a path`);
+  }
+  return value;
 }
 
 function numberSetting(record: Record<string, unknown>, name: string): number {

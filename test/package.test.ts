@@ -64,7 +64,18 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-tui"], "*");
   assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^0.84.2");
-  assert.deepEqual(manifest.files, ["extensions", "docs", "assets", "default.cmpl", "README.md", "LICENSE", "SECURITY.md"]);
+  assert.deepEqual(manifest.files, [
+    "extensions",
+    "docs",
+    "assets",
+    "call_default.cmpl",
+    "handoff_default.cmpl",
+    "default.cmpl",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+  ]);
   assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-blitz-handoff/index.ts"]);
   assert.equal(
     manifest.pi?.image,
@@ -102,11 +113,14 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     .filter((name) => name.endsWith(".ts"))
     .map((name) => `extensions/pi-blitz-handoff/${name}`);
   const expected = [
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
     "SECURITY.md",
     "assets/logo.png",
+    "call_default.cmpl",
     "default.cmpl",
+    "handoff_default.cmpl",
     "docs/specification.md",
     "docs/specification.sha256",
     "package.json",
@@ -140,10 +154,12 @@ test("loading the package entrypoint initializes and validates managed storage",
   assert.equal((await stat(baseDirectory)).isDirectory(), true);
   assert.equal((await stat(recoveryDirectory)).isDirectory(), true);
   assert.equal((await stat(templateDirectory)).isDirectory(), true);
-  assert.equal(
-    await readFile(join(templateDirectory, "default.cmpl"), "utf8"),
-    await readFile(join(projectRoot, "default.cmpl"), "utf8"),
-  );
+  for (const filename of ["call_default.cmpl", "handoff_default.cmpl", "default.cmpl"]) {
+    assert.equal(
+      await readFile(join(templateDirectory, filename), "utf8"),
+      await readFile(join(projectRoot, filename), "utf8"),
+    );
+  }
 
   const missingRecoveryDirectory = join(agentDirectory, "missing-recovery");
   await writeFile(

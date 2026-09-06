@@ -56,7 +56,7 @@ There is no public retry command, cleanup command, or public transition command.
 
 The `blitz_handoff` tool has two actions:
 
-- `status` — report context usage, warning and automatic thresholds, readiness retry delay, and current handoff status.
+- `status` — report context usage, warning and automatic thresholds, the one-time readiness reminder delay, and current handoff status.
 - `start` — request a handoff only when the user explicitly requested one.
 
 Discussion, questions, criticism, testing, or a mention of handoffs are not start requests.
@@ -65,12 +65,17 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 
 1. An explicit `/sh` or `blitz_handoff start` records the request. Explicit starts ignore all context thresholds.
 2. Automatic initiation is optional. When enabled, it starts only at or above its configured threshold on an idle `agent_settled` boundary with no pending message.
-3. Readiness waits for settled source-session work. It accepts only the exact current generated `GO` identifier after that answering run settles with no pending message. User or RPC input before `GO` passes unchanged to the source session and invalidates the current readiness identifiers.
-4. After accepted `GO`, ordinary interactive and RPC prompts are deferred: they do not reach the source writer, remain unchanged and ordered in memory, and are also atomically written to one recovery Markdown file.
-5. The writer resolves the current template for each attempt, temporarily allows only its private submission tool, and submits a dossier correlated to the current attempt. The original active tool list is restored on success, cancellation, exhaustion, or terminal failure.
-6. Deterministic code appends any deferred prompts to the dossier. No additional model call assembles the transition prompt.
-7. The extension calls `ctx.newSession({ parentSession: sourceSessionPath })` and sends the assembled Markdown through the fresh replacement-session context. The source transcript therefore remains available through Pi's native parent lineage.
-8. After Pi confirms the replacement and accepts the first prompt, the corresponding recovery file is deleted. A cleanup error is reported without rolling back the completed replacement.
+3. At the first idle boundary, the extension sends one Call Template plus a fresh correlation key. The current model waits for genuinely in-flight model-owned work, tools, subagents, background work, or required output, but does not treat future tasks or an ordinary resumable question as blockers.
+4. At a safe boundary the model chooses one keyed entry point. `session_handoff_go` accepts direct readiness and is preferred when uncertain. `session_handoff_go_with_user_deferral` is reserved for a concrete active collaboration that may still need the current user; it supplies a short reason and opens an extension-owned **Ready / Wait / Cancel** selection.
+5. **Ready** accepts GO. **Wait** keeps input normal, suspends the reminder, and shows `Awaiting User GO · Tell your LLM to start when ready`; a later explicit user readiness message lets the model call direct GO. **Cancel** ends the request. The extension does not infer working style from how the handoff started and does not parse free-form user replies.
+6. If neither entry point has been invoked after `readinessRetrySeconds`, exactly one visible reminder triggers a silent re-evaluation turn. This prevents a deadlock when background work completed without producing another model turn. There is no periodic polling, and no reminder runs after **Wait**.
+7. After accepted GO, ordinary interactive and RPC prompts are deferred immediately: they do not reach the source writer, remain unchanged and ordered in memory, and are also atomically written to one recovery Markdown file.
+8. At the next idle, no-pending boundary, the writer resolves the current dossier template, temporarily allows only its private submission tool, and submits a dossier correlated to the current attempt. The original active tool list is restored on success, cancellation, exhaustion, or terminal failure.
+9. Deterministic code appends any deferred prompts to the dossier. No additional model call assembles the transition prompt.
+10. The extension calls `ctx.newSession({ parentSession: sourceSessionPath })` and sends the assembled Markdown through the fresh replacement-session context. The source transcript therefore remains available through Pi's native parent lineage.
+11. After Pi confirms the replacement and accepts the first prompt, the corresponding recovery file is deleted. A cleanup error is reported without rolling back the completed replacement.
+
+The previous protocol repeatedly asked a broad “session-owned work” question and required exact text `GO` or `NOT-YET` responses. That wording confused unfinished future work with work actually in flight, while retries spent model turns without improving the decision. The keyed tools make correlation deterministic, the Call Template states the semantic boundary once, and the single reminder exists only to recover from a genuinely quiet background-work boundary.
 
 The submitted dossier's first line is its model-written, task-specific Markdown title. The extension does not semantically validate the title or dossier headings.
 
@@ -80,13 +85,14 @@ At most one handoff is active. A second start is rejected without replacing acti
 
 The activity line is rendered as a Pi widget directly above the input editor. It does not depend on the configured footer or powerline. The persistent status uses these factual states:
 
-- `Waiting for Session Handoff`
-- `Writing Session Handoff`
-- `Session Handoff Finished`
+- `Waiting for Session Handoff` in yellow;
+- `User Input Required` in red while the extension-owned choice is open;
+- `Writing Session Handoff`;
+- `Session Handoff Finished`.
 
 Failure and cancellation override those states. Finished status remains in the replacement session until ordinary user input or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
 
-Before `GO`, `/sh cancel` clears pending readiness. After `GO` but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Deferred prompts are not replayed automatically to the source session.
+Before accepted GO, canonical `/sh-cancel` clears pending readiness or the user-wait state. After GO but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. The spaced `/sh cancel` alias remains accepted. Deferred prompts are not replayed automatically to the source session.
 
 From `GO` until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked. The extension's own correlated native replacement is allowed.
 
@@ -103,7 +109,7 @@ Recovery is always explicit. It never automatically executes leftover prompts. E
 
 ## Configuration
 
-Run `/sh config` in an interactive UI. Changes remain an in-memory draft until **Save configuration**. **Cancel configuration**, `/reload`, or session replacement discards an unsaved draft. Saving validates the complete draft and asks before creating a missing configured directory.
+Run `/sh-config` in an interactive UI. Changes remain an in-memory draft until **Save configuration**. **Cancel configuration**, `/reload`, or session replacement discards an unsaved draft. Saving validates the complete draft and asks before creating a missing configured directory.
 
 Saved configuration takes effect after `/reload`; the currently loaded extension instance is not dynamically rebuilt.
 
@@ -113,12 +119,13 @@ Saved configuration takes effect after `/reload`; the currently loaded extension
 | `criticalWarningPercent` | `90` | Finite number, above the warning threshold and at most 100 |
 | `automaticSessionHandoff` | `false` | Boolean |
 | `automaticSessionHandoffPercent` | `70` | Finite number from 0 through 100; 0 disables automatic initiation |
-| `readinessRetrySeconds` | `60` | Integer from 1 through 300 |
+| `readinessRetrySeconds` | `60` | Integer from 1 through 300; delay before the single silent re-evaluation turn |
 | `writerAttempts` | `3` | Positive integer; total attempts including the first |
 | `writerRetryDelaySeconds` | `30` | Integer from 1 through 300 |
 | `recoveryDirectory` | managed recovery directory | Absolute directory path |
 | `templateDirectory` | `null` | `null` or an absolute addendum-directory path |
-| `handoffTemplate` | `default.cmpl` | `.cmpl` filename, not a path |
+| `callTemplate` | `call_default.cmpl` | `.cmpl` filename for readiness semantics, not a path |
+| `handoffTemplate` | `handoff_default.cmpl` | `.cmpl` filename for the dossier writer, not a path |
 
 The warning threshold produces one advisory warning. Critical warnings may repeat on settled turns. Neither warning threshold nor the automatic threshold gates explicit starts.
 
@@ -137,18 +144,22 @@ The extension manages:
 ├── config.json
 ├── recovery/
 └── templates/
-    └── default.cmpl
+    ├── call_default.cmpl
+    ├── handoff_default.cmpl
+    └── default.cmpl              # compatible legacy dossier default
 ```
 
-Missing managed directories are created during load. The package's root `default.cmpl` is installed as the managed default. If managed content differs, the old file is renamed beside it to a timestamped backup before the package default is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+Missing managed directories are created during load. The package installs its root `call_default.cmpl`, `handoff_default.cmpl`, and compatible legacy `default.cmpl` into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
 
-Template discovery is nonrecursive. An optional addendum directory shadows a managed template with the same filename. Each writer attempt resolves candidates in this order:
+Existing exact configurations that predate `callTemplate` load with `call_default.cmpl` in memory and are not rewritten automatically. An existing `handoffTemplate: "default.cmpl"` remains valid; the configuration dialog identifies it as the legacy name and points to `handoff_default.cmpl` as the new default.
 
-1. selected addendum template, when configured and present, otherwise selected managed template;
-2. addendum `default.cmpl`, when configured;
-3. managed `default.cmpl`.
+Template discovery is nonrecursive. An optional addendum directory shadows a managed template with the same filename. Call and dossier templates use separate configuration fields but the same simple resolver. Each resolution attempts:
 
-A candidate must be a readable, nonempty `.cmpl` file. Candidate failures are reported. There is no embedded template fallback.
+1. the selected addendum template, when configured and present, otherwise the selected managed template;
+2. the role-specific addendum default (`call_default.cmpl` or `handoff_default.cmpl`), when configured;
+3. the corresponding managed role-specific default.
+
+A candidate must be a readable, nonempty `.cmpl` file. Both configured roles are checked at startup and whenever `/sh-config` or `/sh config` opens. A failed non-default selection falls back to its role default with a visible warning that names the failure and actual fallback; selecting the role default does not itself warn. If the role default cannot resolve, startup or configuration opening fails visibly. There is no placeholder engine or embedded template fallback. Deterministic code always appends the current key, exact tool protocol, and interaction rules to the editable Call Template, so a custom template cannot own or remove those invariants.
 
 ## Data and security
 

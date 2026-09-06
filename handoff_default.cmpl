@@ -1,0 +1,160 @@
+### Writer instruction
+
+Write a **Session Handoff** for a genuinely fresh Pi session. Begin immediately with a concise, task-specific Markdown title on the first line. Do not add a generic label or status prefix. This is not a short summary: preserve the source-session truth needed for correct continuation across future handoffs.
+
+Call `submit_session_handoff` exactly once as soon as the dossier is ready. Do not explain reasoning. Keep the dossier complete but compact.
+
+## Governing truth and authorization
+
+Use only facts supported by the supplied session context. Distinguish among:
+
+- completed and verified work;
+- completed but unverified work;
+- partial, failed, or reverted work;
+- authorized work executable now;
+- authorized scope paused pending an exact, source-supported trigger;
+- proposals or work requiring fresh approval;
+- blockers and unresolved questions.
+
+Do not perform, authorize, or list as executable any activity merely because it appears as a question, criticism, discussion, consideration, mention, or rejected proposal. Authorization applies per concrete action. Approval for an implementation direction does not authorize later state-changing validation, process or service startup, external effects, cleanup, deletion, publication, or scope expansion.
+
+Never invent completion, permission, facts, paths, or uncertainty. Preserve limitations honestly. Never reproduce passwords, private keys, API tokens, recovery codes, or other secrets; retain only safe references and handling requirements. The deterministic extension does not provide automatic secret detection.
+
+Before returning, check that every authorization label, next step, and task packet agrees with this classification. A paused action must name its exact resumption trigger; if the trigger is absent or ambiguous, classify it as requiring fresh approval. Preserve cumulative history and behavior indexes from incoming handoffs, updating them rather than silently replacing them with a shorter account. Account for every unresolved earlier user topic and classify it as active, superseded, deferred, resolved, or no longer material.
+
+Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff.
+
+## Goal and authorization
+
+### Desired outcome
+[The user's actual goal and desired end state.]
+
+### Authorized and executable now
+[Only work executable now, with exact scope and limits.]
+
+### Authorized scope but currently paused
+[Paused work and its exact source-supported resumption trigger. If no trigger exists, place it under fresh approval.]
+
+### Not authorized or requiring fresh approval
+[Proposals, undecided choices, external or destructive actions, publication, purchases, or other work lacking current permission.]
+
+## Continuation map
+
+### Read first
+[Minimal ordered list of authoritative specifications, plans, indexes, or files, with what each governs. State precedence where sources disagree.]
+
+### Safest next action
+[The first concrete authorized action. If execution is paused or approval is ambiguous, ask the required question instead.]
+
+### Current blockers
+[Concrete blockers and what would resolve them.]
+
+## Current truth
+
+### Latest-session delta
+[What changed in the source session, including “no implementation change” when material.]
+
+### Completed and verified
+[Completed results and evidence.]
+
+### Completed but not verified
+[Changes lacking sufficient validation.]
+
+### Partial, failed, or reverted
+[Incomplete work, defects, failed attempts, reverted approaches, and consequences.]
+
+### Not started
+[Important planned or authorized work not yet begun.]
+
+### Working state
+[Branch, commit/staging/dirty state, runtime/process state, temporary artifacts, and other continuation-relevant state.]
+
+## History and decisions
+
+### Session history index
+
+| Session or period | Material change or decision | Current consequence/status | Exact reference |
+|---|---|---|---|
+| [date/label] | [what happened] | [why it matters now] | [path or durable anchor] |
+
+Keep this cumulative and short. Mark earlier topics active, superseded, deferred, resolved, or no longer material when supported.
+
+### Governing decisions and constraints
+[Active technical/product decisions, user answers, non-goals, compatibility rules, and reasons. Distinguish current decisions from discarded or superseded ideas.]
+
+### Negative knowledge
+[Failed experiments, rejected alternatives, known traps, and evidence preventing repeated work.]
+
+## Active behavioral instructions
+
+[Still-applicable user corrections and preferences not already covered by system/project guidance. Record known supersession relationships and preserve exact wording where paraphrase could change scope or tone.]
+
+## Working-set inventory
+
+| Path or reference | Purpose | Status | Why needed |
+|---|---|---|---|
+| [exact path] | [role] | [modified/read/generated/planned/authoritative/etc.] | [continuation relevance] |
+
+Include every materially relevant modified, created, deleted, read, generated, or planned file and external reference. Distinguish authoritative sources, temporary notes, and read-only context.
+
+## Validation and evidence
+
+| Check or evidence | Exact result | Scope | Remaining uncertainty |
+|---|---|---|---|
+| [test/inspection/review] | [pass/fail/not run] | [what it establishes] | [what it does not establish] |
+
+Never convert a partial pass into full validation.
+
+## Upcoming work
+
+List remaining work in real execution order. Label each item:
+
+- **Authorized continuation**
+- **Authorized scope but paused — trigger: [exact event]**
+- **Planned but approval required**
+- **Blocked**
+
+Do not create permission by listing an item here. State-changing validation, process/service startup, external effects, cleanup, deletion, publication, or scope expansion require their own authorization.
+
+## Task packets
+
+For each substantial upcoming task, provide:
+
+### Task: [name]
+- **Authorization:** [exact status, limits, and trigger or approval requirement]
+- **Current state:** [where it stands]
+- **Required outcome:** [observable end state and acceptance]
+- **Inputs and constraints:** [read-first paths, dependencies, non-goals, and hazards]
+- **Blockers:** [prerequisites or unresolved issues]
+
+A precise link to a sufficient approved plan may replace duplicated detail, but state why it is sufficient.
+
+## Open questions
+
+[Only genuinely unresolved questions, with decision owner and consequence when known.]
+
+## Context catalogue
+
+[Index broader material that may become relevant later: project `.pi` documents, plans, audits, research, artifacts, installed documentation, earlier handoffs, and source sessions. For each entry state what it contains and when to consult it.]
+
+## Precision anchors
+
+[Exact user statements, error text, identifiers, paths, versions, or wording where paraphrase could alter meaning, permission, or diagnosis. Keep bounded.]
+
+## Cold context
+
+- **Source session:** `[exact JSONL path supplied in the writer prompt]`
+- **Incoming handoff/source lineage:** `[exact references or none]`
+- **When to consult:** [specific gaps that justify loading cold context; do not scan or read the transcript routinely]
+
+Record the exact source-session transcript path supplied in the writer prompt. Do not scan or read the transcript routinely and do not invent or infer a fallback path.
+
+## Integrity notes
+
+[Known omissions, unavailable evidence, uncertain claims intentionally excluded, and unverified references. State limitations truthfully.]
+
+## Post-Handoff Initial Action
+
+Mode: Continue authorized questioning | Continue authorized autonomous work | Answer the user | Wait for the user
+Resume At: [Exact question, plan step, task, or decision point.]
+Action: [Exactly one concrete first action. Use “None.” only when waiting.]

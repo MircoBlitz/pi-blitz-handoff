@@ -1,22 +1,18 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { DeferredPromptWindow, type DeferredPromptSnapshot } from "./deferred.ts";
-import {
-  classifyReadinessAnswer,
-  createReadinessIdentifiers,
-  readinessPrompt,
-  type ReadinessIdentifiers,
-} from "./readiness.ts";
+import { createReadinessKey, readinessPrompt, readinessReminder } from "./readiness.ts";
 
 export type HandoffStartSource = "command" | "tool" | "automatic";
-export type HandoffFlowPhase = "inactive" | "waiting" | "checking" | "retry-delay" | "ready";
+export type HandoffFlowPhase = "inactive" | "waiting" | "user-input-required" | "ready";
 
 export interface ActiveHandoffSnapshot {
   id: string;
   source: HandoffStartSource;
   sourceSessionPath: string;
   phase: Exclude<HandoffFlowPhase, "inactive">;
-  readinessIds?: ReadinessIdentifiers;
+  readinessKey: string;
+  awaitingUserGo: boolean;
 }
 
 export type HandoffStartResult =
@@ -27,13 +23,19 @@ export type HandoffInputResult =
   | { action: "continue" }
   | { action: "deferred"; snapshot: DeferredPromptSnapshot };
 
+export type HandoffGoResult = "accepted" | "stale" | "not-started";
+export type HandoffDeferralResult = HandoffGoResult | "selection-open";
+export type HandoffDeferralChoice = "Ready" | "Wait" | "Cancel";
+
 export interface HandoffFlowOptions {
   readinessRetrySeconds: number;
+  callTemplate: string;
   onReadinessPrompt(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
+  onReadinessReminder(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
   onReady(handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
   onPhaseChange?(handoff: ActiveHandoffSnapshot | undefined, ctx: ExtensionContext): void;
   createHandoffId?: () => string;
-  createIdentifiers?: () => ReadinessIdentifiers;
+  createReadinessKey?: () => string;
   setTimer?: (callback: () => void, delayMilliseconds: number) => unknown;
   clearTimer?: (timer: unknown) => void;
   now?: () => Date;
@@ -44,9 +46,11 @@ interface ActiveHandoff {
   source: HandoffStartSource;
   sourceSessionPath: string;
   phase: Exclude<HandoffFlowPhase, "inactive">;
-  readinessIds?: ReadinessIdentifiers;
-  answer?: string;
-  retryTimer?: unknown;
+  readinessKey: string;
+  awaitingUserGo: boolean;
+  instructionSent: boolean;
+  writerDispatched: boolean;
+  reminderTimer?: unknown;
   deferred?: DeferredPromptWindow;
 }
 
@@ -54,16 +58,20 @@ export class HandoffFlow {
   private active?: ActiveHandoff;
   private readonly options: HandoffFlowOptions;
   private readonly createHandoffId: () => string;
-  private readonly createIdentifiers: () => ReadinessIdentifiers;
+  private readonly makeReadinessKey: () => string;
   private readonly setTimer: (callback: () => void, delayMilliseconds: number) => unknown;
   private readonly clearTimer: (timer: unknown) => void;
   private readonly now: () => Date;
 
   constructor(options: HandoffFlowOptions) {
     this.options = options;
-    this.createHandoffId = options.createHandoffId ?? (() => createReadinessIdentifiers().go);
-    this.createIdentifiers = options.createIdentifiers ?? createReadinessIdentifiers;
-    this.setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay));
+    this.createHandoffId = options.createHandoffId ?? (() => randomHandoffId());
+    this.makeReadinessKey = options.createReadinessKey ?? createReadinessKey;
+    this.setTimer = options.setTimer ?? ((callback, delay) => {
+      const timer = setTimeout(callback, delay);
+      timer.unref();
+      return timer;
+    });
     this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
     this.now = options.now ?? (() => new Date());
   }
@@ -99,6 +107,10 @@ export class HandoffFlow {
       source,
       sourceSessionPath,
       phase: "waiting",
+      readinessKey: this.makeReadinessKey(),
+      awaitingUserGo: false,
+      instructionSent: false,
+      writerDispatched: false,
     };
     this.changed(ctx);
 
@@ -109,63 +121,68 @@ export class HandoffFlow {
     return { accepted: true, handoff: snapshot(this.active) };
   }
 
-  handleAssistantAnswer(answer: string | undefined): void {
-    if (this.active?.phase === "checking") {
-      this.active.answer = answer;
+  acceptGo(key: string, ctx: ExtensionContext): HandoffGoResult {
+    const active = this.correlated(key);
+    if (active === undefined) return this.active === undefined ? "not-started" : "stale";
+    if (!active.instructionSent || active.phase === "ready" || active.phase === "user-input-required") return "stale";
+
+    this.accept(active, ctx);
+    return "accepted";
+  }
+
+  beginUserDeferral(key: string, ctx: ExtensionContext): HandoffDeferralResult {
+    const active = this.correlated(key);
+    if (active === undefined) return this.active === undefined ? "not-started" : "stale";
+    if (!active.instructionSent || active.phase === "ready" || active.awaitingUserGo) return "stale";
+    if (active.phase === "user-input-required") return "selection-open";
+
+    this.clearReminderTimer(active);
+    active.phase = "user-input-required";
+    this.changed(ctx);
+    return "accepted";
+  }
+
+  resolveUserDeferral(key: string, choice: HandoffDeferralChoice, ctx: ExtensionContext): HandoffDeferralResult {
+    const active = this.correlated(key);
+    if (active === undefined) return this.active === undefined ? "not-started" : "stale";
+    if (active.phase !== "user-input-required") return "stale";
+
+    if (choice === "Ready") {
+      this.accept(active, ctx);
+    } else if (choice === "Wait") {
+      active.phase = "waiting";
+      active.awaitingUserGo = true;
+      this.changed(ctx);
+    } else {
+      this.finish(ctx, active.id);
     }
+    return "accepted";
   }
 
   handleInput(
     text: string,
     source: "interactive" | "rpc" | "extension",
-    ctx: ExtensionContext,
+    _ctx: ExtensionContext,
   ): HandoffInputResult {
-    if (source === "extension" || this.active === undefined) {
+    if (source === "extension" || this.active === undefined || this.active.phase !== "ready") {
       return { action: "continue" };
     }
 
-    if (this.active.phase === "ready") {
-      const deferred = this.active.deferred;
-      if (deferred === undefined) {
-        throw new Error("Deferred-prompt window is unavailable after accepted readiness");
-      }
-      return { action: "deferred", snapshot: deferred.capture(text) };
-    }
-
-    this.clearRetryTimer(this.active);
-    this.active.readinessIds = undefined;
-    this.active.answer = undefined;
-    this.active.phase = "waiting";
-    this.changed(ctx);
-    return { action: "continue" };
+    const deferred = this.active.deferred;
+    if (deferred === undefined) throw new Error("Deferred-prompt window is unavailable after accepted GO");
+    return { action: "deferred", snapshot: deferred.capture(text) };
   }
 
   handleSettled(ctx: ExtensionContext): void {
     const active = this.active;
-    if (active === undefined || active.phase === "ready" || active.phase === "retry-delay") return;
-    if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
+    if (active === undefined || !ctx.isIdle() || ctx.hasPendingMessages()) return;
 
-    if (active.phase === "waiting") {
+    if (!active.instructionSent) {
       this.dispatchReadiness(active, ctx);
-      return;
-    }
-
-    const ids = active.readinessIds;
-    if (ids !== undefined && classifyReadinessAnswer(active.answer, ids) === "go") {
-      active.readinessIds = undefined;
-      active.answer = undefined;
-      active.deferred = new DeferredPromptWindow(this.now(), active.sourceSessionPath);
-      active.phase = "ready";
-      this.changed(ctx);
+    } else if (active.phase === "ready" && !active.writerDispatched) {
+      active.writerDispatched = true;
       this.options.onReady(snapshot(active), ctx);
-      return;
     }
-
-    active.readinessIds = undefined;
-    active.answer = undefined;
-    active.phase = "retry-delay";
-    this.changed(ctx);
-    this.replaceRetryTimer(active, ctx);
   }
 
   cancel(ctx: ExtensionContext): boolean {
@@ -174,47 +191,54 @@ export class HandoffFlow {
 
   finish(ctx: ExtensionContext, handoffId?: string): boolean {
     if (this.active === undefined || (handoffId !== undefined && this.active.id !== handoffId)) return false;
-    this.clearRetryTimer(this.active);
+    this.clearReminderTimer(this.active);
     this.active = undefined;
     this.options.onPhaseChange?.(undefined, ctx);
     return true;
   }
 
   invalidate(): void {
-    if (this.active !== undefined) this.clearRetryTimer(this.active);
+    if (this.active !== undefined) this.clearReminderTimer(this.active);
     this.active = undefined;
   }
 
-  private dispatchReadiness(active: ActiveHandoff, ctx: ExtensionContext): void {
-    if (this.active !== active || ctx.hasPendingMessages()) return;
-    const ids = this.createIdentifiers();
-    active.readinessIds = ids;
-    active.answer = undefined;
-    active.phase = "checking";
+  private correlated(key: string): ActiveHandoff | undefined {
+    return this.active?.readinessKey === key ? this.active : undefined;
+  }
+
+  private accept(active: ActiveHandoff, ctx: ExtensionContext): void {
+    this.clearReminderTimer(active);
+    active.deferred = new DeferredPromptWindow(this.now(), active.sourceSessionPath);
+    active.phase = "ready";
+    active.awaitingUserGo = false;
     this.changed(ctx);
-    this.options.onReadinessPrompt(readinessPrompt(ids), snapshot(active), ctx);
   }
 
-  private replaceRetryTimer(active: ActiveHandoff, ctx: ExtensionContext): void {
-    this.clearRetryTimer(active);
-    const handoffId = active.id;
+  private dispatchReadiness(active: ActiveHandoff, ctx: ExtensionContext): void {
+    if (this.active !== active || active.instructionSent || ctx.hasPendingMessages()) return;
+    active.instructionSent = true;
+    this.changed(ctx);
+    this.options.onReadinessPrompt(
+      readinessPrompt(this.options.callTemplate, active.readinessKey),
+      snapshot(active),
+      ctx,
+    );
+    this.scheduleReminder(active, ctx);
+  }
+
+  private scheduleReminder(active: ActiveHandoff, ctx: ExtensionContext): void {
     const timer = this.setTimer(() => {
-      if (this.active !== active || active.id !== handoffId || active.retryTimer !== timer) return;
-      active.retryTimer = undefined;
-      if (ctx.isIdle() && !ctx.hasPendingMessages()) {
-        this.dispatchReadiness(active, ctx);
-      } else {
-        active.phase = "waiting";
-        this.changed(ctx);
-      }
+      if (this.active !== active || active.reminderTimer !== timer) return;
+      active.reminderTimer = undefined;
+      this.options.onReadinessReminder(readinessReminder(active.readinessKey), snapshot(active), ctx);
     }, this.options.readinessRetrySeconds * 1000);
-    active.retryTimer = timer;
+    active.reminderTimer = timer;
   }
 
-  private clearRetryTimer(active: ActiveHandoff): void {
-    if (active.retryTimer === undefined) return;
-    this.clearTimer(active.retryTimer);
-    active.retryTimer = undefined;
+  private clearReminderTimer(active: ActiveHandoff): void {
+    if (active.reminderTimer === undefined) return;
+    this.clearTimer(active.reminderTimer);
+    active.reminderTimer = undefined;
   }
 
   private changed(ctx: ExtensionContext): void {
@@ -248,6 +272,11 @@ function snapshot(active: ActiveHandoff): ActiveHandoffSnapshot {
     source: active.source,
     sourceSessionPath: active.sourceSessionPath,
     phase: active.phase,
-    ...(active.readinessIds === undefined ? {} : { readinessIds: { ...active.readinessIds } }),
+    readinessKey: active.readinessKey,
+    awaitingUserGo: active.awaitingUserGo,
   };
+}
+
+function randomHandoffId(): string {
+  return createReadinessKey().replace(/^handoff-go-/, "handoff-");
 }

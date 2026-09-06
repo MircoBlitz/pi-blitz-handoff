@@ -37,7 +37,8 @@ test("defaults exactly match the specified values and managed paths", async (t) 
     writerRetryDelaySeconds: 30,
     recoveryDirectory: `${paths.recoveryDirectory}${sep}`,
     templateDirectory: null,
-    handoffTemplate: "default.cmpl",
+    callTemplate: "call_default.cmpl",
+    handoffTemplate: "handoff_default.cmpl",
   });
   assert.deepEqual(await loadConfig(agentDirectory), defaultConfig(agentDirectory));
 });
@@ -84,6 +85,7 @@ test("validation requires complete exact settings, absolute directories, and a f
   assert.throws(() => validateConfig(incomplete));
   assert.throws(() => validateConfig(configured(agentDirectory, { recoveryDirectory: "relative" })));
   assert.throws(() => validateConfig(configured(agentDirectory, { templateDirectory: "relative" })));
+  assert.throws(() => validateConfig(configured(agentDirectory, { callTemplate: "nested/file.cmpl" })));
   assert.throws(() => validateConfig(configured(agentDirectory, { handoffTemplate: "nested/file.cmpl" })));
   assert.throws(() => validateConfig(configured(agentDirectory, { handoffTemplate: "file.md" })));
 });
@@ -121,6 +123,19 @@ test("configured directory symlinks are accepted", async (t) => {
   const config = configured(agentDirectory, { recoveryDirectory: recoveryLink });
   await saveConfig(agentDirectory, config);
   assert.deepEqual(await loadConfig(agentDirectory), config);
+});
+
+test("an exact old config gains callTemplate only in memory and is not rewritten", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  const old = { ...defaultConfig(agentDirectory), handoffTemplate: "default.cmpl" } as Record<string, unknown>;
+  delete old.callTemplate;
+  const persisted = `${JSON.stringify(old, null, 2)}\n`;
+  await writeFile(paths.configFile, persisted);
+
+  assert.deepEqual(await loadConfig(agentDirectory), { ...old, callTemplate: "call_default.cmpl" });
+  assert.equal(await readFile(paths.configFile, "utf8"), persisted);
 });
 
 test("invalid persisted configuration is rejected rather than merged with defaults", async (t) => {

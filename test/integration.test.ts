@@ -48,7 +48,7 @@ async function activateIntegrationRig(
   const paths = handoffPaths(root);
   await mkdir(paths.recoveryDirectory, { recursive: true });
   await mkdir(paths.templateDirectory, { recursive: true });
-  await writeFile(join(paths.templateDirectory, "default.cmpl"), "INTEGRATION HANDOFF TEMPLATE");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "INTEGRATION HANDOFF TEMPLATE");
 
   const state: { sessionFile: string | undefined; idle: boolean; pending: boolean } = {
     sessionFile,
@@ -158,7 +158,7 @@ async function activateIntegrationRig(
     recoveryDirectory: paths.recoveryDirectory,
     ...configChanges,
   };
-  const flow = activateHandoffExtension(api, config, paths);
+  const flow = activateHandoffExtension(api, config, paths, "INTEGRATION CALL TEMPLATE");
   await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, context);
 
   return {
@@ -183,20 +183,13 @@ async function activateIntegrationRig(
   };
 }
 
-function assistantMessage(text: string): unknown {
-  return {
-    type: "message_end",
-    message: { role: "assistant", content: [{ type: "text", text }] },
-  };
-}
-
 async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): Promise<string> {
   const command = rig.commands.get("sh");
   assert.ok(command);
   await command.handler("", rig.context);
-  const go = rig.flow.snapshot?.readinessIds?.go;
+  const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
-  await rig.handlers.get("message_end")?.(assistantMessage(go), rig.context);
+  await rig.tools.get("session_handoff_go")?.execute("go", { key: go }, undefined, undefined, rig.context);
   await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
   for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
@@ -258,7 +251,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   assert.equal(rig.flow.phase, "inactive");
   assert.match(
     rig.statuses.at(-1) ?? "",
-    /^Session Handoff · finished · \d+ sec\nWait Time \d+ sec · Handoff Time \d+ sec$/,
+    /^Session Handoff Finished · \d+ sec\nWait Time \d+ sec · Handoff Time \d+ sec$/,
   );
   assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 2);
   assert.equal(rig.widgetSetCalls.filter((content) => content === undefined).length, 1);
@@ -279,7 +272,7 @@ test("integrated starts reject an unpersisted source and writer exhaustion fails
   assert.equal(failed.flow.phase, "inactive");
   assert.deepEqual(failed.getActiveTools(), ["read", "bash"]);
   assert.equal(failed.replacementPrompts.length, 0);
-  assert.match(failed.statuses.at(-1) ?? "", /^Session Handoff · failed(?: · \d+ sec)?$/);
+  assert.match(failed.statuses.at(-1) ?? "", /^Session Handoff Failed(?: · \d+ sec)?$/);
   assert.match(failed.notifications.at(-1)?.message ?? "", /exhausted 1 attempt/);
 });
 

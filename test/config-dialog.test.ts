@@ -97,17 +97,18 @@ test("setting list shows the complete draft and settings can be revisited withou
 
   const rig = scriptedContext([
     chooseSetting("Writer attempts: 3", (options) => {
-      assert.equal(options.length, 12);
+      assert.equal(options.length, 13);
       for (const label of [
         "Context warning percentage",
         "Critical warning percentage",
         "Automatic session handoff",
         "Automatic session handoff percentage",
-        "Readiness retry seconds",
+        "Readiness reminder seconds",
         "Writer attempts",
         "Writer retry delay seconds",
         "Recovery directory",
         "Template directory",
+        "Call template",
         "Handoff template",
       ]) {
         assert.ok(options.some((option) => option.startsWith(`${label}: `)), `missing ${label}`);
@@ -227,7 +228,7 @@ test("declining any required directory leaves all missing paths and persisted co
 
 test("invalid answers show clear feedback and retain the previous draft values", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
-  await persistedConfig(agentDirectory);
+  await persistedConfig(agentDirectory, { handoffTemplate: "default.cmpl" });
   const rig = scriptedContext([
     chooseSetting("Writer attempts: 3"),
     {
@@ -237,12 +238,12 @@ test("invalid answers show clear feedback and retain the previous draft values",
         assert.equal(title, "How many total writer attempts should be made? Enter a positive integer.");
       },
     },
-    chooseSetting("Handoff template: default.cmpl", (options) => {
+    chooseSetting("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)", (options) => {
       assert.ok(options.includes("Writer attempts: 3"));
     }),
     { method: "input", answer: "nested/file.cmpl" },
     chooseSetting("Automatic session handoff: disabled", (options) => {
-      assert.ok(options.includes("Handoff template: default.cmpl"));
+      assert.ok(options.includes("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)"));
     }),
     { method: "select", answer: "Enabled" },
     chooseSetting("Cancel configuration", (options) => {

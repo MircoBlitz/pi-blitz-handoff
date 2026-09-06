@@ -25,11 +25,12 @@ const config = defaultConfig("/tmp/agent");
 
 test("persistent status is factual and does not invent numbered progress", () => {
   assert.equal(persistentHandoffStatus("inactive"), undefined);
-  for (const phase of ["waiting", "checking", "retry-delay", "ready"] as const) {
+  for (const phase of ["waiting", "ready"] as const) {
     const status = persistentHandoffStatus(phase);
     assert.equal(status, "Waiting for Session Handoff");
     assert.doesNotMatch(status, /\d+\s*\/\s*\d+|\d+%/);
   }
+  assert.equal(persistentHandoffStatus("user-input-required"), "User Input Required");
 });
 
 test("persistent TUI component registers once and renders phase, terminal, and clear updates in place", async () => {
@@ -55,7 +56,7 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(setWidgetCalls.length, 1);
   assert.equal(renderRequests, 1);
   assert.deepEqual(component?.render(120), [
-    "Session Handoff · waiting for readiness · Input available · /sh cancel",
+    "Waiting for Session Handoff · Input available · /sh-cancel",
   ]);
   const startedAt = getHandoffActivityStartedAt("stable-handoff");
   assert.notEqual(startedAt, undefined);
@@ -63,18 +64,18 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   await new Promise((resolve) => setTimeout(resolve, 1100));
   assert.equal(renderRequests, 1);
 
-  updatePersistentHandoffStatus(ui, "stable-handoff", "retry-delay");
+  updatePersistentHandoffStatus(ui, "stable-handoff", "user-input-required");
   assert.equal(setWidgetCalls.length, 1);
   assert.equal(renderRequests, 2);
   assert.deepEqual(component?.render(120), [
-    "Session Handoff · waiting before readiness retry · Input available · /sh cancel",
+    "User Input Required · Input available · /sh-cancel",
   ]);
   assert.equal(getHandoffActivityStartedAt("stable-handoff"), startedAt);
 
   updatePersistentHandoffStatus(ui, "stable-handoff", "inactive", "finished");
   assert.equal(setWidgetCalls.length, 1);
   assert.equal(renderRequests, 3);
-  assert.match(component?.render(120)[0] ?? "", /^Session Handoff · finished · \d+ sec$/);
+  assert.match(component?.render(120)[0] ?? "", /^Session Handoff Finished · \d+ sec$/);
 
   updatePersistentHandoffStatus(ui, "stable-handoff", "inactive");
   assert.equal(setWidgetCalls.length, 1);
@@ -111,7 +112,7 @@ test("finished widget adds separate wait and handoff durations measured at accep
     updatePersistentHandoffStatus(ui, "timed-handoff", "inactive", "finished");
 
     assert.deepEqual(component?.render(120), [
-      "Session Handoff · finished · 195 sec",
+      "Session Handoff Finished · 195 sec",
       "Wait Time 180 sec · Handoff Time 15 sec",
     ]);
     for (const line of component?.render(20) ?? []) {
@@ -141,16 +142,36 @@ test("persistent TUI component respects narrow widths for ANSI-colored status", 
   };
 
   registerPersistentHandoffStatus(ui, "narrow-handoff");
-  updatePersistentHandoffStatus(ui, "narrow-handoff", "retry-delay");
-  assert.equal(visibleWidth(component?.render(120)[0] ?? ""), 79);
+  updatePersistentHandoffStatus(ui, "narrow-handoff", "waiting", undefined, false, undefined, 0, undefined, true);
+  assert.deepEqual(component?.render(120), [
+    "\u001b[33mWaiting for Session Handoff · Input available · /sh-cancel\u001b[39m",
+    "\u001b[33mAwaiting User GO · Tell your LLM to start when ready\u001b[39m",
+  ]);
 
   for (const width of [0, 1, 20, 75]) {
-    const lines = component?.render(width) ?? [];
-    assert.equal(lines.length, 1);
+    const lines: string[] = component?.render(width) ?? [];
+    assert.equal(lines.length, 2);
     assert.ok(visibleWidth(lines[0] ?? "") <= width);
   }
 
   disposePersistentHandoffStatus(ui, "narrow-handoff");
+});
+
+test("waiting is yellow and an open user choice is red", () => {
+  const colors: string[] = [];
+  const ui = {
+    theme: {
+      fg(color: "success" | "warning" | "error", text: string) {
+        colors.push(color);
+        return `${color}:${text}`;
+      },
+    },
+    setWidget() {},
+  };
+
+  updatePersistentHandoffStatus(ui, "colors", "waiting");
+  updatePersistentHandoffStatus(ui, "colors", "user-input-required");
+  assert.deepEqual(colors, ["warning", "error"]);
 });
 
 test("non-TUI status transport remains string arrays", () => {
@@ -183,23 +204,27 @@ test("writing status uses an indeterminate public activity indicator and termina
   };
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
-  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (0) · /sh cancel");
+  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (0) · /sh-cancel");
   assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
   assert.equal(indicators.at(-1)?.intervalMs, 120);
   assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true, undefined, 2);
-  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (2) · /sh cancel");
+  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (2) · /sh-cancel");
 
   updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
-  assert.match(statuses.at(-1) ?? "", /^Session Handoff · failed · \d+ sec$/);
+  assert.match(statuses.at(-1) ?? "", /^Session Handoff Failed · \d+ sec$/);
   assert.equal(indicators.at(-1), undefined);
   assert.equal(persistentHandoffStatus("ready", undefined, true), "Writing Session Handoff");
   assert.match(formatPublicStatus("ready", undefined, config, undefined, true), /^Writing Session Handoff\./);
 });
 
 test("terminal status renders total elapsed seconds once for every outcome", () => {
-  for (const terminalState of ["finished", "failed", "cancelled"] as const) {
+  for (const [terminalState, label] of [
+    ["finished", "Session Handoff Finished"],
+    ["failed", "Session Handoff Failed"],
+    ["cancelled", "Session Handoff Cancelled"],
+  ] as const) {
     const statuses: Array<string | undefined> = [];
     const ui = {
       setWidget(_key: string, content: string[] | undefined) {
@@ -212,7 +237,7 @@ test("terminal status renders total elapsed seconds once for every outcome", () 
     updatePersistentHandoffStatus(ui, key, "inactive", terminalState);
 
     assert.equal(statuses.length, 2);
-    assert.match(statuses.at(-1) ?? "", new RegExp(`^Session Handoff · ${terminalState} · \\d+ sec$`));
+    assert.match(statuses.at(-1) ?? "", new RegExp(`^${label} · \\d+ sec$`));
     assert.equal(getHandoffActivityStartedAt(key), undefined);
   }
 });
@@ -225,7 +250,7 @@ test("terminal status is factual, session-correlated, and overrides active wordi
   assert.equal(replacementSessionIsProtected(sessionFile), true);
   assert.equal(persistentHandoffStatus("inactive", "finished"), "Session Handoff Finished");
   assert.equal(persistentHandoffStatus("ready", "failed"), "Session Handoff Failed");
-  assert.equal(persistentHandoffStatus("checking", "cancelled"), "Session Handoff Cancelled");
+  assert.equal(persistentHandoffStatus("user-input-required", "cancelled"), "Session Handoff Cancelled");
   assert.match(formatPublicStatus("inactive", undefined, config, "finished"), /^Session Handoff Finished\./);
   unprotectReplacementSession(sessionFile);
   clearHandoffTerminalState(sessionFile);
@@ -250,16 +275,16 @@ test("warning is advisory once while critical can repeat at settled turns", () =
 
 test("public status reports context, relevant thresholds, configuration, and handoff state concisely", () => {
   const text = formatPublicStatus(
-    "checking",
+    "user-input-required",
     { tokens: 650, contextWindow: 1000, percent: 65 },
     { ...config, automaticSessionHandoff: true, automaticSessionHandoffPercent: 70 },
   );
 
-  assert.match(text, /^Waiting for Session Handoff\./);
+  assert.match(text, /^User Input Required\./);
   assert.match(text, /Context usage: 65% \(650 tokens of 1000\)\./);
   assert.match(text, /Warning threshold: 60%; critical threshold: 90%\./);
   assert.match(text, /Automatic session handoff: enabled at 70%\./);
-  assert.match(text, /Readiness retry delay: 60 seconds\.$/);
+  assert.match(text, /Readiness reminder delay: 60 seconds\.$/);
 
   const inactive = formatPublicStatus("inactive", undefined, config);
   assert.match(inactive, /^No active session handoff\./);

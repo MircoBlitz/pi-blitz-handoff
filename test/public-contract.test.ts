@@ -11,6 +11,7 @@ import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.t
 
 interface RegisteredCommand {
   description?: string;
+  getArgumentCompletions?: unknown;
   handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 }
 
@@ -86,7 +87,7 @@ function captureRegistration() {
   } as unknown as ExtensionAPI;
 
   const agentDirectory = "/tmp/pi-blitz-handoff-public-contract";
-  activateHandoffExtension(api, defaultConfig(agentDirectory), handoffPaths(agentDirectory));
+  activateHandoffExtension(api, defaultConfig(agentDirectory), handoffPaths(agentDirectory), "CALL TEMPLATE");
   return {
     commands,
     tools,
@@ -113,6 +114,7 @@ test("handoff commands expose the main command and separate documented helpers",
     .map(([name]) => name);
   assert.deepEqual(advertised, ["sh", "sh-help", "sh-cancel", "sh-recover", "sh-config"]);
   assert.match(rig.commands.get("sh")?.description ?? "", /Start a session handoff/);
+  assert.equal(rig.commands.get("sh")?.getArgumentCompletions, undefined);
   assert.equal(rig.commands.get("__pi_blitz_handoff_transition")?.description, undefined);
 
   await rig.commands.get("sh")?.handler("retry", rig.context);
@@ -123,7 +125,12 @@ test("handoff commands expose the main command and separate documented helpers",
 test("blitz_handoff exposes only status and initializes the writer submission tool at session_start", async () => {
   const rig = captureRegistration();
   await rig.startSession();
-  assert.deepEqual([...rig.tools.keys()].sort(), ["blitz_handoff", "submit_session_handoff"]);
+  assert.deepEqual([...rig.tools.keys()].sort(), [
+    "blitz_handoff",
+    "session_handoff_go",
+    "session_handoff_go_with_user_deferral",
+    "submit_session_handoff",
+  ]);
 
   const publicTool = rig.tools.get("blitz_handoff");
   assert.ok(publicTool);

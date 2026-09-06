@@ -18,6 +18,7 @@ const SETTING_KEYS: readonly SettingKey[] = [
   "writerRetryDelaySeconds",
   "recoveryDirectory",
   "templateDirectory",
+  "callTemplate",
   "handoffTemplate",
 ];
 
@@ -26,11 +27,12 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   criticalWarningPercent: "Critical warning percentage",
   automaticSessionHandoff: "Automatic session handoff",
   automaticSessionHandoffPercent: "Automatic session handoff percentage",
-  readinessRetrySeconds: "Readiness retry seconds",
+  readinessRetrySeconds: "Readiness reminder seconds",
   writerAttempts: "Writer attempts",
   writerRetryDelaySeconds: "Writer retry delay seconds",
   recoveryDirectory: "Recovery directory",
   templateDirectory: "Template directory",
+  callTemplate: "Call template",
   handoffTemplate: "Handoff template",
 };
 
@@ -108,15 +110,18 @@ export class ConfigDialog {
 
 function settingOptions(draft: HandoffConfig): string[] {
   return [
-    ...SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(draft[key])}`),
+    ...SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(key, draft[key])}`),
     SAVE_OPTION,
     CANCEL_OPTION,
   ];
 }
 
-function formatValue(value: HandoffConfig[SettingKey]): string {
+function formatValue(key: SettingKey, value: HandoffConfig[SettingKey]): string {
   if (value === null) return "not configured";
   if (typeof value === "boolean") return value ? "enabled" : "disabled";
+  if (key === "handoffTemplate" && value === "default.cmpl") {
+    return "default.cmpl (legacy; new default: handoff_default.cmpl)";
+  }
   return String(value);
 }
 
@@ -164,7 +169,7 @@ function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff">, draft:
     case "automaticSessionHandoffPercent":
       return "At what context percentage should automatic handoff start? Enter a number from 0 through 100; 0 disables it.";
     case "readinessRetrySeconds":
-      return "How many seconds should pass before retrying readiness? Enter an integer from 1 through 300.";
+      return "How many seconds should pass before the one-time readiness reminder? Enter an integer from 1 through 300.";
     case "writerAttempts":
       return "How many total writer attempts should be made? Enter a positive integer.";
     case "writerRetryDelaySeconds":
@@ -173,8 +178,10 @@ function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff">, draft:
       return "What absolute directory path should store recovery files?";
     case "templateDirectory":
       return "What absolute addendum template directory should be used? Leave blank for no addendum directory.";
+    case "callTemplate":
+      return "What .cmpl filename should be used as the session handoff call template? Enter a filename, not a path.";
     case "handoffTemplate":
-      return "What .cmpl filename should be used as the handoff template? Enter a filename, not a path.";
+      return "What .cmpl filename should be used as the handoff dossier template? Enter a filename, not a path.";
   }
 }
 
@@ -224,9 +231,10 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
         : isAbsolute(answer)
           ? { ...draft, templateDirectory: answer }
           : undefined;
+    case "callTemplate":
     case "handoffTemplate":
       return answer.endsWith(".cmpl") && !answer.includes("/") && !answer.includes("\\") && !answer.includes("\0")
-        ? { ...draft, handoffTemplate: answer }
+        ? { ...draft, [key]: answer }
         : undefined;
   }
 }
@@ -250,6 +258,7 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
       return "Enter an absolute recovery directory path.";
     case "templateDirectory":
       return "Enter an absolute template directory path, or leave the value blank.";
+    case "callTemplate":
     case "handoffTemplate":
       return "Enter a .cmpl filename without a directory path.";
   }

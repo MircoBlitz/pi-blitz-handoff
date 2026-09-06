@@ -11,13 +11,15 @@ import type {
   ExtensionContext,
   InputEvent,
   InputEventResult,
-  MessageEndEvent,
   SessionShutdownEvent,
   SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
+import { defaultConfig, handoffPaths, saveConfig, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import {
+  activateHandoffExtension,
+  resolveHandoffTemplateHealth,
+} from "../extensions/pi-blitz-handoff/index.ts";
 import { setHandoffTerminalState } from "../extensions/pi-blitz-handoff/status.ts";
 import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-blitz-handoff/submission-tool.ts";
 
@@ -47,7 +49,6 @@ interface SentMessage {
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 type InputHandler = (event: InputEvent, ctx: ExtensionContext) => InputEventResult | void | Promise<InputEventResult | void>;
 type SettledHandler = (event: AgentSettledEvent, ctx: ExtensionContext) => void | Promise<void>;
-type MessageEndHandler = (event: MessageEndEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionStartHandler = (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionShutdownHandler = (event: SessionShutdownEvent, ctx: ExtensionContext) => void | Promise<void>;
 type WidgetComponent = { render(width: number): string[]; invalidate(): void };
@@ -59,7 +60,7 @@ type SelectHandler = (
 ) => Promise<string | undefined>;
 type ToolExecute = (
   toolCallId: string,
-  params: { action: "status" | "start" },
+  params: Record<string, string>,
   signal: AbortSignal | undefined,
   onUpdate: undefined,
   ctx: ExtensionContext,
@@ -89,11 +90,10 @@ function createRig(
   const handlers: {
     input?: InputHandler;
     agent_settled?: SettledHandler;
-    message_end?: MessageEndHandler;
     session_start?: SessionStartHandler;
     session_shutdown?: SessionShutdownHandler;
   } = {};
-  let toolExecute: ToolExecute | undefined;
+  const toolExecutions = new Map<string, ToolExecute>();
   let selectHandler: SelectHandler = async () => undefined;
 
   const context = {
@@ -142,13 +142,12 @@ function createRig(
     registerCommand(name: string, options: { handler: CommandHandler }) {
       commands.set(name, options.handler);
     },
-    registerTool(tool: { execute: ToolExecute }) {
-      toolExecute = tool.execute;
+    registerTool(tool: { name: string; execute: ToolExecute }) {
+      toolExecutions.set(tool.name, tool.execute);
     },
     on(event: string, handler: unknown) {
       if (event === "input") handlers.input = handler as InputHandler;
       if (event === "agent_settled") handlers.agent_settled = handler as SettledHandler;
-      if (event === "message_end") handlers.message_end = handler as MessageEndHandler;
       if (event === "session_start") handlers.session_start = handler as SessionStartHandler;
       if (event === "session_shutdown") handlers.session_shutdown = handler as SessionShutdownHandler;
     },
@@ -173,7 +172,7 @@ function createRig(
   } as unknown as ExtensionAPI;
 
   const config = { ...defaultConfig(agentDirectory), ...configChanges };
-  const flow = activateHandoffExtension(api, config, handoffPaths(agentDirectory));
+  const flow = activateHandoffExtension(api, config, handoffPaths(agentDirectory), "CALL TEMPLATE");
   return {
     state,
     notifications,
@@ -190,9 +189,10 @@ function createRig(
     setSelectHandler(handler: SelectHandler) {
       selectHandler = handler;
     },
-    getToolExecute: () => {
-      if (toolExecute === undefined) throw new Error("tool was not registered");
-      return toolExecute;
+    getToolExecute: (name = "blitz_handoff") => {
+      const execute = toolExecutions.get(name);
+      if (execute === undefined) throw new Error(`tool was not registered: ${name}`);
+      return execute;
     },
   };
 }
@@ -209,11 +209,11 @@ test("TUI session startup reserves one widget that active and terminal updates r
 
   await rig.commands.get("sh")?.("", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
-  assert.equal(rig.statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
+  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel");
 
   await rig.commands.get("sh")?.("cancel", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
-  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · cancelled · \d+ sec$/);
+  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff Cancelled · \d+ sec$/);
   assert.ok(rig.getRenderRequests() >= 3);
 
   await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason: "reload" }, rig.context);
@@ -240,16 +240,6 @@ test("defers writer tool initialization until the first session_start", async ()
   assert.equal(rig.notifications.some((notification) => notification.type === "error"), false);
 });
 
-function assistantMessage(text: string): MessageEndEvent {
-  return {
-    type: "message_end",
-    message: {
-      role: "assistant",
-      content: [{ type: "text", text }],
-    },
-  } as MessageEndEvent;
-}
-
 test("/sh starts immediately only at an idle, no-pending boundary and duplicate start is visible", async () => {
   const rig = createRig();
   const command = rig.commands.get("sh");
@@ -270,8 +260,9 @@ test("/sh help displays subcommands and usage", async () => {
   const rig = createRig();
   await rig.commands.get("sh")?.("help", rig.context);
   assert.equal(rig.notifications.at(-1)?.type, "info");
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh recover/);
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh config/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-recover/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-config/);
+  assert.doesNotMatch(rig.notifications.at(-1)?.message ?? "", /\\n/);
 });
 
 test("blitz_handoff start records intent during a run while status remains factual", async () => {
@@ -346,7 +337,12 @@ test("/sh config stays in extension UI and reload or session replacement discard
   t.after(() => rm(root, { recursive: true, force: true }));
 
   for (const reason of ["reload", "new"] as const) {
-    const rig = createRig({}, {}, join(root, reason));
+    const agentDirectory = join(root, reason);
+    const templates = handoffPaths(agentDirectory).templateDirectory;
+    await mkdir(templates, { recursive: true });
+    await writeFile(join(templates, "call_default.cmpl"), "call default");
+    await writeFile(join(templates, "handoff_default.cmpl"), "handoff default");
+    const rig = createRig({}, {}, agentDirectory);
     let observedSignal: AbortSignal | undefined;
     let markPromptStarted: (() => void) | undefined;
     const promptStarted = new Promise<void>((resolve) => {
@@ -354,7 +350,7 @@ test("/sh config stays in extension UI and reload or session replacement discard
     });
     rig.setSelectHandler(async (title, options, opts) => {
       assert.equal(title, "Configure pi-blitz-handoff");
-      assert.equal(options.length, 12);
+      assert.equal(options.length, 13);
       observedSignal = opts?.signal;
       markPromptStarted?.();
       return new Promise<string | undefined>((resolve) => {
@@ -374,12 +370,77 @@ test("/sh config stays in extension UI and reload or session replacement discard
   }
 });
 
+test("template health checks both roles and config opening reports each non-default fallback", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-health-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await mkdir(paths.recoveryDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "call default");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "handoff default");
+  const config = {
+    ...defaultConfig(agentDirectory),
+    callTemplate: "missing-call.cmpl",
+    handoffTemplate: "missing-handoff.cmpl",
+  };
+  await saveConfig(agentDirectory, config);
+
+  const health = await resolveHandoffTemplateHealth(config, paths);
+  assert.equal(health.callTemplate, "call default");
+  assert.equal(health.warnings.length, 2);
+  assert.match(health.warnings[0] ?? "", /Call template "missing-call\.cmpl"/);
+  assert.match(health.warnings[1] ?? "", /Handoff template "missing-handoff\.cmpl"/);
+
+  const rig = createRig(config, {}, agentDirectory);
+  await rig.commands.get("sh-config")?.("", rig.context);
+  const warnings = rig.notifications.filter(({ type }) => type === "warning");
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0]?.message ?? "", /Using fallback .*call_default\.cmpl/);
+  assert.match(warnings[1]?.message ?? "", /Using fallback .*handoff_default\.cmpl/);
+});
+
+test("startup template warnings are shown once", async () => {
+  const agentDirectory = "/tmp/pi-blitz-handoff-startup-health";
+  const notifications: Notification[] = [];
+  const handlers: { session_start?: SessionStartHandler } = {};
+  const api = {
+    registerCommand() {},
+    registerTool() {},
+    on(event: string, handler: unknown) {
+      if (event === "session_start") handlers.session_start = handler as SessionStartHandler;
+    },
+    sendMessage() {},
+  } as unknown as ExtensionAPI;
+  const context = {
+    mode: "tui",
+    sessionManager: { getSessionFile: () => "/sessions/startup.jsonl" },
+    ui: {
+      notify(message: string, type?: Notification["type"]) { notifications.push({ message, type }); },
+      setWidget() {},
+    },
+  } as unknown as ExtensionContext;
+  activateHandoffExtension(
+    api,
+    defaultConfig(agentDirectory),
+    handoffPaths(agentDirectory),
+    "call default",
+    ["Call template fallback", "Handoff template fallback"],
+  );
+
+  await handlers.session_start?.({ type: "session_start", reason: "startup" }, context);
+  await handlers.session_start?.({ type: "session_start", reason: "new" }, context);
+  assert.deepEqual(notifications, [
+    { message: "Call template fallback", type: "warning" },
+    { message: "Handoff template fallback", type: "warning" },
+  ]);
+});
+
 test("finished status lasts until ordinary input or a new handoff begins", async () => {
   const inputSession = "/sessions/finished-input.jsonl";
   const inputRig = createRig({}, { sessionFile: inputSession });
   setHandoffTerminalState(inputSession, "finished");
   await inputRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, inputRig.context);
-  assert.match(inputRig.statuses.at(-1) ?? "", /^Session Handoff · finished(?: · \d+ sec)?$/);
+  assert.match(inputRig.statuses.at(-1) ?? "", /^Session Handoff Finished(?: · \d+ sec)?$/);
 
   await inputRig.handlers.input?.({
     type: "input",
@@ -393,7 +454,7 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
   await startRig.commands.get("sh")?.("", startRig.context);
-  assert.equal(startRig.statuses.at(-1), "Session Handoff · waiting for readiness · Input available · /sh cancel");
+  assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel");
 });
 
 test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {
@@ -434,11 +495,11 @@ test("explicit command start ignores automatic and warning thresholds", async ()
   assert.equal(rig.sentMessages.length, 1);
 });
 
-test("steering and follow-up input invalidate readiness IDs and pass unchanged", async () => {
+test("steering and follow-up input pass unchanged before GO without changing correlation", async () => {
   for (const streamingBehavior of ["steer", "followUp"] as const) {
     const rig = createRig();
     await rig.commands.get("sh")?.("", rig.context);
-    const oldIds = rig.flow.snapshot?.readinessIds;
+    const key = rig.flow.snapshot?.readinessKey;
     const event: InputEvent = {
       type: "input",
       text: "Keep working on the source task",
@@ -447,14 +508,40 @@ test("steering and follow-up input invalidate readiness IDs and pass unchanged",
     };
     const unchanged = { ...event };
 
-    const result = await rig.handlers.input?.(event, rig.context);
-    assert.deepEqual(result, { action: "continue" });
+    assert.deepEqual(await rig.handlers.input?.(event, rig.context), { action: "continue" });
     assert.deepEqual(event, unchanged);
-    assert.equal(rig.flow.snapshot?.readinessIds, undefined);
-
+    assert.equal(rig.flow.snapshot?.readinessKey, key);
     await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
-    assert.notDeepEqual(rig.flow.snapshot?.readinessIds, oldIds);
+    assert.equal(rig.sentMessages.length, 1);
   }
+});
+
+test("user deferral Wait uses extension selection, keeps input normal, and later direct GO works", async () => {
+  const rig = createRig();
+  rig.setSelectHandler(async (title, options) => {
+    assert.equal(
+      title,
+      "Your LLM reports an active user interaction:\nThe user's active review may still matter",
+    );
+    assert.deepEqual(options, ["Ready", "Wait", "Cancel"]);
+    assert.match(rig.statuses.at(-1) ?? "", /User Input Required/);
+    return "Wait";
+  });
+  await rig.commands.get("sh")?.("", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+  await rig.getToolExecute("session_handoff_go_with_user_deferral")(
+    "defer",
+    { key, reason: "The user's active review may still matter" },
+    undefined,
+    undefined,
+    rig.context,
+  );
+  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel\nAwaiting User GO · Tell your LLM to start when ready");
+  assert.deepEqual(await rig.handlers.input?.({ type: "input", text: "continue", source: "interactive" }, rig.context), { action: "continue" });
+  assert.equal(rig.flow.phase, "waiting");
+  await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
+  assert.equal(rig.flow.phase, "ready");
 });
 
 test("post-GO interactive and RPC prompts are handled, preserved, and persisted in one file", async (t) => {
@@ -464,9 +551,9 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   await mkdir(recoveryDirectory);
   const rig = createRig({ recoveryDirectory }, { sessionFile: "/sessions/My source.jsonl" });
   await rig.commands.get("sh")?.("", rig.context);
-  const go = rig.flow.snapshot?.readinessIds?.go;
+  const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
-  await rig.handlers.message_end?.(assistantMessage(go), rig.context);
+  await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
   await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
   assert.match(rig.statuses.at(-1) ?? "", /Inputs deferred \(0\)/);
 
@@ -518,9 +605,9 @@ test("post-GO persistence failure is visible and still handles the captured prom
   await writeFile(notDirectory, "occupied");
   const rig = createRig({ recoveryDirectory: notDirectory });
   await rig.commands.get("sh")?.("", rig.context);
-  const go = rig.flow.snapshot?.readinessIds?.go;
+  const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
-  await rig.handlers.message_end?.(assistantMessage(go), rig.context);
+  await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
   await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
 
   const result = await rig.handlers.input?.({
@@ -535,23 +622,17 @@ test("post-GO persistence failure is visible and still handles the captured prom
   assert.match(rig.notifications.at(-1)?.message ?? "", /recovery file could not be updated/);
 });
 
-test("only the current GO answer on the final line advances after the answering run settles", async () => {
+test("only a current keyed GO tool call advances and writer dispatch waits for settled", async () => {
   const rig = createRig();
   await rig.commands.get("sh")?.("", rig.context);
-  const go = rig.flow.snapshot?.readinessIds?.go;
+  const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
+  const execute = rig.getToolExecute("session_handoff_go");
 
-  await rig.handlers.message_end?.(assistantMessage(`Reasoning first\n${go}`), rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await assert.rejects(execute("stale", { key: "stale" }, undefined, undefined, rig.context));
+  await execute("current", { key: go }, undefined, undefined, rig.context);
   assert.equal(rig.flow.phase, "ready");
-
-  await rig.commands.get("sh")?.("cancel", rig.context);
-  await rig.commands.get("sh")?.("", rig.context);
-  const currentGo = rig.flow.snapshot?.readinessIds?.go;
-  assert.ok(currentGo);
-  await rig.handlers.message_end?.(assistantMessage(currentGo), rig.context);
-  assert.equal(rig.flow.phase, "checking");
+  assert.notEqual(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
   await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
-  assert.equal(rig.flow.phase, "ready");
   assert.equal(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
 });

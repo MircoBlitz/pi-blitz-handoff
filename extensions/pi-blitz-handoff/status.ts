@@ -96,6 +96,7 @@ export function persistentHandoffStatus(
   if (terminalState === "cancelled") return "Session Handoff Cancelled";
   if (writing) return "Writing Session Handoff";
   if (phase === "inactive") return undefined;
+  if (phase === "user-input-required") return "User Input Required";
   return "Waiting for Session Handoff";
 }
 
@@ -134,6 +135,7 @@ export function updatePersistentHandoffStatus(
   startedAtOverride?: number,
   deferredInputCount = 0,
   handoffStartedAtOverride?: number,
+  awaitingUserGo = false,
 ): void {
   const showWriting = writing && terminalState === undefined;
   const active = terminalState === undefined && phase !== "inactive";
@@ -149,11 +151,16 @@ export function updatePersistentHandoffStatus(
     : elapsedSince(displayedActivity.startedAt);
 
   const lines = terminalState === undefined && phase !== "inactive"
-    ? [colorizeActivity(
-        ui,
-        formatHandoffActivity(showWriting, phase, deferredInputCount),
-        showWriting ? undefined : "warning",
-      )]
+    ? [
+        colorizeActivity(
+          ui,
+          formatHandoffActivity(showWriting, phase, deferredInputCount),
+          showWriting ? undefined : phase === "user-input-required" ? "error" : "warning",
+        ),
+        ...(awaitingUserGo
+          ? [colorizeActivity(ui, "Awaiting User GO · Tell your LLM to start when ready", "warning")]
+          : []),
+      ]
     : terminalState === undefined
       ? undefined
       : colorizeTerminal(ui, terminalState, elapsedSeconds, displayedActivity);
@@ -196,7 +203,7 @@ function elapsedSince(startedAt: number): number {
 function colorizeActivity(
   ui: HandoffStatusUI,
   text: string,
-  semanticColor: "warning" | undefined,
+  semanticColor: "warning" | "error" | undefined,
 ): string {
   if (ui.theme === undefined) return text;
   if (semanticColor !== undefined) return ui.theme.fg(semanticColor, text);
@@ -209,9 +216,12 @@ function colorizeTerminal(
   elapsedSeconds: number | undefined,
   activity: HandoffActivity | undefined,
 ): string[] {
-  const lines = [elapsedSeconds === undefined
-    ? `Session Handoff · ${state}`
-    : `Session Handoff · ${state} · ${elapsedSeconds} sec`];
+  const label = state === "finished"
+    ? "Session Handoff Finished"
+    : state === "failed"
+      ? "Session Handoff Failed"
+      : "Session Handoff Cancelled";
+  const lines = [elapsedSeconds === undefined ? label : `${label} · ${elapsedSeconds} sec`];
   if (state === "finished" && activity?.handoffStartedAt !== undefined) {
     lines.push(
       `Wait Time ${elapsedBetween(activity.startedAt, activity.handoffStartedAt)} sec · `
@@ -229,14 +239,14 @@ function elapsedBetween(startedAt: number, endedAt: number): number {
 
 function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, deferredInputCount: number): string {
   const activity = writing
-    ? "starting session export"
-    : phase === "retry-delay"
-      ? "waiting before readiness retry"
-      : "waiting for readiness";
+    ? "Writing Session Handoff"
+    : phase === "user-input-required"
+      ? "User Input Required"
+      : "Waiting for Session Handoff";
   const input = phase === "ready" || writing
     ? `Inputs deferred (${deferredInputCount})`
     : "Input available";
-  return `Session Handoff · ${activity} · ${input} · /sh cancel`;
+  return `${activity} · ${input} · /sh-cancel`;
 }
 
 export function contextWarning(
@@ -286,7 +296,7 @@ export function formatPublicStatus(
     `Context usage: ${context}.`,
     `Warning threshold: ${formatPercent(config.contextWarningPercent)}; critical threshold: ${formatPercent(config.criticalWarningPercent)}.`,
     `Automatic session handoff: ${automatic}.`,
-    `Readiness retry delay: ${config.readinessRetrySeconds} seconds.`,
+    `Readiness reminder delay: ${config.readinessRetrySeconds} seconds.`,
   ].join(" ");
 }
 
