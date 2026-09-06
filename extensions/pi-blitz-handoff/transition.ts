@@ -24,6 +24,7 @@ export interface NativeTransitionRequest {
   sourceSessionPath: string;
   dossier: string;
   startedAt?: number;
+  handoffStartedAt?: number;
 }
 
 export interface NativeHandoffTransitionOptions {

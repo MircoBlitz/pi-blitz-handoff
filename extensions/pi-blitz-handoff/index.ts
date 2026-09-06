@@ -21,6 +21,7 @@ import {
   disposePersistentHandoffStatus,
   formatPublicStatus,
   getHandoffActivityStartedAt,
+  getHandoffStartedAt,
   getHandoffTerminalState,
   protectReplacementSession,
   registerPersistentHandoffStatus,
@@ -117,7 +118,16 @@ export function activateHandoffExtension(
       const sessionFile = ctx.sessionManager.getSessionFile();
       unprotectReplacementSession(sessionFile);
       setHandoffTerminalState(sessionFile, "finished");
-      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "finished", false, request.startedAt);
+      updatePersistentHandoffStatus(
+        ctx.ui,
+        STATUS_KEY,
+        "inactive",
+        "finished",
+        false,
+        request.startedAt,
+        0,
+        request.handoffStartedAt,
+      );
     },
     onFailure(request, message, ctx) {
       flow.finish(ctx, request.handoffId);
@@ -167,6 +177,7 @@ export function activateHandoffExtension(
             sourceSessionPath: result.handoff.sourceSessionPath,
             dossier: result.submission.content,
             startedAt,
+            handoffStartedAt: getHandoffStartedAt(STATUS_KEY),
           });
           if (token === undefined) {
             flow.finish(ctx, result.handoff.id);

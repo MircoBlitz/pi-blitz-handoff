@@ -87,6 +87,42 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(getHandoffActivityStartedAt("stable-handoff"), undefined);
 });
 
+test("finished widget adds separate wait and handoff durations measured at accepted GO", () => {
+  type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+  type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
+  let component: WidgetComponent | undefined;
+  const ui = {
+    setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+      if (typeof content === "function") {
+        component = content({ requestRender() {} });
+      }
+    },
+  };
+  const originalNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+
+  try {
+    registerPersistentHandoffStatus(ui, "timed-handoff");
+    updatePersistentHandoffStatus(ui, "timed-handoff", "waiting");
+    now += 180_000;
+    updatePersistentHandoffStatus(ui, "timed-handoff", "ready");
+    now += 15_000;
+    updatePersistentHandoffStatus(ui, "timed-handoff", "inactive", "finished");
+
+    assert.deepEqual(component?.render(120), [
+      "Session Handoff · finished · 195 sec",
+      "Wait Time 180 sec · Handoff Time 15 sec",
+    ]);
+    for (const line of component?.render(20) ?? []) {
+      assert.ok(visibleWidth(line) <= 20);
+    }
+  } finally {
+    Date.now = originalNow;
+    disposePersistentHandoffStatus(ui, "timed-handoff");
+  }
+});
+
 test("persistent TUI component respects narrow widths for ANSI-colored status", () => {
   type WidgetComponent = { render(width: number): string[]; invalidate(): void };
   type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;

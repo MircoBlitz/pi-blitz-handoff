@@ -84,7 +84,7 @@ The activity line is rendered as a Pi widget directly above the input editor. It
 - `Writing Session Handoff`
 - `Session Handoff Finished`
 
-Failure and cancellation override those states. Finished status remains in the replacement session until ordinary user input or another handoff begins. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
+Failure and cancellation override those states. Finished status remains in the replacement session until ordinary user input or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
 
 Before `GO`, `/sh cancel` clears pending readiness. After `GO` but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Deferred prompts are not replayed automatically to the source session.
 

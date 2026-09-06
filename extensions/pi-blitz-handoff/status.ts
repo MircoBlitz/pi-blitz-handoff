@@ -22,28 +22,28 @@ interface HandoffStatusUI {
 }
 
 class PersistentHandoffWidget implements HandoffWidgetComponent {
-  private text: string | undefined;
+  private lines: string[] | undefined;
   private readonly requestRender: () => void;
 
-  constructor(text: string | undefined, requestRender: () => void) {
-    this.text = text;
+  constructor(lines: string[] | undefined, requestRender: () => void) {
+    this.lines = lines;
     this.requestRender = requestRender;
   }
 
-  update(text: string | undefined): void {
-    this.text = text;
+  update(lines: string[] | undefined): void {
+    this.lines = lines;
     this.requestRender();
   }
 
   render(width: number): string[] {
-    return this.text === undefined ? [] : [truncateToWidth(this.text, width)];
+    return this.lines?.map((line) => truncateToWidth(line, width)) ?? [];
   }
 
   invalidate(): void {}
 }
 
 interface PersistentHandoffWidgetState {
-  text: string | undefined;
+  lines: string[] | undefined;
   component?: PersistentHandoffWidget;
 }
 
@@ -52,8 +52,13 @@ const WRITING_INDICATOR = {
   intervalMs: 120,
 };
 
+interface HandoffActivity {
+  startedAt: number;
+  handoffStartedAt?: number;
+}
+
 const terminalStates = new Map<string, HandoffTerminalState>();
-const handoffActivity = new Map<string, { startedAt: number }>();
+const handoffActivity = new Map<string, HandoffActivity>();
 const protectedReplacementSessions = new Set<string>();
 const persistentWidgets = new WeakMap<HandoffStatusUI, Map<string, PersistentHandoffWidgetState>>();
 
@@ -102,10 +107,10 @@ export function registerPersistentHandoffStatus(ui: HandoffStatusUI, key: string
   }
   if (widgets.has(key)) return;
 
-  const state: PersistentHandoffWidgetState = { text: undefined };
+  const state: PersistentHandoffWidgetState = { lines: undefined };
   widgets.set(key, state);
   ui.setWidget?.(key, (tui) => {
-    const component = new PersistentHandoffWidget(state.text, () => tui.requestRender());
+    const component = new PersistentHandoffWidget(state.lines, () => tui.requestRender());
     state.component = component;
     return component;
   });
@@ -128,29 +133,36 @@ export function updatePersistentHandoffStatus(
   writing = false,
   startedAtOverride?: number,
   deferredInputCount = 0,
+  handoffStartedAtOverride?: number,
 ): void {
   const showWriting = writing && terminalState === undefined;
   const active = terminalState === undefined && phase !== "inactive";
   const activity = active ? getHandoffActivity(key) : handoffActivity.get(key);
-  const elapsedSeconds = activity === undefined
-    ? startedAtOverride === undefined ? undefined : elapsedSince(startedAtOverride)
-    : elapsedSince(activity.startedAt);
+  if (active && phase === "ready" && activity !== undefined && activity.handoffStartedAt === undefined) {
+    activity.handoffStartedAt = Date.now();
+  }
+  const displayedActivity = activity ?? (startedAtOverride === undefined
+    ? undefined
+    : { startedAt: startedAtOverride, handoffStartedAt: handoffStartedAtOverride });
+  const elapsedSeconds = displayedActivity === undefined
+    ? undefined
+    : elapsedSince(displayedActivity.startedAt);
 
-  const text = terminalState === undefined && phase !== "inactive"
-    ? colorizeActivity(
+  const lines = terminalState === undefined && phase !== "inactive"
+    ? [colorizeActivity(
         ui,
         formatHandoffActivity(showWriting, phase, deferredInputCount),
         showWriting ? undefined : "warning",
-      )
+      )]
     : terminalState === undefined
       ? undefined
-      : colorizeTerminal(ui, terminalState, elapsedSeconds);
+      : colorizeTerminal(ui, terminalState, elapsedSeconds, displayedActivity);
   const widget = persistentWidgets.get(ui)?.get(key);
   if (widget === undefined) {
-    ui.setWidget?.(key, text === undefined ? undefined : [text]);
+    ui.setWidget?.(key, lines);
   } else {
-    widget.text = text;
-    widget.component?.update(text);
+    widget.lines = lines;
+    widget.component?.update(lines);
   }
   ui.setWorkingIndicator?.(showWriting ? WRITING_INDICATOR : undefined);
 
@@ -161,7 +173,11 @@ export function getHandoffActivityStartedAt(key: string): number | undefined {
   return handoffActivity.get(key)?.startedAt;
 }
 
-function getHandoffActivity(key: string): { startedAt: number } {
+export function getHandoffStartedAt(key: string): number | undefined {
+  return handoffActivity.get(key)?.handoffStartedAt;
+}
+
+function getHandoffActivity(key: string): HandoffActivity {
   const existing = handoffActivity.get(key);
   if (existing !== undefined) return existing;
   const created = { startedAt: Date.now() };
@@ -187,12 +203,28 @@ function colorizeActivity(
   return `\u001b[38;5;226m${text}\u001b[39m`;
 }
 
-function colorizeTerminal(ui: HandoffStatusUI, state: HandoffTerminalState, elapsedSeconds: number | undefined): string {
-  const text = elapsedSeconds === undefined
+function colorizeTerminal(
+  ui: HandoffStatusUI,
+  state: HandoffTerminalState,
+  elapsedSeconds: number | undefined,
+  activity: HandoffActivity | undefined,
+): string[] {
+  const lines = [elapsedSeconds === undefined
     ? `Session Handoff · ${state}`
-    : `Session Handoff · ${state} · ${elapsedSeconds} sec`;
-  if (ui.theme === undefined) return text;
-  return ui.theme.fg(state === "finished" ? "success" : state === "failed" ? "error" : "warning", text);
+    : `Session Handoff · ${state} · ${elapsedSeconds} sec`];
+  if (state === "finished" && activity?.handoffStartedAt !== undefined) {
+    lines.push(
+      `Wait Time ${elapsedBetween(activity.startedAt, activity.handoffStartedAt)} sec · `
+      + `Handoff Time ${elapsedSince(activity.handoffStartedAt)} sec`,
+    );
+  }
+  if (ui.theme === undefined) return lines;
+  const color = state === "finished" ? "success" : state === "failed" ? "error" : "warning";
+  return lines.map((line) => ui.theme?.fg(color, line) ?? line);
+}
+
+function elapsedBetween(startedAt: number, endedAt: number): number {
+  return Math.max(0, Math.floor((endedAt - startedAt) / 1000));
 }
 
 function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, deferredInputCount: number): string {
