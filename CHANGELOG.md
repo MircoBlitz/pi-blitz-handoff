@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-09-06
 
 ### Added
 
@@ -25,4 +25,16 @@
 
 ## 1.0.1 — 2026-09-05
 
-- Fixed persistent status-widget stability and width-safe rendering.
+### Fixed
+
+- Stabilized the persistent status widget and made its rendering terminal-width-safe.
+
+## 1.0.0 — 2026-09-05
+
+### Added
+
+- Added structured handoff dossiers into fresh, natively linked Pi sessions with source-session lineage.
+- Added manual `/sh`, model-callable `blitz_handoff`, and optional context-threshold initiation.
+- Added deterministic deferred-input capture, one-file recovery persistence, and explicit recovery actions.
+- Added in-chat configuration, managed dossier templates, readiness and writer retries, and context warnings.
+- Added persistent lifecycle status, cancellation, and guards against conflicting session changes during transfer.

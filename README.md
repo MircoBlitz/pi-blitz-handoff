@@ -185,4 +185,4 @@ git diff --check
 npm pack --dry-run
 ```
 
-The candidate is tested for public registration, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. A real current-Pi interactive/model/session validation has **not** been performed. That remains a separate gate because it invokes a real model and mutates real session state.
+The candidate is tested for public registration, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
