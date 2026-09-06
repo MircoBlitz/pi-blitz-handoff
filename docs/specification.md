@@ -303,7 +303,7 @@ The extension exposes concise factual status in chat and through `blitz_handoff 
 - `Writing Session Handoff` with an indeterminate activity indicator;
 - `Session Handoff Finished` in the replacement session until the next ordinary user input or another handoff begins.
 
-Failure and cancellation override those states. Concrete attempt information may appear in factual chat or tool status, but the persistent indicator does not invent fractional or numbered progress.
+Failure and cancellation override those states. A successful final status adds a second line with `Wait Time`, measured from initiation to accepted `GO`, and `Handoff Time`, measured from `GO` to successful completion. After `GO`, the persistent activity line shows `Inputs deferred (0)` and increments that factual count for every captured prompt. Concrete attempt information may appear in factual chat or tool status, but the persistent indicator does not invent fractional or numbered progress.
 
 All product-facing messages, dialogs, templates, and documentation use clear English.
 

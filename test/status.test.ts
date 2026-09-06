@@ -87,6 +87,42 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(getHandoffActivityStartedAt("stable-handoff"), undefined);
 });
 
+test("finished widget adds separate wait and handoff durations measured at accepted GO", () => {
+  type WidgetComponent = { render(width: number): string[]; invalidate(): void };
+  type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
+  let component: WidgetComponent | undefined;
+  const ui = {
+    setWidget(_key: string, content: string[] | WidgetFactory | undefined) {
+      if (typeof content === "function") {
+        component = content({ requestRender() {} });
+      }
+    },
+  };
+  const originalNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+
+  try {
+    registerPersistentHandoffStatus(ui, "timed-handoff");
+    updatePersistentHandoffStatus(ui, "timed-handoff", "waiting");
+    now += 180_000;
+    updatePersistentHandoffStatus(ui, "timed-handoff", "ready");
+    now += 15_000;
+    updatePersistentHandoffStatus(ui, "timed-handoff", "inactive", "finished");
+
+    assert.deepEqual(component?.render(120), [
+      "Session Handoff · finished · 195 sec",
+      "Wait Time 180 sec · Handoff Time 15 sec",
+    ]);
+    for (const line of component?.render(20) ?? []) {
+      assert.ok(visibleWidth(line) <= 20);
+    }
+  } finally {
+    Date.now = originalNow;
+    disposePersistentHandoffStatus(ui, "timed-handoff");
+  }
+});
+
 test("persistent TUI component respects narrow widths for ANSI-colored status", () => {
   type WidgetComponent = { render(width: number): string[]; invalidate(): void };
   type WidgetFactory = (tui: { requestRender(): void }) => WidgetComponent;
@@ -147,10 +183,13 @@ test("writing status uses an indeterminate public activity indicator and termina
   };
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
-  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Input deferred · /sh cancel");
+  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (0) · /sh cancel");
   assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
   assert.equal(indicators.at(-1)?.intervalMs, 120);
   assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
+
+  updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true, undefined, 2);
+  assert.equal(statuses.at(-1), "Session Handoff · starting session export · Inputs deferred (2) · /sh cancel");
 
   updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
   assert.match(statuses.at(-1) ?? "", /^Session Handoff · failed · \d+ sec$/);

@@ -468,6 +468,7 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   assert.ok(go);
   await rig.handlers.message_end?.(assistantMessage(go), rig.context);
   await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  assert.match(rig.statuses.at(-1) ?? "", /Inputs deferred \(0\)/);
 
   const first: InputEvent = {
     type: "input",
@@ -490,6 +491,8 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   assert.deepEqual(first, firstCopy);
   assert.deepEqual(second, secondCopy);
   assert.deepEqual(rig.flow.deferredSnapshot?.prompts, [first.text, second.text]);
+  assert.ok(rig.statuses.some((status) => status?.includes("Inputs deferred (1)")));
+  assert.match(rig.statuses.at(-1) ?? "", /Inputs deferred \(2\)/);
 
   const extensionResult = await rig.handlers.input?.({
     type: "input",

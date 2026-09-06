@@ -256,7 +256,10 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   ].join("\n\n")]);
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
   assert.equal(rig.flow.phase, "inactive");
-  assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff · finished · \d+ sec$/);
+  assert.match(
+    rig.statuses.at(-1) ?? "",
+    /^Session Handoff · finished · \d+ sec\nWait Time \d+ sec · Handoff Time \d+ sec$/,
+  );
   assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 2);
   assert.equal(rig.widgetSetCalls.filter((content) => content === undefined).length, 1);
 });
