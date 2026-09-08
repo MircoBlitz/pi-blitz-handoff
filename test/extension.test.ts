@@ -11,6 +11,7 @@ import type {
   ExtensionContext,
   InputEvent,
   InputEventResult,
+  SessionCompactEvent,
   SessionShutdownEvent,
   SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
@@ -28,6 +29,7 @@ interface RuntimeState {
   pending: boolean;
   sessionFile?: string;
   percent?: number | null;
+  entries: Array<{ type: "custom"; customType: string; data?: unknown }>;
 }
 
 interface ToolRuntimeOptions {
@@ -49,6 +51,8 @@ interface SentMessage {
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 type InputHandler = (event: InputEvent, ctx: ExtensionContext) => InputEventResult | void | Promise<InputEventResult | void>;
 type SettledHandler = (event: AgentSettledEvent, ctx: ExtensionContext) => void | Promise<void>;
+type TurnEndHandler = (event: unknown, ctx: ExtensionContext) => void | Promise<void>;
+type SessionCompactHandler = (event: SessionCompactEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionStartHandler = (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionShutdownHandler = (event: SessionShutdownEvent, ctx: ExtensionContext) => void | Promise<void>;
 type WidgetComponent = { render(width: number): string[]; invalidate(): void };
@@ -66,6 +70,24 @@ type ToolExecute = (
   ctx: ExtensionContext,
 ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 
+function compactEvent(reason: SessionCompactEvent["reason"]): SessionCompactEvent {
+  return {
+    type: "session_compact",
+    compactionEntry: {
+      type: "compaction",
+      id: "compact1",
+      parentId: "parent1",
+      timestamp: new Date().toISOString(),
+      summary: "compacted",
+      firstKeptEntryId: "parent1",
+      tokensBefore: 90_000,
+    },
+    fromExtension: false,
+    reason,
+    willRetry: reason === "overflow",
+  };
+}
+
 function createRig(
   configChanges: Partial<HandoffConfig> = {},
   stateChanges: Partial<RuntimeState> = {},
@@ -77,6 +99,7 @@ function createRig(
     pending: false,
     sessionFile: "/sessions/source.jsonl",
     percent: 10,
+    entries: [],
     ...stateChanges,
   };
   const notifications: Notification[] = [];
@@ -87,9 +110,12 @@ function createRig(
   const sentMessages: SentMessage[] = [];
   const sentUserMessages: string[] = [];
   const commands = new Map<string, CommandHandler>();
+  const registeredEvents = new Set<string>();
   const handlers: {
     input?: InputHandler;
     agent_settled?: SettledHandler;
+    turn_end?: TurnEndHandler;
+    session_compact?: SessionCompactHandler;
     session_start?: SessionStartHandler;
     session_shutdown?: SessionShutdownHandler;
   } = {};
@@ -106,7 +132,10 @@ function createRig(
       contextWindow: 100_000,
       percent: state.percent ?? null,
     }),
-    sessionManager: { getSessionFile: () => state.sessionFile },
+    sessionManager: {
+      getSessionFile: () => state.sessionFile,
+      getEntries: () => state.entries,
+    },
     ui: {
       select(title: string, options: string[], opts?: { signal?: AbortSignal }) {
         return selectHandler(title, options, opts);
@@ -146,8 +175,11 @@ function createRig(
       toolExecutions.set(tool.name, tool.execute);
     },
     on(event: string, handler: unknown) {
+      registeredEvents.add(event);
       if (event === "input") handlers.input = handler as InputHandler;
       if (event === "agent_settled") handlers.agent_settled = handler as SettledHandler;
+      if (event === "turn_end") handlers.turn_end = handler as TurnEndHandler;
+      if (event === "session_compact") handlers.session_compact = handler as SessionCompactHandler;
       if (event === "session_start") handlers.session_start = handler as SessionStartHandler;
       if (event === "session_shutdown") handlers.session_shutdown = handler as SessionShutdownHandler;
     },
@@ -156,6 +188,9 @@ function createRig(
     },
     sendUserMessage(content: string | Array<{ type: string; text?: string }>) {
       sentUserMessages.push(typeof content === "string" ? content : JSON.stringify(content));
+    },
+    appendEntry(customType: string, data?: unknown) {
+      state.entries.push({ type: "custom", customType, data });
     },
     ...(toolRuntime === undefined
       ? {}
@@ -181,6 +216,7 @@ function createRig(
     sentMessages,
     sentUserMessages,
     commands,
+    registeredEvents,
     handlers,
     context,
     flow,
@@ -413,7 +449,7 @@ test("startup template warnings are shown once", async () => {
   } as unknown as ExtensionAPI;
   const context = {
     mode: "tui",
-    sessionManager: { getSessionFile: () => "/sessions/startup.jsonl" },
+    sessionManager: { getSessionFile: () => "/sessions/startup.jsonl", getEntries: () => [] },
     ui: {
       notify(message: string, type?: Notification["type"]) { notifications.push({ message, type }); },
       setWidget() {},
@@ -457,42 +493,149 @@ test("finished status lasts until ordinary input or a new handoff begins", async
   assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel");
 });
 
-test("automatic initiation occurs only when enabled, at threshold, settled, and without pending messages", async () => {
-  const disabled = createRig({ automaticSessionHandoff: false }, { percent: 99 });
-  await disabled.handlers.agent_settled?.({ type: "agent_settled" }, disabled.context);
+test("automatic initiation enters autonomous work at turn end and retries once at critical", async () => {
+  const disabled = createRig({ automaticSessionHandoff: false }, { percent: 99, idle: false, pending: true });
+  await disabled.handlers.turn_end?.({ type: "turn_end" }, disabled.context);
   assert.equal(disabled.flow.phase, "inactive");
 
   const below = createRig(
     { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70 },
-    { percent: 69 },
+    { percent: 69, idle: false, pending: true },
   );
+  await below.handlers.turn_end?.({ type: "turn_end" }, below.context);
+  assert.equal(below.flow.phase, "inactive");
+  below.state.percent = 70;
   await below.handlers.agent_settled?.({ type: "agent_settled" }, below.context);
   assert.equal(below.flow.phase, "inactive");
 
-  const pending = createRig(
-    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70 },
-    { percent: 70, pending: true },
-  );
-  await pending.handlers.agent_settled?.({ type: "agent_settled" }, pending.context);
-  assert.equal(pending.flow.phase, "inactive");
-
   const enabled = createRig(
-    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70 },
-    { percent: 70 },
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+    { percent: 70, idle: false, pending: true },
   );
-  await enabled.handlers.agent_settled?.({ type: "agent_settled" }, enabled.context);
+  await enabled.handlers.turn_end?.({ type: "turn_end" }, enabled.context);
   assert.equal(enabled.flow.snapshot?.source, "automatic");
   assert.equal(enabled.sentMessages.length, 1);
+  assert.equal(enabled.sentMessages[0]?.options?.deliverAs, "steer");
+
+  await enabled.commands.get("sh-cancel")?.("", enabled.context);
+  const afterFirstAttempt = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+    { percent: 89, idle: false, pending: true, entries: [...enabled.state.entries] },
+  );
+  await afterFirstAttempt.handlers.session_start?.(
+    { type: "session_start", reason: "reload" },
+    afterFirstAttempt.context,
+  );
+  await afterFirstAttempt.handlers.turn_end?.({ type: "turn_end" }, afterFirstAttempt.context);
+  assert.equal(afterFirstAttempt.flow.phase, "inactive");
+
+  afterFirstAttempt.state.percent = 90;
+  await afterFirstAttempt.handlers.turn_end?.({ type: "turn_end" }, afterFirstAttempt.context);
+  assert.equal(afterFirstAttempt.flow.snapshot?.source, "automatic");
+  assert.equal(afterFirstAttempt.sentMessages.length, 1);
+
+  const alreadyCritical = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+    { percent: 95, idle: false, pending: true, entries: [...enabled.state.entries] },
+  );
+  await alreadyCritical.handlers.session_start?.(
+    { type: "session_start", reason: "reload" },
+    alreadyCritical.context,
+  );
+  await alreadyCritical.handlers.turn_end?.({ type: "turn_end" }, alreadyCritical.context);
+  assert.equal(alreadyCritical.flow.snapshot?.source, "automatic");
+  assert.equal(alreadyCritical.sentMessages.length, 1);
+
+  await afterFirstAttempt.commands.get("sh-cancel")?.("", afterFirstAttempt.context);
+  const afterSecondAttempt = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+    { percent: 99, idle: false, pending: true, entries: [...afterFirstAttempt.state.entries] },
+  );
+  await afterSecondAttempt.handlers.session_start?.(
+    { type: "session_start", reason: "reload" },
+    afterSecondAttempt.context,
+  );
+  await afterSecondAttempt.handlers.turn_end?.({ type: "turn_end" }, afterSecondAttempt.context);
+  assert.equal(afterSecondAttempt.flow.phase, "inactive");
+  assert.equal(afterSecondAttempt.sentMessages.length, 0);
+
+  const disabledAfterAttempt = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 0, criticalWarningPercent: 90 },
+    { percent: 99, idle: false, pending: true, entries: [...enabled.state.entries] },
+  );
+  await disabledAfterAttempt.handlers.session_start?.(
+    { type: "session_start", reason: "reload" },
+    disabledAfterAttempt.context,
+  );
+  await disabledAfterAttempt.handlers.turn_end?.({ type: "turn_end" }, disabledAfterAttempt.context);
+  assert.equal(disabledAfterAttempt.flow.phase, "inactive");
+
+  for (const reason of ["manual", "threshold", "overflow"] as const) {
+    const compacted = createRig(
+      { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+      { percent: 70, idle: false, pending: true, entries: [...enabled.state.entries] },
+    );
+    await compacted.handlers.session_start?.(
+      { type: "session_start", reason: "reload" },
+      compacted.context,
+    );
+    await compacted.handlers.session_compact?.(compactEvent(reason), compacted.context);
+    assert.equal(
+      (compacted.state.entries.at(-1)?.data as { attempt?: unknown } | undefined)?.attempt,
+      0,
+    );
+
+    const afterCompaction = createRig(
+      { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
+      { percent: 70, idle: false, pending: true, entries: [...compacted.state.entries] },
+    );
+    await afterCompaction.handlers.session_start?.(
+      { type: "session_start", reason: "reload" },
+      afterCompaction.context,
+    );
+    await afterCompaction.handlers.turn_end?.({ type: "turn_end" }, afterCompaction.context);
+    assert.equal(afterCompaction.flow.snapshot?.source, "automatic");
+    assert.equal(
+      (afterCompaction.state.entries.at(-1)?.data as { attempt?: unknown } | undefined)?.attempt,
+      1,
+    );
+  }
+
+  const beforeFailedCompaction = enabled.state.entries.length;
+  assert.equal(enabled.registeredEvents.has("session_compact_failed"), false);
+  assert.equal(enabled.state.entries.length, beforeFailedCompaction);
 });
 
-test("explicit command start ignores automatic and warning thresholds", async () => {
-  const rig = createRig(
-    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 100 },
-    { percent: 1 },
+test("explicit command and tool starts ignore automatic thresholds and exhausted attempts", async () => {
+  const exhaustedEntries = [
+    { type: "custom" as const, customType: "pi-blitz-handoff-automatic-attempt", data: { attempt: 1 } },
+    { type: "custom" as const, customType: "pi-blitz-handoff-automatic-attempt", data: { attempt: 2 } },
+  ];
+
+  const command = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 0 },
+    { percent: 1, entries: [...exhaustedEntries] },
   );
-  await rig.commands.get("sh")?.("", rig.context);
-  assert.equal(rig.flow.snapshot?.source, "command");
-  assert.equal(rig.sentMessages.length, 1);
+  await command.handlers.session_start?.({ type: "session_start", reason: "reload" }, command.context);
+  await command.commands.get("sh")?.("", command.context);
+  assert.equal(command.flow.snapshot?.source, "command");
+  assert.equal(command.sentMessages.length, 1);
+
+  const tool = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 0 },
+    { percent: 1, entries: [...exhaustedEntries] },
+  );
+  await tool.handlers.session_start?.({ type: "session_start", reason: "reload" }, tool.context);
+  const result = await tool.getToolExecute()(
+    "explicit-tool",
+    { action: "start" },
+    undefined,
+    undefined,
+    tool.context,
+  );
+  assert.equal(result.content[0]?.text, "Session handoff requested. Waiting for readiness.");
+  assert.equal(tool.flow.snapshot?.source, "tool");
+  assert.equal(tool.sentMessages.length, 1);
 });
 
 test("steering and follow-up input pass unchanged before GO without changing correlation", async () => {

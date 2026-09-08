@@ -3,7 +3,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DeferredPromptWindow, type DeferredPromptSnapshot } from "./deferred.ts";
 import { createReadinessKey, readinessPrompt, readinessReminder } from "./readiness.ts";
 
-export type HandoffStartSource = "command" | "tool" | "automatic";
+export type ExplicitHandoffStartSource = "command" | "tool";
+export type HandoffStartSource = ExplicitHandoffStartSource | "automatic";
 export type HandoffFlowPhase = "inactive" | "waiting" | "user-input-required" | "ready";
 
 export interface ActiveHandoffSnapshot {
@@ -92,7 +93,23 @@ export class HandoffFlow {
     return this.active?.phase === "ready";
   }
 
-  start(ctx: ExtensionContext, source: HandoffStartSource): HandoffStartResult {
+  start(ctx: ExtensionContext, source: ExplicitHandoffStartSource): HandoffStartResult {
+    const result = this.createHandoff(ctx, source);
+    if (result.accepted && this.active !== undefined && ctx.isIdle() && !ctx.hasPendingMessages()) {
+      this.dispatchReadiness(this.active, ctx);
+    }
+    return result;
+  }
+
+  startAutomaticAtTurnBoundary(ctx: ExtensionContext): HandoffStartResult {
+    const result = this.createHandoff(ctx, "automatic");
+    if (result.accepted && this.active !== undefined) {
+      this.dispatchReadiness(this.active, ctx, true);
+    }
+    return result;
+  }
+
+  private createHandoff(ctx: ExtensionContext, source: HandoffStartSource): HandoffStartResult {
     if (this.active !== undefined) {
       return { accepted: false, reason: "active", handoff: snapshot(this.active) };
     }
@@ -113,11 +130,6 @@ export class HandoffFlow {
       writerDispatched: false,
     };
     this.changed(ctx);
-
-    if (ctx.isIdle() && !ctx.hasPendingMessages()) {
-      this.dispatchReadiness(this.active, ctx);
-    }
-
     return { accepted: true, handoff: snapshot(this.active) };
   }
 
@@ -214,8 +226,12 @@ export class HandoffFlow {
     this.changed(ctx);
   }
 
-  private dispatchReadiness(active: ActiveHandoff, ctx: ExtensionContext): void {
-    if (this.active !== active || active.instructionSent || ctx.hasPendingMessages()) return;
+  private dispatchReadiness(
+    active: ActiveHandoff,
+    ctx: ExtensionContext,
+    allowPendingMessages = false,
+  ): void {
+    if (this.active !== active || active.instructionSent || (!allowPendingMessages && ctx.hasPendingMessages())) return;
     active.instructionSent = true;
     this.changed(ctx);
     this.options.onReadinessPrompt(

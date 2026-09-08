@@ -10,7 +10,13 @@ import {
 import { ConfigDialog } from "./config-dialog.ts";
 import { handoffPaths, loadConfig, type HandoffConfig, type HandoffPaths } from "./config.ts";
 import { ensureDirectory, requireDirectory } from "./filesystem.ts";
-import { HandoffFlow, shouldStartAutomaticHandoff, type HandoffStartSource } from "./flow.ts";
+import {
+  automaticHandoffEnabled,
+  HandoffFlow,
+  shouldStartAutomaticHandoff,
+  type ExplicitHandoffStartSource,
+  type HandoffStartResult,
+} from "./flow.ts";
 import { registerSessionHandoffGoTools } from "./go-tool.ts";
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
@@ -65,6 +71,7 @@ export * from "./transition.ts";
 export * from "./writer.ts";
 
 const STATUS_KEY = "pi-blitz-handoff";
+const AUTOMATIC_ATTEMPT_ENTRY = "pi-blitz-handoff-automatic-attempt";
 const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
 const HANDOFF_HELP = [
   "Session handoff commands:",
@@ -144,6 +151,7 @@ export function activateHandoffExtension(
   startupTemplateWarnings: readonly string[] = [],
 ): HandoffFlow {
   let advisoryWarningShown = false;
+  let automaticAttempts = 0;
   let pendingStartupTemplateWarnings = [...startupTemplateWarnings];
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
@@ -297,24 +305,30 @@ export function activateHandoffExtension(
   flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
     callTemplate,
-    onReadinessPrompt(prompt) {
+    onReadinessPrompt(prompt, handoff) {
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
           content: prompt,
           display: true,
         },
-        { deliverAs: "followUp", triggerTurn: true },
+        {
+          deliverAs: handoff.source === "automatic" ? "steer" : "followUp",
+          triggerTurn: true,
+        },
       );
     },
-    onReadinessReminder(prompt) {
+    onReadinessReminder(prompt, handoff) {
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
           content: prompt,
           display: true,
         },
-        { deliverAs: "followUp", triggerTurn: true },
+        {
+          deliverAs: handoff.source === "automatic" ? "steer" : "followUp",
+          triggerTurn: true,
+        },
       );
     },
     onReady(handoff, ctx) {
@@ -341,8 +355,10 @@ export function activateHandoffExtension(
     resolveUserDeferral: (key, choice, ctx) => flow.resolveUserDeferral(key, choice, ctx),
   });
 
-  const requestStart = (ctx: ExtensionContext, source: HandoffStartSource): string => {
-    const result = flow.start(ctx, source);
+  const reportStart = (
+    result: HandoffStartResult,
+    ctx: ExtensionContext,
+  ): string => {
     if (!result.accepted) {
       if (result.reason === "active") {
         const message = "A session handoff is already active.";
@@ -359,6 +375,18 @@ export function activateHandoffExtension(
     const message = "Session handoff requested. Waiting for readiness.";
     ctx.ui.notify(message, "info");
     return message;
+  };
+
+  const requestStart = (ctx: ExtensionContext, source: ExplicitHandoffStartSource): string =>
+    reportStart(flow.start(ctx, source), ctx);
+
+  const requestAutomaticStart = (ctx: ExtensionContext): void => {
+    const result = flow.startAutomaticAtTurnBoundary(ctx);
+    if (result.accepted) {
+      automaticAttempts += 1;
+      pi.appendEntry(AUTOMATIC_ATTEMPT_ENTRY, { attempt: automaticAttempts });
+    }
+    reportStart(result, ctx);
   };
 
   const handleHandoffAction = async (action: string, ctx: ExtensionCommandContext): Promise<void> => {
@@ -480,6 +508,31 @@ export function activateHandoffExtension(
     return { action: "handled" };
   });
 
+  pi.on("turn_end", (_event, ctx) => {
+    if (
+      flow.phase !== "inactive" ||
+      automaticAttempts >= 2 ||
+      !automaticHandoffEnabled(
+        config.automaticSessionHandoff,
+        config.automaticSessionHandoffPercent,
+      )
+    ) return;
+
+    const threshold = automaticAttempts === 0
+      ? config.automaticSessionHandoffPercent
+      : config.criticalWarningPercent;
+    const usage = ctx.getContextUsage();
+    if (
+      shouldStartAutomaticHandoff(
+        config.automaticSessionHandoff,
+        threshold,
+        usage?.percent,
+      )
+    ) {
+      requestAutomaticStart(ctx);
+    }
+  });
+
   pi.on("agent_settled", (_event, ctx) => {
     const usage = ctx.getContextUsage();
     const warning = contextWarning(usage?.percent, config, advisoryWarningShown);
@@ -495,20 +548,13 @@ export function activateHandoffExtension(
 
     if (flow.phase !== "inactive") {
       flow.handleSettled(ctx);
-      return;
     }
+  });
 
-    if (
-      ctx.isIdle() &&
-      !ctx.hasPendingMessages() &&
-      shouldStartAutomaticHandoff(
-        config.automaticSessionHandoff,
-        config.automaticSessionHandoffPercent,
-        usage?.percent,
-      )
-    ) {
-      requestStart(ctx, "automatic");
-    }
+  pi.on("session_compact", () => {
+    if (automaticAttempts === 0) return;
+    automaticAttempts = 0;
+    pi.appendEntry(AUTOMATIC_ATTEMPT_ENTRY, { attempt: automaticAttempts });
   });
 
   pi.on("session_before_switch", (event, ctx) => {
@@ -543,6 +589,7 @@ export function activateHandoffExtension(
   });
 
   pi.on("session_start", (_event, ctx) => {
+    automaticAttempts = restoredAutomaticAttempts(ctx);
     initializeWriterTools(ctx);
     for (const warning of pendingStartupTemplateWarnings) ctx.ui.notify(warning, "warning");
     pendingStartupTemplateWarnings = [];
@@ -573,6 +620,16 @@ export default async function piBlitzHandoff(pi: ExtensionAPI): Promise<void> {
   if (typeof pi.registerCommand === "function") {
     activateHandoffExtension(pi, config, paths, callTemplate, warnings);
   }
+}
+
+function restoredAutomaticAttempts(ctx: ExtensionContext): number {
+  let attempts = 0;
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (entry.type !== "custom" || entry.customType !== AUTOMATIC_ATTEMPT_ENTRY) continue;
+    const attempt = (entry.data as { attempt?: unknown } | undefined)?.attempt;
+    if (attempt === 0 || attempt === 1 || attempt === 2) attempts = attempt;
+  }
+  return attempts;
 }
 
 function errorMessage(error: unknown): string {

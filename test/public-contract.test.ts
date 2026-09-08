@@ -40,7 +40,7 @@ function captureRegistration() {
     isIdle: () => true,
     hasPendingMessages: () => false,
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
-    sessionManager: { getSessionFile: () => "/sessions/public-contract.jsonl" },
+    sessionManager: { getSessionFile: () => "/sessions/public-contract.jsonl", getEntries: () => [] },
     ui: {
       async select() {
         return undefined;

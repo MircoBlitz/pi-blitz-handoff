@@ -46,7 +46,7 @@ test("start requires persistence and dispatches one instruction at an idle bound
 
   const state = { idle: false, pending: false, sessionFile: "/sessions/source.jsonl" };
   const rig = setup(state);
-  assert.equal(rig.flow.start(rig.ctx, "automatic").accepted, true);
+  assert.equal(rig.flow.start(rig.ctx, "command").accepted, true);
   assert.equal(rig.prompts.length, 0);
   state.idle = true;
   state.pending = true;
@@ -60,9 +60,18 @@ test("start requires persistence and dispatches one instruction at an idle bound
   assert.equal(rig.flow.phase, "waiting");
 });
 
-test("initiation source never determines readiness behavior", () => {
+test("automatic turn-boundary start dispatches readiness despite queued continuation", () => {
+  const rig = setup({ idle: false, pending: true, sessionFile: "/sessions/source.jsonl" });
+
+  assert.equal(rig.flow.startAutomaticAtTurnBoundary(rig.ctx).accepted, true);
+  assert.equal(rig.prompts.length, 1);
+  assert.match(rig.prompts[0] ?? "", /key-1/);
+  assert.equal(rig.flow.snapshot?.source, "automatic");
+});
+
+test("explicit initiation sources share the same readiness behavior", () => {
   const prompts = new Set<string>();
-  for (const source of ["command", "tool", "automatic"] as const) {
+  for (const source of ["command", "tool"] as const) {
     const rig = setup({ idle: true, pending: false, sessionFile: "/sessions/source.jsonl" });
     rig.flow.start(rig.ctx, source);
     prompts.add(rig.prompts[0] ?? "");
@@ -103,7 +112,7 @@ test("user deferral entry point owns Ready, Wait, and Cancel transitions", () =>
   assert.equal(ready.flow.isTransferProtected, true);
 
   const wait = setup({ idle: true, pending: false, sessionFile: "/sessions/source.jsonl" });
-  wait.flow.start(wait.ctx, "automatic");
+  wait.flow.startAutomaticAtTurnBoundary(wait.ctx);
   wait.flow.beginUserDeferral("key-1", wait.ctx);
   wait.flow.resolveUserDeferral("key-1", "Wait", wait.ctx);
   assert.equal(wait.flow.phase, "waiting");
