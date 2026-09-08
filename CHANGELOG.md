@@ -7,6 +7,17 @@
 - Clear the completed handoff widget when the replacement session starts its next agent run.
 - After cancellation, explicitly release the model from any earlier readiness or writer instruction.
 
+### Changed
+
+- Moved packaged and development templates from the repository root into `templates/`.
+- Promoted the validated development dossier template to the shipped default, including cumulative loaded-skill transfer and a concise user re-entry summary when the replacement waits for input.
+- Expanded the package description to identify template-guided readiness checks and handoff dossiers.
+
+### Removed
+
+- Removed the obsolete packaged `default.cmpl` compatibility template.
+- Removed the `*_next.cmpl` development variants from version control and package contents; local ignored copies remain available for future iteration.
+
 ## 1.1.2 — 2026-09-08
 
 ### Fixed

@@ -232,7 +232,7 @@ test("declining any required directory leaves all missing paths and persisted co
 
 test("invalid answers show clear feedback and retain the previous draft values", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
-  await persistedConfig(agentDirectory, { handoffTemplate: "default.cmpl" });
+  await persistedConfig(agentDirectory, { handoffTemplate: "handoff_custom.cmpl" });
   const rig = scriptedContext([
     chooseSetting("Writer attempts: 3"),
     {
@@ -242,7 +242,7 @@ test("invalid answers show clear feedback and retain the previous draft values",
         assert.equal(title, "How many total writer attempts should be made? Enter a positive integer.");
       },
     },
-    chooseSetting("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)", (options) => {
+    chooseSetting("Handoff template: handoff_custom.cmpl", (options) => {
       assert.ok(options.includes("Writer attempts: 3"));
     }),
     {
@@ -255,7 +255,7 @@ test("invalid answers show clear feedback and retain the previous draft values",
     },
     { method: "input", answer: "nested/file.cmpl" },
     chooseSetting("Automatic session handoff: disabled", (options) => {
-      assert.ok(options.includes("Handoff template: default.cmpl (legacy; new default: handoff_default.cmpl)"));
+      assert.ok(options.includes("Handoff template: handoff_custom.cmpl"));
     }),
     { method: "select", answer: "Enabled" },
     chooseSetting("Cancel configuration", (options) => {

@@ -56,7 +56,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.1.2");
   assert.equal(
     manifest.description,
-    "Carry focused task context into a genuinely fresh, natively linked Pi session.",
+    "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
   );
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
@@ -68,9 +68,8 @@ test("package metadata declares the supported runtime and complete Pi package re
     "extensions",
     "docs",
     "assets",
-    "call_default.cmpl",
-    "handoff_default.cmpl",
-    "default.cmpl",
+    "templates/call_default.cmpl",
+    "templates/handoff_default.cmpl",
     "CHANGELOG.md",
     "README.md",
     "LICENSE",
@@ -118,9 +117,8 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "README.md",
     "SECURITY.md",
     "assets/logo.png",
-    "call_default.cmpl",
-    "default.cmpl",
-    "handoff_default.cmpl",
+    "templates/call_default.cmpl",
+    "templates/handoff_default.cmpl",
     "docs/specification.md",
     "docs/specification.sha256",
     "package.json",
@@ -154,10 +152,10 @@ test("loading the package entrypoint initializes and validates managed storage",
   assert.equal((await stat(baseDirectory)).isDirectory(), true);
   assert.equal((await stat(recoveryDirectory)).isDirectory(), true);
   assert.equal((await stat(templateDirectory)).isDirectory(), true);
-  for (const filename of ["call_default.cmpl", "handoff_default.cmpl", "default.cmpl"]) {
+  for (const filename of ["call_default.cmpl", "handoff_default.cmpl"]) {
     assert.equal(
       await readFile(join(templateDirectory, filename), "utf8"),
-      await readFile(join(projectRoot, filename), "utf8"),
+      await readFile(join(projectRoot, "templates", filename), "utf8"),
     );
   }
 
