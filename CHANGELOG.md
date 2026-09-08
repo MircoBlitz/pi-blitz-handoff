@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Clear the completed handoff widget when the replacement session starts its next agent run.
+- After cancellation, explicitly release the model from any earlier readiness or writer instruction.
+
 ## 1.1.2 — 2026-09-08
 
 ### Fixed

@@ -285,7 +285,7 @@ The source transcript remains available through native parent-session lineage an
 
 Before GO, canonical `/sh-cancel` clears the pending request, correlation key, timer, and any user-wait state.
 
-After GO and before native replacement starts, `/sh-cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh-recover`. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
+After GO and before native replacement starts, `/sh-cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh-recover`. Every successful cancellation sends a visible follow-up instruction that tells the model to disregard the earlier readiness or writer request and submission ID, resume normal conversation and task work, and not submit a handoff. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
 Before GO, user session navigation may discard the pending handoff. From GO until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked because they would invalidate the active transfer. The extension's own native replacement is allowed.
 
@@ -319,7 +319,7 @@ The extension exposes concise factual status in chat and through `blitz_handoff 
 - yellow `Waiting for Session Handoff`;
 - red `User Input Required` while the extension-owned selection is open;
 - `Writing Session Handoff` with an indeterminate activity indicator;
-- `Session Handoff Finished` in the replacement session until the next ordinary user input or another handoff begins.
+- `Session Handoff Finished` in the replacement session until the next agent run starts, ordinary user input arrives, or another handoff begins.
 
 The active widget advertises canonical `/sh-cancel`. After **Wait**, the normal first activity line remains and a second width-safe line reads `Awaiting User GO · Tell your LLM to start when ready`.
 

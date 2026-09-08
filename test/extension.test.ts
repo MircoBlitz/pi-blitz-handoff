@@ -6,6 +6,7 @@ import test from "node:test";
 
 import type {
   AgentSettledEvent,
+  AgentStartEvent,
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
@@ -51,6 +52,7 @@ interface SentMessage {
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 type InputHandler = (event: InputEvent, ctx: ExtensionContext) => InputEventResult | void | Promise<InputEventResult | void>;
 type SettledHandler = (event: AgentSettledEvent, ctx: ExtensionContext) => void | Promise<void>;
+type AgentStartHandler = (event: AgentStartEvent, ctx: ExtensionContext) => void | Promise<void>;
 type TurnEndHandler = (event: unknown, ctx: ExtensionContext) => void | Promise<void>;
 type SessionCompactHandler = (event: SessionCompactEvent, ctx: ExtensionContext) => void | Promise<void>;
 type SessionStartHandler = (event: SessionStartEvent, ctx: ExtensionContext) => void | Promise<void>;
@@ -113,6 +115,7 @@ function createRig(
   const registeredEvents = new Set<string>();
   const handlers: {
     input?: InputHandler;
+    agent_start?: AgentStartHandler;
     agent_settled?: SettledHandler;
     turn_end?: TurnEndHandler;
     session_compact?: SessionCompactHandler;
@@ -177,6 +180,7 @@ function createRig(
     on(event: string, handler: unknown) {
       registeredEvents.add(event);
       if (event === "input") handlers.input = handler as InputHandler;
+      if (event === "agent_start") handlers.agent_start = handler as AgentStartHandler;
       if (event === "agent_settled") handlers.agent_settled = handler as SettledHandler;
       if (event === "turn_end") handlers.turn_end = handler as TurnEndHandler;
       if (event === "session_compact") handlers.session_compact = handler as SessionCompactHandler;
@@ -250,6 +254,8 @@ test("TUI session startup reserves one widget that active and terminal updates r
   await rig.commands.get("sh")?.("cancel", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
   assert.match(rig.statuses.at(-1) ?? "", /^Session Handoff Cancelled · \d+ sec$/);
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Disregard the previous handoff readiness or writer instruction/);
+  assert.deepEqual(rig.sentMessages.at(-1)?.options, { deliverAs: "followUp", triggerTurn: true });
   assert.ok(rig.getRenderRequests() >= 3);
 
   await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason: "reload" }, rig.context);
@@ -471,7 +477,15 @@ test("startup template warnings are shown once", async () => {
   ]);
 });
 
-test("finished status lasts until ordinary input or a new handoff begins", async () => {
+test("finished status clears when the next agent run starts, on ordinary input, or on a new handoff", async () => {
+  const runSession = "/sessions/finished-agent-start.jsonl";
+  const runRig = createRig({}, { sessionFile: runSession });
+  setHandoffTerminalState(runSession, "finished");
+  await runRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, runRig.context);
+  assert.match(runRig.statuses.at(-1) ?? "", /^Session Handoff Finished(?: · \d+ sec)?$/);
+  await runRig.handlers.agent_start?.({ type: "agent_start" } as AgentStartEvent, runRig.context);
+  assert.equal(runRig.statuses.at(-1), undefined);
+
   const inputSession = "/sessions/finished-input.jsonl";
   const inputRig = createRig({}, { sessionFile: inputSession });
   setHandoffTerminalState(inputSession, "finished");
@@ -685,6 +699,26 @@ test("user deferral Wait uses extension selection, keeps input normal, and later
   assert.equal(rig.flow.phase, "waiting");
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
   assert.equal(rig.flow.phase, "ready");
+});
+
+test("user deferral Cancel queues the same model reset instruction", async () => {
+  const rig = createRig();
+  rig.setSelectHandler(async () => "Cancel");
+  await rig.commands.get("sh")?.("", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+
+  await rig.getToolExecute("session_handoff_go_with_user_deferral")(
+    "defer",
+    { key, reason: "The user is still reviewing" },
+    undefined,
+    undefined,
+    rig.context,
+  );
+
+  assert.equal(rig.flow.phase, "inactive");
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Resume normal conversation and task work/);
+  assert.deepEqual(rig.sentMessages.at(-1)?.options, { deliverAs: "followUp", triggerTurn: true });
 });
 
 test("post-GO interactive and RPC prompts are handled, preserved, and persisted in one file", async (t) => {
