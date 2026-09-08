@@ -147,13 +147,12 @@ The extension manages:
 ├── recovery/
 └── templates/
     ├── call_default.cmpl
-    ├── handoff_default.cmpl
-    └── default.cmpl              # compatible legacy dossier default
+    └── handoff_default.cmpl
 ```
 
-Missing managed directories are created during load. The package installs its root `call_default.cmpl`, `handoff_default.cmpl`, and compatible legacy `default.cmpl` into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+Missing managed directories are created during load. The package installs `templates/call_default.cmpl` and `templates/handoff_default.cmpl` into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
 
-Existing exact configurations that predate `callTemplate` load with `call_default.cmpl` in memory and are not rewritten automatically. An existing `handoffTemplate: "default.cmpl"` remains valid; the configuration dialog identifies it as the legacy name and points to `handoff_default.cmpl` as the new default.
+Existing exact configurations that predate `callTemplate` load with `call_default.cmpl` in memory and are not rewritten automatically.
 
 Template discovery is nonrecursive. An optional addendum directory shadows a managed template with the same filename. Call and dossier templates use separate configuration fields but the same simple resolver. Each resolution attempts:
 

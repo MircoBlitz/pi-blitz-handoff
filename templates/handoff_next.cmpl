@@ -22,9 +22,9 @@ Never invent completion, permission, facts, paths, or uncertainty. Preserve limi
 
 Before returning, check that every authorization label, next step, and task packet agrees with this classification. A paused action must name its exact resumption trigger; if the trigger is absent or ambiguous, classify it as requiring fresh approval. Preserve cumulative history and behavior indexes from incoming handoffs, updating them rather than silently replacing them with a shorter account. Account for every unresolved earlier user topic and classify it as active, superseded, deferred, resolved, or no longer material.
 
-Preserve every skill whose full instructions remain applicable after replacement. Do not list skills merely because they are available or were used only for completed work. For each continuing skill, record its exact `SKILL.md` path, why it remains active, and the precise reload or routing instruction the replacement session must follow. Preserve restrictions such as worker-only loading. Never claim that a skill was loaded or remains active without source-session evidence.
+Preserve the complete cumulative inventory of loaded skills: retain every skill named in an incoming handoff's loaded-skills inventory and add every skill whose full instructions were loaded in the current session. Never remove a loaded skill because its task appears complete or because it seems irrelevant now; do not make a semantic relevance decision. Record each skill's exact `SKILL.md` path and any explicit loading or routing constraint already attached to it. Do not add merely available skills that were never loaded and do not invent paths or constraints. The replacement session must read every listed skill completely before substantive continuation.
 
-Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff.
+Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff. When the mode is `Wait for the user`, require the replacement session to give the user one concise re-entry summary before waiting. That visible summary must state the latest activity, the current working state, and the next step or exact reason user input is needed. Do not require this summary for autonomous continuation.
 
 ## Goal and authorization
 
@@ -91,9 +91,9 @@ Keep this cumulative and short. Mark earlier topics active, superseded, deferred
 
 [Still-applicable user corrections and preferences not already covered by system/project guidance. Record known supersession relationships and preserve exact wording where paraphrase could change scope or tone.]
 
-## Active skills and continuation requirements
+## Loaded skills
 
-[List only skills whose full instructions remain applicable after this handoff. For each one, record the skill name, exact `SKILL.md` path, why it remains active, and exactly when and where the replacement session must read it. Preserve any worker-only or routing restriction. Do not list merely available skills or skills used only for completed work. Write `None.` only when no skill remains active.]
+[List the cumulative union of (a) every skill retained in the incoming handoff's loaded-skills inventory and (b) every skill whose full instructions were loaded in this session. For each skill, give its name and exact `SKILL.md` path, plus any explicit loading or routing constraint already attached to it. Do not filter by current relevance or task completion. Do not include merely available skills that were never loaded. Instruct the replacement session to read every listed skill completely before substantive continuation. Write `None.` only when no skill was loaded.]
 
 ## Working-set inventory
 
@@ -163,4 +163,4 @@ Record the exact source-session transcript path supplied in the writer prompt. D
 
 Mode: Continue authorized questioning | Continue authorized autonomous work | Answer the user | Wait for the user
 Resume At: [Exact question, plan step, task, or decision point.]
-Action: [Exactly one concrete first action. Use “None.” only when waiting.]
+Action: [Exactly one concrete first action. For `Wait for the user`, tell the replacement session to give the concise user-facing re-entry summary specified above and then wait. Otherwise use “None.” only when genuinely no action is required.]

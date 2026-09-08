@@ -112,18 +112,15 @@ export class ConfigDialog {
 
 function settingOptions(draft: HandoffConfig): string[] {
   return [
-    ...SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(key, draft[key])}`),
+    ...SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(draft[key])}`),
     SAVE_OPTION,
     CANCEL_OPTION,
   ];
 }
 
-function formatValue(key: SettingKey, value: HandoffConfig[SettingKey]): string {
+function formatValue(value: HandoffConfig[SettingKey]): string {
   if (value === null) return "not configured";
   if (typeof value === "boolean") return value ? "enabled" : "disabled";
-  if (key === "handoffTemplate" && value === "default.cmpl") {
-    return "default.cmpl (legacy; new default: handoff_default.cmpl)";
-  }
   return String(value);
 }
 

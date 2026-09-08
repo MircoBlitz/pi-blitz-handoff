@@ -129,7 +129,7 @@ test("an exact old config gains callTemplate only in memory and is not rewritten
   const agentDirectory = await temporaryDirectory(t);
   const paths = handoffPaths(agentDirectory);
   await mkdir(paths.baseDirectory);
-  const old = { ...defaultConfig(agentDirectory), handoffTemplate: "default.cmpl" } as Record<string, unknown>;
+  const old = { ...defaultConfig(agentDirectory), handoffTemplate: "handoff_team.cmpl" } as Record<string, unknown>;
   delete old.callTemplate;
   const persisted = `${JSON.stringify(old, null, 2)}\n`;
   await writeFile(paths.configFile, persisted);

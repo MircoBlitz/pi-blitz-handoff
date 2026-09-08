@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Moved packaged and development templates from the repository root into `templates/`.
+
+### Removed
+
+- Removed the obsolete packaged `default.cmpl` compatibility template.
+
 ## 1.1.0 — 2026-09-06
 
 ### Added

@@ -63,8 +63,7 @@ Managed data lives below:
 ├── recovery/
 └── templates/
     ├── call_default.cmpl
-    ├── handoff_default.cmpl
-    └── default.cmpl
+    └── handoff_default.cmpl
 ```
 
 The extension checks these directories while loading and creates missing directories. Deliberately configured symlinks are supported. The extension does not implement inode tracking, descriptor identity checks, `O_NOFOLLOW` policy, or a general filesystem security framework.
@@ -114,7 +113,7 @@ Nothing is persisted before `save`. Confirmed missing directories are created as
 
 ## 5. Managed defaults and template catalogue
 
-The package ships `call_default.cmpl`, `handoff_default.cmpl`, and the compatible legacy dossier asset `default.cmpl`. On load, each package asset is compared with its same-name file in the managed template directory:
+The package ships `templates/call_default.cmpl` and `templates/handoff_default.cmpl`. On load, each package asset is compared with its same-name file in the managed template directory:
 
 - equal content: do not write;
 - missing managed file: install the package file;
@@ -132,7 +131,7 @@ Each physical candidate path is attempted at most once. A valid template is a re
 
 Both configured roles are health-checked during extension startup and whenever `/sh-config` or `/sh config` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
 
-An exact older configuration lacking only `callTemplate` loads with `call_default.cmpl` added in memory and is not rewritten automatically. `handoffTemplate: "default.cmpl"` remains valid while its content is compatible; the configuration dialog labels it as the legacy name and identifies `handoff_default.cmpl` as the new default.
+An exact older configuration lacking only `callTemplate` loads with `call_default.cmpl` added in memory and is not rewritten automatically.
 
 ## 6. Warnings and automatic initiation
 
