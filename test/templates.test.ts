@@ -11,7 +11,7 @@ import {
   checkTemplateHealth,
   resolveTemplate,
   synchronizeManagedTemplate,
-} from "../extensions/pi-blitz-handoff/templates.ts";
+} from "../extensions/templates.ts";
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-templates-"));

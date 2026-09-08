@@ -10,7 +10,7 @@ import {
   normalizeSourceSessionId,
   persistDeferredPrompts,
   recoveryFileName,
-} from "../extensions/pi-blitz-handoff/recovery-store.ts";
+} from "../extensions/recovery-store.ts";
 
 async function temporaryDirectory(): Promise<string> {
   return mkdtemp(join(tmpdir(), "pi-blitz-handoff-recovery-"));

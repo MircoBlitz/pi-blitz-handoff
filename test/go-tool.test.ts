@@ -3,8 +3,8 @@ import test from "node:test";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { registerSessionHandoffGoTools } from "../extensions/pi-blitz-handoff/go-tool.ts";
-import { SESSION_HANDOFF_GO_TOOL, SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL } from "../extensions/pi-blitz-handoff/readiness.ts";
+import { registerSessionHandoffGoTools } from "../extensions/go-tool.ts";
+import { SESSION_HANDOFF_GO_TOOL, SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL } from "../extensions/readiness.ts";
 
 type Execute = (id: string, params: Record<string, string>, signal: AbortSignal | undefined, update: unknown, ctx: ExtensionContext) => Promise<{ content: Array<{ text: string }>; terminate: boolean }>;
 

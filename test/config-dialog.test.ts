@@ -6,14 +6,14 @@ import test from "node:test";
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-import { ConfigDialog } from "../extensions/pi-blitz-handoff/config-dialog.ts";
+import { ConfigDialog } from "../extensions/config-dialog.ts";
 import {
   defaultConfig,
   handoffPaths,
   loadConfig,
   saveConfig,
   type HandoffConfig,
-} from "../extensions/pi-blitz-handoff/config.ts";
+} from "../extensions/config.ts";
 
 interface Notification {
   message: string;

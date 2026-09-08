@@ -11,7 +11,7 @@ import {
   nativeTransitionCommand,
   registerNativeTransitionBridge,
   type NativeTransitionRequest,
-} from "../extensions/pi-blitz-handoff/transition.ts";
+} from "../extensions/transition.ts";
 
 interface Notification {
   message: string;

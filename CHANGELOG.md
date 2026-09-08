@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 — 2026-09-08
+
+### Fixed
+
+- Use the standard single-extension package layout so Pi displays the installed extension as `pi-blitz-handoff` without a redundant resource suffix.
+
 ## 1.1.1 — 2026-09-08
 
 ### Fixed
