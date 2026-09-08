@@ -9,7 +9,7 @@ import test from "node:test";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import { defaultConfig } from "../extensions/config.ts";
 import { loadExtension } from "./extension-harness.ts";
 
 interface PackageManifest {
@@ -53,7 +53,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.1.1");
+  assert.equal(manifest.version, "1.1.2");
   assert.equal(
     manifest.description,
     "Carry focused task context into a genuinely fresh, natively linked Pi session.",
@@ -76,7 +76,7 @@ test("package metadata declares the supported runtime and complete Pi package re
     "LICENSE",
     "SECURITY.md",
   ]);
-  assert.deepEqual(manifest.pi?.extensions, ["./extensions/pi-blitz-handoff/index.ts"]);
+  assert.deepEqual(manifest.pi?.extensions, ["./extensions/index.ts"]);
   assert.equal(
     manifest.pi?.image,
     "https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/logo.png",
@@ -109,9 +109,9 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
   const result = (JSON.parse(stdout) as PackDryRunResult[])[0];
   assert.ok(result);
   const packed = result.files.map((file) => file.path).sort();
-  const extensionFiles = (await readdir(join(projectRoot, "extensions", "pi-blitz-handoff")))
+  const extensionFiles = (await readdir(join(projectRoot, "extensions")))
     .filter((name) => name.endsWith(".ts"))
-    .map((name) => `extensions/pi-blitz-handoff/${name}`);
+    .map((name) => `extensions/${name}`);
   const expected = [
     "CHANGELOG.md",
     "LICENSE",

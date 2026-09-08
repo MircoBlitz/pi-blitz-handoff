@@ -64,7 +64,7 @@ export function shippedTemplatePath(filename: string): string {
   if (!isTemplateFilename(filename)) {
     throw new Error("Shipped template must be a .cmpl filename, not a path");
   }
-  return fileURLToPath(new URL(`../../${filename}`, import.meta.url));
+  return fileURLToPath(new URL(`../${filename}`, import.meta.url));
 }
 
 export async function synchronizeManagedTemplate(

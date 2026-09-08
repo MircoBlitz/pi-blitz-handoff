@@ -10,8 +10,8 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
+import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/config.ts";
+import { activateHandoffExtension } from "../extensions/index.ts";
 
 interface Notification {
   message: string;

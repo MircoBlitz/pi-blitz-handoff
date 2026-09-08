@@ -6,8 +6,8 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths } from "../extensions/pi-blitz-handoff/config.ts";
-import { activateHandoffExtension } from "../extensions/pi-blitz-handoff/index.ts";
+import { defaultConfig, handoffPaths } from "../extensions/config.ts";
+import { activateHandoffExtension } from "../extensions/index.ts";
 
 interface RegisteredCommand {
   description?: string;

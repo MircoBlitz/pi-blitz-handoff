@@ -1,6 +1,6 @@
 {
   "name": "pi-blitz-handoff",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Carry focused task context into a genuinely fresh, natively linked Pi session.",
   "type": "module",
   "license": "MIT",
@@ -56,7 +56,7 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/pi-blitz-handoff/index.ts"
+      "./extensions/index.ts"
     ],
     "image": "https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/logo.png"
   }

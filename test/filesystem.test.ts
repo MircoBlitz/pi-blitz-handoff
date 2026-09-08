@@ -10,7 +10,7 @@ import {
   PRIVATE_DIRECTORY_MODE,
   PRIVATE_FILE_MODE,
   requireDirectory,
-} from "../extensions/pi-blitz-handoff/filesystem.ts";
+} from "../extensions/filesystem.ts";
 
 async function temporaryDirectory(t: test.TestContext): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-filesystem-"));

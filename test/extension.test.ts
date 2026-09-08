@@ -16,13 +16,13 @@ import type {
   SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 
-import { defaultConfig, handoffPaths, saveConfig, type HandoffConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import { defaultConfig, handoffPaths, saveConfig, type HandoffConfig } from "../extensions/config.ts";
 import {
   activateHandoffExtension,
   resolveHandoffTemplateHealth,
-} from "../extensions/pi-blitz-handoff/index.ts";
-import { setHandoffTerminalState } from "../extensions/pi-blitz-handoff/status.ts";
-import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/pi-blitz-handoff/submission-tool.ts";
+} from "../extensions/index.ts";
+import { setHandoffTerminalState } from "../extensions/status.ts";
+import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/submission-tool.ts";
 
 interface RuntimeState {
   idle: boolean;

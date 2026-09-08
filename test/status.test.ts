@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { visibleWidth } from "@earendil-works/pi-tui";
 
-import { defaultConfig } from "../extensions/pi-blitz-handoff/config.ts";
+import { defaultConfig } from "../extensions/config.ts";
 import {
   clearHandoffTerminalState,
   contextWarning,
@@ -19,7 +19,7 @@ import {
   unprotectReplacementSession,
   updatePersistentHandoffStatus,
   warningMessage,
-} from "../extensions/pi-blitz-handoff/status.ts";
+} from "../extensions/status.ts";
 
 const config = defaultConfig("/tmp/agent");
 

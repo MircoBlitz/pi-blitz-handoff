@@ -10,7 +10,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   assembleRecoveryTurn,
   RecoveryDialog,
-} from "../extensions/pi-blitz-handoff/recovery-dialog.ts";
+} from "../extensions/recovery-dialog.ts";
 
 interface Notification {
   message: string;

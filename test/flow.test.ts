@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { HandoffFlow, shouldStartAutomaticHandoff, type ActiveHandoffSnapshot } from "../extensions/pi-blitz-handoff/flow.ts";
+import { HandoffFlow, shouldStartAutomaticHandoff, type ActiveHandoffSnapshot } from "../extensions/flow.ts";
 
 interface MutableContext { idle: boolean; pending: boolean; sessionFile?: string }
 

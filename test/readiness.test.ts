@@ -7,7 +7,7 @@ import {
   readinessReminder,
   SESSION_HANDOFF_GO_TOOL,
   SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL,
-} from "../extensions/pi-blitz-handoff/readiness.ts";
+} from "../extensions/readiness.ts";
 
 test("readiness keys are fresh and UUID-backed", () => {
   const first = createReadinessKey();
