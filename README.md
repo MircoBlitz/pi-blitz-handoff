@@ -4,7 +4,7 @@
   <img src="assets/logo.png" alt="pi-blitz-handoff logo" width="320">
 </p>
 
-`pi-blitz-handoff` carries the material continuation context of a persisted Pi session into a fresh Pi session. It asks the current model to prepare a structured handoff dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
+`pi-blitz-handoff` carries the material continuation context of a persisted Pi session into a fresh Pi session through template-guided readiness checks and handoff dossiers. It asks the current model to prepare a structured handoff dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
 
 A handoff preserves authorization boundaries: continuation context is not a new request and grants no new permission. The supplied default template tells the writer to distinguish verified work, unverified or partial work, currently authorized work, work requiring fresh approval, blockers, and unresolved questions.
 
