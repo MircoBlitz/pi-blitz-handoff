@@ -138,19 +138,23 @@ An exact older configuration lacking only `callTemplate` loads with `call_defaul
 
 The warning percentage produces one advisory warning. At and above the critical percentage, a critical warning may be repeated after settled turns.
 
-When automatic handoff is enabled, the extension starts it only when context usage reaches the configured automatic percentage and Pi reaches `agent_settled` with no pending message.
+When automatic handoff is enabled, the extension checks context usage at each completed `turn_end`. At the first boundary at or above the configured automatic percentage, it records the automatic request and inserts readiness before the next model turn without interrupting the completed turn's tool work.
 
-Manual and model-requested starts ignore all context percentages.
+If that first automatic handoff ends without successful replacement, one final automatic attempt becomes eligible at or above `criticalWarningPercent`. It starts at the next completed turn boundary, including when the critical percentage was already exceeded before the first attempt ended. A second unsuccessful automatic attempt is not repeated. The accepted-attempt count is stored as native session metadata and reconstructed after `/reload`, so reload cannot reset the two-attempt limit.
+
+Every successful compaction resets the accepted-attempt count to zero, whether its reason is manual, threshold, or overflow. The reset is stored in the same native session metadata and survives `/reload`. Failed or aborted compaction does not reset the count. Manual and model-requested starts remain available and ignore all context percentages.
 
 ## 7. Readiness
 
 A start request records pending intent. It does not infer the current working style from whether initiation came from `/sh`, `blitz_handoff start`, or the automatic threshold.
 
-The initial readiness instruction begins only when Pi is settled and no user or system continuation is outstanding:
+For manual and model-requested handoffs, the initial readiness instruction begins only when Pi is settled and no user or system continuation is outstanding:
 
 - a request made during a model run waits for `agent_settled`;
 - a request made while Pi is already settled may dispatch immediately;
 - `ctx.hasPendingMessages()` must be false before dispatch.
+
+An automatic request is different: it is detected after a completed turn and its readiness instruction is delivered as steering before the next autonomous model turn, even when another continuation is already queued. This does not interrupt tools from the completed turn. The model still applies the same bounded readiness decision and calls neither readiness tool while required work remains in flight.
 
 The extension creates one unpredictable correlation key and sends one resolved Call Template. Deterministic code appends the exact tool protocol and interaction rules; editable template prose does not own correlation, user-choice, timer, or state invariants.
 

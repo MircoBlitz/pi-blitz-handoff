@@ -64,8 +64,8 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 ## How a handoff works
 
 1. An explicit `/sh` or `blitz_handoff start` records the request. Explicit starts ignore all context thresholds.
-2. Automatic initiation is optional. When enabled, it starts only at or above its configured threshold on an idle `agent_settled` boundary with no pending message.
-3. At the first idle boundary, the extension sends one Call Template plus a fresh correlation key. The current model waits for genuinely in-flight model-owned work, tools, subagents, background work, or required output, but does not treat future tasks or an ordinary resumable question as blockers.
+2. Automatic initiation is optional. When enabled, it detects the first completed turn at or above its configured threshold and inserts readiness before the next autonomous model turn without interrupting completed-turn tool work. If that automatic attempt ends without successful replacement, one final automatic attempt becomes eligible at or above the configured critical-warning percentage; a second unsuccessful attempt is not repeated. The two-attempt limit survives `/reload` through native session metadata. Every successful manual, threshold, or overflow compaction resets that budget; failed or aborted compaction does not.
+3. Manual or model-requested starts send one Call Template plus a fresh correlation key at the first idle, no-pending boundary. An automatic start steers the same instruction into the next model turn. In either case, the current model waits for genuinely in-flight model-owned work, tools, subagents, background work, or required output, but does not treat future tasks or an ordinary resumable question as blockers.
 4. At a safe boundary the model chooses one keyed entry point. `session_handoff_go` accepts direct readiness and is preferred when uncertain. `session_handoff_go_with_user_deferral` is reserved for a concrete active collaboration that may still need the current user; it supplies a short reason and opens an extension-owned **Ready / Wait / Cancel** selection.
 5. **Ready** accepts GO. **Wait** keeps input normal, suspends the reminder, and shows `Awaiting User GO · Tell your LLM to start when ready`; a later explicit user readiness message lets the model call direct GO. **Cancel** ends the request. The extension does not infer working style from how the handoff started and does not parse free-form user replies.
 6. If neither entry point has been invoked after `readinessRetrySeconds`, exactly one visible reminder triggers a silent re-evaluation turn. This prevents a deadlock when background work completed without producing another model turn. There is no periodic polling, and no reminder runs after **Wait**.
@@ -120,7 +120,7 @@ Saved configuration takes effect after `/reload`; the currently loaded extension
 | `contextWarningPercent` | `60` | Finite number, at least 1 and below the critical threshold |
 | `criticalWarningPercent` | `90` | Finite number, above the warning threshold and at most 100 |
 | `automaticSessionHandoff` | `false` | Boolean |
-| `automaticSessionHandoffPercent` | `70` | Finite number from 0 through 100; 0 disables automatic initiation |
+| `automaticSessionHandoffPercent` | `70` | Finite number from 0 through 100; 0 disables automatic initiation; first automatic-attempt threshold |
 | `readinessRetrySeconds` | `60` | Integer from 1 through 300; delay before the single silent re-evaluation turn |
 | `writerAttempts` | `3` | Positive integer; total attempts including the first |
 | `writerRetryDelaySeconds` | `30` | Integer from 1 through 300 |
@@ -129,7 +129,7 @@ Saved configuration takes effect after `/reload`; the currently loaded extension
 | `callTemplate` | `call_default.cmpl` | `.cmpl` filename for readiness semantics, not a path |
 | `handoffTemplate` | `handoff_default.cmpl` | `.cmpl` filename for the dossier writer, not a path |
 
-The warning threshold produces one advisory warning. Critical warnings may repeat on settled turns. Neither warning threshold nor the automatic threshold gates explicit starts.
+The warning threshold produces one advisory warning. Critical warnings may repeat on settled turns. After an unsuccessful first automatic handoff, `criticalWarningPercent` is also the threshold for one final automatic attempt. Neither warning threshold nor the automatic threshold gates explicit starts.
 
 ### Subagents
 

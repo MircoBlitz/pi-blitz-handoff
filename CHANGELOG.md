@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — 2026-09-08
+
+### Fixed
+
+- Detect automatic-handoff thresholds at completed turn boundaries so autonomous continuation cannot postpone initiation until user interaction.
+- Allow one final automatic attempt at the critical-warning threshold after an unsuccessful first attempt, with the two-attempt limit preserved across reloads and reset after successful compaction.
+
 ## 1.1.0 — 2026-09-06
 
 ### Added

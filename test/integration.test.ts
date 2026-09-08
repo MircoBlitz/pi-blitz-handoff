@@ -75,7 +75,7 @@ async function activateIntegrationRig(
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
-    sessionManager: { getSessionFile: () => state.sessionFile },
+    sessionManager: { getSessionFile: () => state.sessionFile, getEntries: () => [] },
     abort() {},
     ui: {
       async select() {
