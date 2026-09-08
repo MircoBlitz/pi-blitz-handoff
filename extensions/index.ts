@@ -73,6 +73,8 @@ export * from "./writer.ts";
 const STATUS_KEY = "pi-blitz-handoff";
 const AUTOMATIC_ATTEMPT_ENTRY = "pi-blitz-handoff-automatic-attempt";
 const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
+const CANCELLATION_MESSAGE_TYPE = "pi-blitz-handoff-cancelled";
+const CANCELLATION_INSTRUCTION = "Session handoff cancelled. Disregard the previous handoff readiness or writer instruction and any submission ID. Resume normal conversation and task work. Do not submit a session handoff.";
 const HANDOFF_HELP = [
   "Session handoff commands:",
   "  /sh              Start a session handoff",
@@ -302,6 +304,17 @@ export function activateHandoffExtension(
     }
   };
 
+  const sendCancellationInstruction = (): void => {
+    pi.sendMessage(
+      {
+        customType: CANCELLATION_MESSAGE_TYPE,
+        content: CANCELLATION_INSTRUCTION,
+        display: true,
+      },
+      { deliverAs: "followUp", triggerTurn: true },
+    );
+  };
+
   flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
     callTemplate,
@@ -352,7 +365,11 @@ export function activateHandoffExtension(
   registerSessionHandoffGoTools(pi, {
     accept: (key, ctx) => flow.acceptGo(key, ctx),
     beginUserDeferral: (key, ctx) => flow.beginUserDeferral(key, ctx),
-    resolveUserDeferral: (key, choice, ctx) => flow.resolveUserDeferral(key, choice, ctx),
+    resolveUserDeferral: (key, choice, ctx) => {
+      const result = flow.resolveUserDeferral(key, choice, ctx);
+      if (result === "accepted" && choice === "Cancel") sendCancellationInstruction();
+      return result;
+    },
   });
 
   const reportStart = (
@@ -427,6 +444,7 @@ export function activateHandoffExtension(
       if (cancelled) {
         setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
         updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled", false, startedAt);
+        sendCancellationInstruction();
       }
       ctx.ui.notify(
         cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
@@ -471,6 +489,12 @@ export function activateHandoffExtension(
     start(ctx) {
       return requestStart(ctx, "tool");
     },
+  });
+
+  pi.on("agent_start", (_event, ctx) => {
+    if (flow.phase !== "inactive") return;
+    clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
   });
 
   pi.on("input", async (event, ctx) => {

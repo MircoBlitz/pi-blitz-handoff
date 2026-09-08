@@ -90,9 +90,9 @@ The activity line is rendered as a Pi widget directly above the input editor. It
 - `Writing Session Handoff`;
 - `Session Handoff Finished`.
 
-Failure and cancellation override those states. Finished status remains in the replacement session until ordinary user input or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
+Failure and cancellation override those states. Finished status remains in the replacement session until its next agent run starts, ordinary user input arrives, or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
 
-Before accepted GO, canonical `/sh-cancel` clears pending readiness or the user-wait state. After GO but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. The spaced `/sh cancel` alias remains accepted. Deferred prompts are not replayed automatically to the source session.
+Before accepted GO, canonical `/sh-cancel` clears pending readiness or the user-wait state. After GO but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Every successful cancellation sends a follow-up instruction that releases the model from the earlier readiness or writer request and resumes normal work. The spaced `/sh cancel` alias remains accepted. Deferred prompts are not replayed automatically to the source session.
 
 From `GO` until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked. The extension's own correlated native replacement is allowed.
 
