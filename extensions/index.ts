@@ -18,6 +18,11 @@ import {
   type HandoffStartResult,
 } from "./flow.ts";
 import { registerSessionHandoffGoTools } from "./go-tool.ts";
+import { ProjectTemplateDialog } from "./project-template-dialog.ts";
+import {
+  loadProjectTemplateAssignments,
+  resolveProjectTemplateAssignment,
+} from "./project-templates.ts";
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
@@ -61,6 +66,8 @@ export * from "./flow.ts";
 export * from "./go-tool.ts";
 export * from "./recovery-store.ts";
 export * from "./public-tool.ts";
+export * from "./project-template-dialog.ts";
+export * from "./project-templates.ts";
 export * from "./readiness.ts";
 export * from "./recovery-dialog.ts";
 export * from "./status.ts";
@@ -80,6 +87,7 @@ const HANDOFF_HELP = [
   "  /sh-cancel       Cancel the active handoff",
   "  /sh-recover      Inspect or replay deferred prompts",
   "  /sh-config       Configure handoff settings",
+  "  /sh-project-template  Configure templates for the current directory",
   "  /sh-help         Show this help",
 ].join("\n");
 
@@ -152,7 +160,10 @@ export function activateHandoffExtension(
   let pendingStartupTemplateWarnings = [...startupTemplateWarnings];
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
-  const configDialog = new ConfigDialog(dirname(paths.baseDirectory));
+  const handoffTemplates = new Map<string, string>();
+  const agentDirectory = dirname(paths.baseDirectory);
+  const configDialog = new ConfigDialog(agentDirectory);
+  const projectTemplateDialog = new ProjectTemplateDialog(agentDirectory);
   const recoveryDialog = new RecoveryDialog(
     config.recoveryDirectory,
     (content, options) => pi.sendUserMessage(content, options),
@@ -202,9 +213,9 @@ export function activateHandoffExtension(
         writerAttempts: config.writerAttempts,
         writerRetryDelaySeconds: config.writerRetryDelaySeconds,
         runtime: writerRuntime,
-        resolveTemplate: () =>
+        resolveTemplate: (selectedFilename) =>
           resolveTemplate(
-            config.handoffTemplate,
+            selectedFilename ?? config.handoffTemplate,
             {
               managedDirectory: paths.templateDirectory,
               addendumDirectory: config.templateDirectory,
@@ -341,7 +352,9 @@ export function activateHandoffExtension(
     },
     onReady(handoff, ctx) {
       ctx.ui.notify("Session handoff readiness confirmed.", "info");
-      writer?.start(handoff, ctx);
+      const selectedHandoffTemplate = handoffTemplates.get(handoff.id);
+      handoffTemplates.delete(handoff.id);
+      writer?.start(handoff, ctx, selectedHandoffTemplate);
     },
     onPhaseChange(handoff, ctx) {
       updatePersistentHandoffStatus(
@@ -361,8 +374,12 @@ export function activateHandoffExtension(
     accept: (key, ctx) => flow.acceptGo(key, ctx),
     beginUserDeferral: (key, ctx) => flow.beginUserDeferral(key, ctx),
     resolveUserDeferral: (key, choice, ctx) => {
+      const handoffId = flow.snapshot?.id;
       const result = flow.resolveUserDeferral(key, choice, ctx);
-      if (result === "accepted" && choice === "Cancel") sendCancellationInstruction();
+      if (result === "accepted" && choice === "Cancel") {
+        if (handoffId !== undefined) handoffTemplates.delete(handoffId);
+        sendCancellationInstruction();
+      }
       return result;
     },
   });
@@ -389,16 +406,86 @@ export function activateHandoffExtension(
     return message;
   };
 
-  const requestStart = (ctx: ExtensionContext, source: ExplicitHandoffStartSource): string =>
-    reportStart(flow.start(ctx, source), ctx);
-
-  const requestAutomaticStart = (ctx: ExtensionContext): void => {
-    const result = flow.startAutomaticAtTurnBoundary(ctx);
-    if (result.accepted) {
-      automaticAttempts += 1;
-      pi.appendEntry(AUTOMATIC_ATTEMPT_ENTRY, { attempt: automaticAttempts });
+  const effectiveTemplates = async (ctx: ExtensionContext): Promise<{
+    callTemplate: string;
+    handoffTemplate: string;
+  }> => {
+    let assignments;
+    try {
+      assignments = await loadProjectTemplateAssignments(paths.projectTemplatesFile);
+    } catch (error) {
+      ctx.ui.notify(
+        `Project settings file could not be loaded (${projectSettingsErrorCategory(error)}). Role defaults are active for this handoff. Ask Pi to inspect the file if desired.`,
+        "warning",
+      );
+      const directories = {
+        managedDirectory: paths.templateDirectory,
+        addendumDirectory: config.templateDirectory,
+      };
+      const [callDefault] = await Promise.all([
+        checkTemplateHealth("Call", CALL_DEFAULT_TEMPLATE, CALL_DEFAULT_TEMPLATE, directories),
+        checkTemplateHealth("Handoff", HANDOFF_DEFAULT_TEMPLATE, HANDOFF_DEFAULT_TEMPLATE, directories),
+      ]);
+      return {
+        callTemplate: callDefault.resolved.content,
+        handoffTemplate: HANDOFF_DEFAULT_TEMPLATE,
+      };
     }
-    reportStart(result, ctx);
+
+    const selected = resolveProjectTemplateAssignment(assignments, ctx.cwd);
+    let effectiveCallTemplate = callTemplate;
+    if (selected.callTemplate !== null) {
+      const health = await checkTemplateHealth(
+        "Call",
+        selected.callTemplate,
+        CALL_DEFAULT_TEMPLATE,
+        {
+          managedDirectory: paths.templateDirectory,
+          addendumDirectory: config.templateDirectory,
+        },
+      );
+      if (health.warning !== undefined) ctx.ui.notify(health.warning, "warning");
+      effectiveCallTemplate = health.resolved.content;
+    }
+    return {
+      callTemplate: effectiveCallTemplate,
+      handoffTemplate: selected.handoffTemplate ?? config.handoffTemplate,
+    };
+  };
+
+  const requestStart = async (
+    ctx: ExtensionContext,
+    source: ExplicitHandoffStartSource,
+  ): Promise<string> => {
+    if (flow.phase !== "inactive" || ctx.sessionManager.getSessionFile() === undefined) {
+      return reportStart(flow.start(ctx, source), ctx);
+    }
+    try {
+      const templates = await effectiveTemplates(ctx);
+      const result = flow.start(ctx, source, templates.callTemplate);
+      if (result.accepted) handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
+      return reportStart(result, ctx);
+    } catch (error) {
+      const message = `Could not start session handoff: ${errorMessage(error)}`;
+      ctx.ui.notify(message, "error");
+      return message;
+    }
+  };
+
+  const requestAutomaticStart = async (ctx: ExtensionContext): Promise<void> => {
+    if (flow.phase !== "inactive") return;
+    try {
+      const templates = await effectiveTemplates(ctx);
+      const result = flow.startAutomaticAtTurnBoundary(ctx, templates.callTemplate);
+      if (result.accepted) {
+        handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
+        automaticAttempts += 1;
+        pi.appendEntry(AUTOMATIC_ATTEMPT_ENTRY, { attempt: automaticAttempts });
+      }
+      reportStart(result, ctx);
+    } catch (error) {
+      ctx.ui.notify(`Could not start session handoff: ${errorMessage(error)}`, "error");
+    }
   };
 
   const handleHandoffAction = async (action: string, ctx: ExtensionCommandContext): Promise<void> => {
@@ -407,7 +494,7 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "") {
-      requestStart(ctx, "command");
+      await requestStart(ctx, "command");
       return;
     }
     if (action === "config") {
@@ -422,6 +509,10 @@ export function activateHandoffExtension(
       await configDialog.run(ctx);
       return;
     }
+    if (action === "project-template") {
+      await projectTemplateDialog.run(ctx);
+      return;
+    }
     if (action === "recover") {
       await recoveryDialog.run(ctx);
       return;
@@ -434,7 +525,9 @@ export function activateHandoffExtension(
         return;
       }
       const writerCancelled = writer?.cancel(ctx) ?? false;
+      const activeHandoffId = flow.snapshot?.id;
       const flowCancelled = flow.cancel(ctx);
+      if (activeHandoffId !== undefined) handoffTemplates.delete(activeHandoffId);
       const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
       if (cancelled) {
         setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
@@ -447,7 +540,7 @@ export function activateHandoffExtension(
       );
       return;
     }
-    ctx.ui.notify("Usage: /sh, /sh-help, /sh-recover, /sh-config, or /sh-cancel", "warning");
+    ctx.ui.notify("Usage: /sh, /sh-help, /sh-recover, /sh-config, /sh-project-template, or /sh-cancel", "warning");
   };
 
   pi.registerCommand("sh", {
@@ -462,6 +555,7 @@ export function activateHandoffExtension(
     ["sh-cancel", "cancel", "Cancel the active session handoff"],
     ["sh-recover", "recover", "Recover deferred session handoff prompts"],
     ["sh-config", "config", "Configure session handoff settings"],
+    ["sh-project-template", "project-template", "Configure templates for the current directory"],
   ] as const) {
     pi.registerCommand(command, {
       description,
@@ -527,7 +621,7 @@ export function activateHandoffExtension(
     return { action: "handled" };
   });
 
-  pi.on("turn_end", (_event, ctx) => {
+  pi.on("turn_end", async (_event, ctx) => {
     if (
       flow.phase !== "inactive" ||
       automaticAttempts >= 2 ||
@@ -548,7 +642,7 @@ export function activateHandoffExtension(
         usage?.percent,
       )
     ) {
-      requestAutomaticStart(ctx);
+      await requestAutomaticStart(ctx);
     }
   });
 
@@ -613,6 +707,7 @@ export function activateHandoffExtension(
     for (const warning of pendingStartupTemplateWarnings) ctx.ui.notify(warning, "warning");
     pendingStartupTemplateWarnings = [];
     configDialog.discard();
+    projectTemplateDialog.discard();
     recoveryDialog.discard();
     advisoryWarningShown = false;
     if (ctx.mode === "tui") registerPersistentHandoffStatus(ctx.ui, STATUS_KEY);
@@ -622,7 +717,9 @@ export function activateHandoffExtension(
 
   pi.on("session_shutdown", (_event, ctx) => {
     configDialog.discard();
+    projectTemplateDialog.discard();
     recoveryDialog.discard();
+    handoffTemplates.clear();
     writer?.invalidate();
     flow.invalidate();
     transition.invalidate();
@@ -653,6 +750,12 @@ function restoredAutomaticAttempts(ctx: ExtensionContext): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function projectSettingsErrorCategory(error: unknown): string {
+  if (error instanceof SyntaxError) return "invalid JSON";
+  if (typeof error === "object" && error !== null && "code" in error) return "unreadable file";
+  return "invalid settings";
 }
 
 function writerRuntimeFrom(pi: ExtensionAPI): WriterRuntime | undefined {

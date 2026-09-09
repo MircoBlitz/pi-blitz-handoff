@@ -14,14 +14,14 @@ export interface TemplateCatalogueEntry {
 }
 
 export interface TemplateFailure {
-  path: string;
-  reason: string;
+  readonly path: string;
+  readonly reason: string;
 }
 
 export interface ResolvedTemplate {
-  path: string;
-  content: string;
-  failures: TemplateFailure[];
+  readonly path: string;
+  readonly content: string;
+  readonly failures: readonly TemplateFailure[];
 }
 
 export interface TemplateDirectories {
@@ -217,7 +217,7 @@ async function templateNames(directory: string): Promise<string[]> {
   return valid;
 }
 
-function isTemplateFilename(value: string): boolean {
+export function isTemplateFilename(value: string): boolean {
   return value.endsWith(".cmpl") && !value.includes("/") && !value.includes("\\") && !value.includes("\0");
 }
 

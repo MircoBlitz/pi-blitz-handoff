@@ -106,19 +106,19 @@ test("handoff commands expose the main command and separate documented helpers",
   const rig = captureRegistration();
   assert.deepEqual(
     [...rig.commands.keys()].sort(),
-    ["__pi_blitz_handoff_transition", "sh", "sh-cancel", "sh-config", "sh-help", "sh-recover"],
+    ["__pi_blitz_handoff_transition", "sh", "sh-cancel", "sh-config", "sh-help", "sh-project-template", "sh-recover"],
   );
 
   const advertised = [...rig.commands.entries()]
     .filter(([, command]) => command.description !== undefined)
     .map(([name]) => name);
-  assert.deepEqual(advertised, ["sh", "sh-help", "sh-cancel", "sh-recover", "sh-config"]);
+  assert.deepEqual(advertised, ["sh", "sh-help", "sh-cancel", "sh-recover", "sh-config", "sh-project-template"]);
   assert.match(rig.commands.get("sh")?.description ?? "", /Start a session handoff/);
   assert.equal(rig.commands.get("sh")?.getArgumentCompletions, undefined);
   assert.equal(rig.commands.get("__pi_blitz_handoff_transition")?.description, undefined);
 
   await rig.commands.get("sh")?.handler("retry", rig.context);
-  assert.equal(rig.notifications.at(-1), "Usage: /sh, /sh-help, /sh-recover, /sh-config, or /sh-cancel");
+  assert.equal(rig.notifications.at(-1), "Usage: /sh, /sh-help, /sh-recover, /sh-config, /sh-project-template, or /sh-cancel");
   assert.deepEqual([...rig.commands.keys()].filter((name) => ["shconfig", "sh-retry", "sh-cleanup"].includes(name)), []);
 });
 

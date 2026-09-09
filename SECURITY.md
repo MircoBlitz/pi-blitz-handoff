@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current 1.0 code line is the supported and tested package contract. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
+The current 1.2 code line is the supported and tested package contract. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
 
 ## Trust boundary
 
@@ -15,6 +15,7 @@ The extension preserves authorization in its writer instructions: continuation c
 A handoff can process:
 
 - the persisted source-session transcript path;
+- the current working directory and ancestor paths used for project-template lookup;
 - the configured handoff template;
 - the model-written continuation dossier;
 - ordinary interactive or RPC prompt text received after the accepted readiness boundary;
@@ -26,7 +27,7 @@ Deferred prompts are preserved unchanged and in arrival order. When any exist, t
 
 ## Filesystem behavior
 
-Managed data defaults to `<getAgentDir()>/pi-blitz-handoff/`. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Configuration and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
+Managed data defaults to `<getAgentDir()>/pi-blitz-handoff/`. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Global configuration, project-template assignments, and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
 
 These controls reduce accidental local exposure; they are not a general filesystem security framework. In particular:
 

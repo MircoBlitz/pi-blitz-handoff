@@ -16,8 +16,8 @@ test("readiness keys are fresh and UUID-backed", () => {
   assert.match(first, /^handoff-go-[0-9a-f-]{36}$/);
 });
 
-test("runtime suffix preserves correlation and semantic tool choice for any call template", () => {
-  const prompt = readinessPrompt("CUSTOM", "go-current");
+test("explicit readiness preserves correlation and semantic tool choice for any call template", () => {
+  const prompt = readinessPrompt("CUSTOM", "go-current", true);
   assert.match(prompt, /^CUSTOM\n/);
   assert.equal(prompt.match(/go-current/g)?.length, 2);
   assert.match(prompt, new RegExp(SESSION_HANDOFF_GO_TOOL));
@@ -25,13 +25,26 @@ test("runtime suffix preserves correlation and semantic tool choice for any call
   assert.match(prompt, /Prefer direct GO when uncertain/);
   assert.match(prompt, /concrete active collaboration or user interaction/);
   assert.match(prompt, /required model-owned work, tool execution, subagents, background work, or required output/);
-  assert.doesNotMatch(prompt, /automatic|command|public tool/i);
 });
 
-test("the one-shot reminder asks for silent semantic re-evaluation with the same key", () => {
-  const reminder = readinessReminder("go-current");
-  assert.equal(reminder.match(/go-current/g)?.length, 1);
-  assert.match(reminder, new RegExp(SESSION_HANDOFF_GO_TOOL));
-  assert.match(reminder, new RegExp(SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL));
-  assert.match(reminder, /produce no normal text/);
+test("automatic readiness permits only direct GO", () => {
+  const prompt = readinessPrompt("CUSTOM", "go-current", false);
+  assert.match(prompt, /initiated automatically/);
+  assert.equal(prompt.match(/go-current/g)?.length, 1);
+  assert.match(prompt, new RegExp(SESSION_HANDOFF_GO_TOOL));
+  assert.doesNotMatch(prompt, new RegExp(SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL));
+  assert.match(prompt, /User deferral is unavailable/);
+});
+
+test("the one-shot reminders preserve the source-specific readiness choice", () => {
+  const explicit = readinessReminder("go-explicit", true);
+  assert.equal(explicit.match(/go-explicit/g)?.length, 1);
+  assert.match(explicit, new RegExp(SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL));
+  assert.match(explicit, /produce no normal text/);
+
+  const automatic = readinessReminder("go-automatic", false);
+  assert.equal(automatic.match(/go-automatic/g)?.length, 1);
+  assert.match(automatic, new RegExp(SESSION_HANDOFF_GO_TOOL));
+  assert.doesNotMatch(automatic, new RegExp(SESSION_HANDOFF_GO_WITH_USER_DEFERRAL_TOOL));
+  assert.match(automatic, /user deferral is unavailable/);
 });

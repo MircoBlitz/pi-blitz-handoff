@@ -72,6 +72,7 @@ async function activateIntegrationRig(
   const context = {
     mode: "tui",
     hasUI: true,
+    cwd: join(root, "project"),
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),

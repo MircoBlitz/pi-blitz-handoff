@@ -53,7 +53,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.1.3");
+  assert.equal(manifest.version, "1.2.0");
   assert.equal(
     manifest.description,
     "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
@@ -84,6 +84,37 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.scripts?.typecheck, "tsc --noEmit");
   assert.equal(manifest.scripts?.validate, "npm test && npm run typecheck");
   assert.equal(manifest.scripts?.prepublishOnly, "npm run validate");
+});
+
+test("public documentation carries the current tagline and supported line", async () => {
+  const [readme, security] = await Promise.all([
+    readFile(join(projectRoot, "README.md"), "utf8"),
+    readFile(join(projectRoot, "SECURITY.md"), "utf8"),
+  ]);
+
+  assert.match(readme, /^Steer your context\. Hand off what matters\.$/m);
+  assert.match(security, /current 1\.2 code line/);
+  assert.doesNotMatch(security, /current 1\.1 code line/);
+});
+
+test("shipped handoff template contains the compact runtime state dossier section", async () => {
+  const template = await readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8");
+
+  const runtimeState = template.indexOf("## Operational runtime state");
+  const activeInstructions = template.indexOf("## Active behavioral instructions");
+  const loadedSkills = template.indexOf("## Loaded skills");
+  assert.ok(activeInstructions < runtimeState && runtimeState < loadedSkills);
+  assert.match(template, /session-specific runtime deviations or status/);
+  assert.match(template, /Skills whose current state matters/);
+  assert.match(template, /Subagents/);
+  assert.match(template, /Intentionally changed active toolset/);
+  assert.match(template, /Relevant live processes or cmux surfaces/);
+  assert.match(template, /Session-specific behavioral deltas/);
+  assert.match(template, /For each category, write `None\.` when absent/);
+
+  assert.match(template, /every replacement session to begin its first visible assistant response with a concise re-entry summary/);
+  assert.match(template, /After the summary, the replacement must treat any Deferred Prompts as sequential user inputs/);
+  assert.match(template, /Deferred Prompts may update or supersede the recorded `Action`/);
 });
 
 test("package lock root metadata remains coherent with the manifest", async () => {

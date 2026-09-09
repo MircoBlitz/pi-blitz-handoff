@@ -38,7 +38,7 @@ export interface HandoffWriterOptions {
   writerAttempts: number;
   writerRetryDelaySeconds: number;
   runtime: WriterRuntime;
-  resolveTemplate(): Promise<ResolvedTemplate>;
+  resolveTemplate(selectedFilename?: string): Promise<ResolvedTemplate>;
   onTemplateFailure?(failure: TemplateFailure, attempt: number, ctx: ExtensionContext): void;
   onPhaseChange?(phase: WriterPhase, attempt: number, ctx: ExtensionContext): void;
   onSuccess?(result: WriterSuccess, ctx: ExtensionContext): void;
@@ -58,6 +58,7 @@ interface ActiveWriter {
   retryTimer?: unknown;
   attemptToken?: object;
   acceptingSubmission: boolean;
+  templateFilename?: string;
 }
 
 export class HandoffWriter {
@@ -87,7 +88,11 @@ export class HandoffWriter {
     return this.active?.attempt ?? 0;
   }
 
-  start(handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): boolean {
+  start(
+    handoff: ActiveHandoffSnapshot,
+    ctx: ExtensionContext,
+    templateFilename?: string,
+  ): boolean {
     if (this.active !== undefined) return false;
 
     let savedTools: string[];
@@ -105,6 +110,7 @@ export class HandoffWriter {
       savedTools,
       attempt: 0,
       acceptingSubmission: false,
+      templateFilename,
     };
     this.active = active;
 
@@ -201,7 +207,7 @@ export class HandoffWriter {
   private async resolveAndDispatch(active: ActiveWriter, attemptToken: object): Promise<void> {
     let template: ResolvedTemplate;
     try {
-      template = await this.options.resolveTemplate();
+      template = await this.options.resolveTemplate(active.templateFilename);
     } catch (error) {
       if (!this.isCurrentAttempt(active, attemptToken)) return;
       this.terminate(active, "failed", `Could not resolve a handoff template: ${errorMessage(error)}`);

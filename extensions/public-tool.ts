@@ -4,7 +4,7 @@ export type PublicHandoffAction = "status" | "start";
 
 export interface PublicHandoffToolHandlers {
   status(ctx: ExtensionContext): string;
-  start(ctx: ExtensionContext): string;
+  start(ctx: ExtensionContext): string | Promise<string>;
 }
 
 interface PublicToolParameters {
@@ -45,7 +45,7 @@ export function registerPublicHandoffTool(pi: ExtensionAPI, handlers: PublicHand
       _onUpdate: unknown,
       ctx: ExtensionContext,
     ): Promise<PublicToolResult> {
-      const text = handlers[params.action](ctx);
+      const text = await handlers[params.action](ctx);
       return {
         content: [{ type: "text", text }],
         details: { action: params.action },

@@ -20,6 +20,7 @@ export interface HandoffConfig {
 export interface HandoffPaths {
   baseDirectory: string;
   configFile: string;
+  projectTemplatesFile: string;
   recoveryDirectory: string;
   templateDirectory: string;
 }
@@ -43,6 +44,7 @@ export function handoffPaths(agentDirectory: string): HandoffPaths {
   return {
     baseDirectory,
     configFile: join(baseDirectory, "config.json"),
+    projectTemplatesFile: join(baseDirectory, "project-templates.json"),
     recoveryDirectory: join(baseDirectory, "recovery"),
     templateDirectory: join(baseDirectory, "templates"),
   };

@@ -24,7 +24,9 @@ Before returning, check that every authorization label, next step, and task pack
 
 Preserve the complete cumulative inventory of loaded skills: retain every skill named in an incoming handoff's loaded-skills inventory and add every skill whose full instructions were loaded in the current session. Never remove a loaded skill because its task appears complete or because it seems irrelevant now; do not make a semantic relevance decision. Record each skill's exact `SKILL.md` path and any explicit loading or routing constraint already attached to it. Do not add merely available skills that were never loaded and do not invent paths or constraints. The replacement session must read every listed skill completely before substantive continuation.
 
-Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff. When the mode is `Wait for the user`, require the replacement session to give the user one concise re-entry summary before waiting. That visible summary must state the latest activity, the current working state, and the next step or exact reason user input is needed. Do not require this summary for autonomous continuation.
+Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff.
+
+Require every replacement session to begin its first visible assistant response with a concise re-entry summary for the user, including during autonomous continuation. The summary must state the latest relevant activity or exchange, the current working state, and the next step or exact reason user input is needed. Include the latest material user question and answer when they determine the present state. After the summary, the replacement must treat any Deferred Prompts as sequential user inputs in their transferred order, then continue the task, answer or ask the user, or wait as required by the latest applicable instruction and authorization. Deferred Prompts may update or supersede the recorded `Action`; without a superseding Deferred Prompt, follow `Action`.
 
 ## Goal and authorization
 
@@ -90,6 +92,16 @@ Keep this cumulative and short. Mark earlier topics active, superseded, deferred
 ## Active behavioral instructions
 
 [Still-applicable user corrections and preferences not already covered by system/project guidance. Record known supersession relationships and preserve exact wording where paraphrase could change scope or tone.]
+
+## Operational runtime state
+
+Record only session-specific runtime deviations or status, not ordinary project facts or the cumulative `Loaded skills` inventory. For each category, write `None.` when absent.
+
+- **Skills whose current state matters:** [Actually loaded or re-read skills only when their current operational state matters; give the name, exact `SKILL.md` path, and state. Otherwise `None.`]
+- **Subagents:** [Each subagent's ID, mode, status, and result path. Otherwise `None.`]
+- **Intentionally changed active toolset:** [Describe the change from the normal toolset. Otherwise `None.`]
+- **Relevant live processes or cmux surfaces:** [Identify each relevant process or surface and its status. Otherwise `None.`]
+- **Session-specific behavioral deltas:** [Record behavior changed for this session that is not already global. Otherwise `None.`]
 
 ## Loaded skills
 
@@ -163,4 +175,4 @@ Record the exact source-session transcript path supplied in the writer prompt. D
 
 Mode: Continue authorized questioning | Continue authorized autonomous work | Answer the user | Wait for the user
 Resume At: [Exact question, plan step, task, or decision point.]
-Action: [Exactly one concrete first action. For `Wait for the user`, tell the replacement session to give the concise user-facing re-entry summary specified above and then wait. Otherwise use “None.” only when genuinely no action is required.]
+Action: [Tell the replacement session to begin with the concise user-facing re-entry summary specified above, then state exactly one concrete action to take after applying any Deferred Prompts. Use “None after the summary.” only when genuinely no further action is required.]

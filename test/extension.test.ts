@@ -128,6 +128,7 @@ function createRig(
   const context = {
     mode: "tui",
     hasUI: true,
+    cwd: "/projects/app",
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({
@@ -304,6 +305,7 @@ test("/sh help displays subcommands and usage", async () => {
   assert.equal(rig.notifications.at(-1)?.type, "info");
   assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-recover/);
   assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-config/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-project-template/);
   assert.doesNotMatch(rig.notifications.at(-1)?.message ?? "", /\\n/);
 });
 
@@ -410,6 +412,157 @@ test("/sh config stays in extension UI and reload or session replacement discard
     assert.equal(rig.sentMessages.length, 0);
     assert.equal(rig.notifications.length, 0);
   }
+});
+
+test("/sh-project-template commits each role immediately and removes Autodiscover/Autodiscover", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-dialog-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "default call");
+  await writeFile(join(paths.templateDirectory, "call_fast.cmpl"), "fast call");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
+  await writeFile(join(paths.templateDirectory, "handoff_precise.cmpl"), "precise handoff");
+
+  const rig = createRig({}, {}, agentDirectory);
+  const answers = ["<Default>", undefined];
+  rig.setSelectHandler(async (title, options) => {
+    const answer = answers.shift();
+    if (title.includes("Which Call Template")) {
+      assert.deepEqual(options, ["<Autodiscover>", "<Default>", "call_fast.cmpl"]);
+    } else {
+      assert.match(title, /^Which Handoff Template/);
+      assert.deepEqual(options, ["<Autodiscover>", "<Default>", "handoff_precise.cmpl"]);
+    }
+    return answer;
+  });
+
+  await rig.commands.get("sh-project-template")?.("", rig.context);
+  assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {
+    "/projects/app": { callTemplate: "call_default.cmpl", handoffTemplate: null },
+  });
+  assert.match(rig.notifications.at(-1)?.message ?? "", /Project Call Template saved/);
+
+  const removalAnswers = ["<Autodiscover>", "<Autodiscover>"];
+  rig.setSelectHandler(async (_title, options) => {
+    assert.equal(options.includes("<Remove project assignment>"), false);
+    return removalAnswers.shift();
+  });
+  await rig.commands.get("sh-project-template")?.("", rig.context);
+  assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {});
+  assert.match(rig.notifications.at(-2)?.message ?? "", /assignment removed/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /No exact project template assignment exists/);
+});
+
+test("/sh-project-template reports no exact assignment and performs no write for Autodiscover/Autodiscover", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-dialog-empty-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "default call");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
+
+  const rig = createRig({}, {}, agentDirectory);
+  const answers = ["<Autodiscover>", "<Autodiscover>"];
+  rig.setSelectHandler(async (title, options) => {
+    if (title.includes("Which Call Template")) {
+      assert.deepEqual(options, ["<Autodiscover>", "<Default>"]);
+    } else {
+      assert.match(title, /^Which Handoff Template/);
+      assert.deepEqual(options, ["<Autodiscover>", "<Default>"]);
+    }
+    return answers.shift();
+  });
+
+  await rig.commands.get("sh-project-template")?.("", rig.context);
+  await assert.rejects(readFile(paths.projectTemplatesFile, "utf8"), { code: "ENOENT" });
+  assert.match(
+    rig.notifications.at(-1)?.message ?? "",
+    /No exact project template assignment exists for \/projects\/app; nothing was changed\./,
+  );
+});
+
+test("project templates are resolved from the nearest ancestor for the next handoff", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-resolution-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "default call");
+  await writeFile(join(paths.templateDirectory, "call_project.cmpl"), "PROJECT CALL");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
+  await writeFile(join(paths.templateDirectory, "handoff_project.cmpl"), "PROJECT HANDOFF");
+  await writeFile(paths.projectTemplatesFile, JSON.stringify({
+    "/projects": {
+      callTemplate: "call_project.cmpl",
+      handoffTemplate: null,
+    },
+    "/projects/app": {
+      callTemplate: null,
+      handoffTemplate: "handoff_project.cmpl",
+    },
+  }));
+  const toolRuntime: ToolRuntimeOptions = {
+    activeTools: ["read", "bash"],
+    loading: false,
+    setCalls: [],
+  };
+  const rig = createRig({}, {}, agentDirectory, toolRuntime);
+
+  await rig.commands.get("sh")?.("", rig.context);
+  assert.match(rig.sentMessages[0]?.message.content ?? "", /^PROJECT CALL\n/);
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+  await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  for (let attempt = 0; attempt < 100 && rig.sentUserMessages.length === 0; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  assert.match(rig.sentUserMessages.at(-1) ?? "", /PROJECT HANDOFF/);
+});
+
+test("invalid project settings use real role defaults for explicit and automatic starts", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-invalid-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "DEFAULT CALL");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "DEFAULT HANDOFF");
+  await writeFile(paths.projectTemplatesFile, "{invalid-json");
+  const rig = createRig(
+    { automaticSessionHandoff: true, automaticSessionHandoffPercent: 10 },
+    { percent: 10 },
+    agentDirectory,
+  );
+
+  await rig.commands.get("sh")?.("", rig.context);
+  assert.equal(rig.flow.phase, "waiting");
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /^DEFAULT CALL/);
+  assert.match(
+    rig.notifications.find(({ type }) => type === "warning")?.message ?? "",
+    /Project settings file could not be loaded \(invalid JSON\).*Role defaults are active.*Ask Pi to inspect/,
+  );
+
+  rig.flow.cancel(rig.context);
+  await rig.handlers.turn_end?.({ type: "turn_end" }, rig.context);
+  assert.equal(rig.flow.snapshot?.source, "automatic");
+  assert.equal(rig.state.entries.length, 1);
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /^DEFAULT CALL/);
+});
+
+test("project-settings fallback aborts when a role default cannot resolve", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-default-failure-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "DEFAULT HANDOFF");
+  await writeFile(paths.projectTemplatesFile, "{invalid-json");
+  const rig = createRig({}, {}, agentDirectory);
+
+  await rig.commands.get("sh")?.("", rig.context);
+
+  assert.equal(rig.flow.phase, "inactive");
+  assert.equal(rig.sentMessages.length, 0);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /Could not start session handoff: Call template default/);
 });
 
 test("template health checks both roles and config opening reports each non-default fallback", async (t) => {
@@ -530,6 +683,23 @@ test("automatic initiation enters autonomous work at turn end and retries once a
   assert.equal(enabled.flow.snapshot?.source, "automatic");
   assert.equal(enabled.sentMessages.length, 1);
   assert.equal(enabled.sentMessages[0]?.options?.deliverAs, "steer");
+  assert.doesNotMatch(
+    enabled.sentMessages[0]?.message.content ?? "",
+    /session_handoff_go_with_user_deferral/,
+  );
+  const automaticKey = enabled.flow.snapshot?.readinessKey;
+  assert.ok(automaticKey);
+  await assert.rejects(
+    enabled.getToolExecute("session_handoff_go_with_user_deferral")(
+      "defer",
+      { key: automaticKey, reason: "Do not stop the autonomous run" },
+      undefined,
+      undefined,
+      enabled.context,
+    ),
+    /unavailable for an automatically initiated session handoff/,
+  );
+  assert.equal(enabled.flow.phase, "waiting");
 
   await enabled.commands.get("sh-cancel")?.("", enabled.context);
   const afterFirstAttempt = createRig(

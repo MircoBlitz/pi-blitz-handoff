@@ -25,7 +25,7 @@ export type HandoffInputResult =
   | { action: "deferred"; snapshot: DeferredPromptSnapshot };
 
 export type HandoffGoResult = "accepted" | "stale" | "not-started";
-export type HandoffDeferralResult = HandoffGoResult | "selection-open";
+export type HandoffDeferralResult = HandoffGoResult | "automatic" | "selection-open";
 export type HandoffDeferralChoice = "Ready" | "Wait" | "Cancel";
 
 export interface HandoffFlowOptions {
@@ -49,6 +49,7 @@ interface ActiveHandoff {
   phase: Exclude<HandoffFlowPhase, "inactive">;
   readinessKey: string;
   awaitingUserGo: boolean;
+  callTemplate: string;
   instructionSent: boolean;
   writerDispatched: boolean;
   reminderTimer?: unknown;
@@ -93,23 +94,34 @@ export class HandoffFlow {
     return this.active?.phase === "ready";
   }
 
-  start(ctx: ExtensionContext, source: ExplicitHandoffStartSource): HandoffStartResult {
-    const result = this.createHandoff(ctx, source);
+  start(
+    ctx: ExtensionContext,
+    source: ExplicitHandoffStartSource,
+    callTemplate = this.options.callTemplate,
+  ): HandoffStartResult {
+    const result = this.createHandoff(ctx, source, callTemplate);
     if (result.accepted && this.active !== undefined && ctx.isIdle() && !ctx.hasPendingMessages()) {
       this.dispatchReadiness(this.active, ctx);
     }
     return result;
   }
 
-  startAutomaticAtTurnBoundary(ctx: ExtensionContext): HandoffStartResult {
-    const result = this.createHandoff(ctx, "automatic");
+  startAutomaticAtTurnBoundary(
+    ctx: ExtensionContext,
+    callTemplate = this.options.callTemplate,
+  ): HandoffStartResult {
+    const result = this.createHandoff(ctx, "automatic", callTemplate);
     if (result.accepted && this.active !== undefined) {
       this.dispatchReadiness(this.active, ctx, true);
     }
     return result;
   }
 
-  private createHandoff(ctx: ExtensionContext, source: HandoffStartSource): HandoffStartResult {
+  private createHandoff(
+    ctx: ExtensionContext,
+    source: HandoffStartSource,
+    callTemplate: string,
+  ): HandoffStartResult {
     if (this.active !== undefined) {
       return { accepted: false, reason: "active", handoff: snapshot(this.active) };
     }
@@ -126,6 +138,7 @@ export class HandoffFlow {
       phase: "waiting",
       readinessKey: this.makeReadinessKey(),
       awaitingUserGo: false,
+      callTemplate,
       instructionSent: false,
       writerDispatched: false,
     };
@@ -146,6 +159,7 @@ export class HandoffFlow {
     const active = this.correlated(key);
     if (active === undefined) return this.active === undefined ? "not-started" : "stale";
     if (!active.instructionSent || active.phase === "ready" || active.awaitingUserGo) return "stale";
+    if (active.source === "automatic") return "automatic";
     if (active.phase === "user-input-required") return "selection-open";
 
     this.clearReminderTimer(active);
@@ -235,7 +249,11 @@ export class HandoffFlow {
     active.instructionSent = true;
     this.changed(ctx);
     this.options.onReadinessPrompt(
-      readinessPrompt(this.options.callTemplate, active.readinessKey),
+      readinessPrompt(
+        active.callTemplate,
+        active.readinessKey,
+        active.source !== "automatic",
+      ),
       snapshot(active),
       ctx,
     );
@@ -246,7 +264,11 @@ export class HandoffFlow {
     const timer = this.setTimer(() => {
       if (this.active !== active || active.reminderTimer !== timer) return;
       active.reminderTimer = undefined;
-      this.options.onReadinessReminder(readinessReminder(active.readinessKey), snapshot(active), ctx);
+      this.options.onReadinessReminder(
+        readinessReminder(active.readinessKey, active.source !== "automatic"),
+        snapshot(active),
+        ctx,
+      );
     }, this.options.readinessRetrySeconds * 1000);
     active.reminderTimer = timer;
   }

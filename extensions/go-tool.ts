@@ -113,6 +113,7 @@ function keyParameters() {
 function requireAccepted(result: HandoffGoResult | HandoffDeferralResult): void {
   if (result === "accepted") return;
   if (result === "not-started") throw new Error("No session handoff is waiting for GO");
+  if (result === "automatic") throw new Error("User deferral is unavailable for an automatically initiated session handoff; use direct GO");
   if (result === "selection-open") throw new Error("A session handoff user choice is already open");
   throw new Error("Session handoff GO key is stale, invalid, or used at the wrong entry point");
 }

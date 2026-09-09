@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 — 2026-09-10
+
+### Added
+
+- Added `/sh-project-template` for project-directory-specific Call and Handoff Template assignments.
+- Added independent nearest-ancestor discovery per template role, with explicit `<Autodiscover>` and `<Default>` selections.
+
+### Changed
+
+- Project-template selections persist immediately per confirmed role; selecting `<Autodiscover>` for both roles removes the exact assignment.
+- Automatic handoffs now permit only direct readiness so an extension-owned choice cannot stop autonomous continuation.
+- Handoff templates are resolved again when each writer attempt starts, allowing intentional live template updates.
+- The default dossier records session-specific operational runtime state separately from its cumulative skill inventory and requires every replacement session to begin with a concise re-entry summary.
+
+### Fixed
+
+- Invalid or unreadable project-template assignments now warn once and use genuinely resolved role defaults without automatic repair.
+- Cancelled deferred-readiness selections no longer retain their pending Handoff Template selection.
+
 ## 1.1.3 — 2026-09-08
 
 ### Fixed
