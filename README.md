@@ -168,6 +168,7 @@ The extension manages:
 ├── project-templates.json
 ├── recovery/
 └── templates/
+    ├── backups/
     ├── call_balanced.cmpl
     ├── call_default.cmpl
     ├── call_fast.cmpl
@@ -176,7 +177,7 @@ The extension manages:
     └── handoff_fast.cmpl
 ```
 
-Missing managed directories are created during load. The package installs all six shipped templates into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+Missing managed directories are created during load. The package installs all six shipped templates into the managed template directory. If same-name managed content differs, the old file is moved into the managed `templates/backups/` subdirectory with a timestamped filename before the package template is installed. Catalogue scans are nonrecursive, so backups do not appear in template selection. Other managed templates are retained. Deliberately configured directory symlinks are supported.
 
 ### Shipped profiles
 

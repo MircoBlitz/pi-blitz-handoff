@@ -30,10 +30,11 @@ test("managed default is installed when missing and untouched when equal", async
   const before = await stat(managedPath);
   assert.equal(await readFile(managedPath, "utf8"), "shipped default");
   assert.equal(before.mode & 0o777, 0o600);
+  assert.equal((await stat(join(managed, "backups"))).mode & 0o777, 0o700);
 
   assert.deepEqual(await synchronizeManagedTemplate(managed, "default.cmpl", packaged), { status: "equal" });
   assert.equal((await stat(managedPath)).ino, before.ino);
-  assert.deepEqual(await readdir(managed), ["default.cmpl"]);
+  assert.deepEqual(await readdir(managed), ["backups", "default.cmpl"]);
 });
 
 test("a different managed default is timestamp-backed up before replacement", async (t) => {
@@ -45,7 +46,7 @@ test("a different managed default is timestamp-backed up before replacement", as
   await writeFile(join(managed, "default.cmpl"), "old default");
   await writeFile(join(managed, "other.cmpl"), "preserved");
   const now = new Date("2025-06-07T08:09:10.123Z");
-  const backupPath = join(managed, "default.cmpl.backup-2025-06-07T08-09-10.123Z");
+  const backupPath = join(managed, "backups", "default.cmpl.backup-2025-06-07T08-09-10.123Z");
 
   assert.deepEqual(await synchronizeManagedTemplate(managed, "default.cmpl", packaged, now), {
     status: "updated",
@@ -54,6 +55,7 @@ test("a different managed default is timestamp-backed up before replacement", as
   assert.equal(await readFile(backupPath, "utf8"), "old default");
   assert.equal(await readFile(join(managed, "default.cmpl"), "utf8"), "new default");
   assert.equal(await readFile(join(managed, "other.cmpl"), "utf8"), "preserved");
+  assert.deepEqual(await readdir(join(managed, "backups")), ["default.cmpl.backup-2025-06-07T08-09-10.123Z"]);
   assert.equal(backupPath.endsWith(".cmpl"), false);
 });
 

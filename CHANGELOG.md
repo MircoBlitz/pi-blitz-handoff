@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Managed template backups now live in the nonrecursive `templates/backups/` subdirectory so they cannot appear in template selection.
+
 ## 1.2.1 — 2026-09-10
 
 ### Added

@@ -88,6 +88,8 @@ export async function synchronizeManagedTemplate(
     throw new Error("Managed template must be a .cmpl filename, not a path");
   }
   await ensureDirectory(managedDirectory);
+  const backupDirectory = join(managedDirectory, "backups");
+  await ensureDirectory(backupDirectory);
   const source = await readFile(packageTemplate);
   const managedPath = join(managedDirectory, filename);
 
@@ -103,7 +105,7 @@ export async function synchronizeManagedTemplate(
   if (current.equals(source)) return { status: "equal" };
 
   const timestamp = now.toISOString().replaceAll(":", "-");
-  const backupPath = join(managedDirectory, `${filename}.backup-${timestamp}`);
+  const backupPath = join(backupDirectory, `${filename}.backup-${timestamp}`);
   await rename(managedPath, backupPath);
   await atomicWriteFile(managedPath, source);
   return { status: "updated", backupPath };

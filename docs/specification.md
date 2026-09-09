@@ -64,6 +64,7 @@ Managed data lives below:
 ├── project-templates.json
 ├── recovery/
 └── templates/
+    ├── backups/
     ├── call_balanced.cmpl
     ├── call_default.cmpl
     ├── call_fast.cmpl
@@ -131,9 +132,9 @@ On load, each of the six package assets is compared with its same-name file in t
 
 - equal content: do not write;
 - missing managed file: install the package file;
-- different content: rename the managed file beside itself to `<filename>.backup-<UTC timestamp>`, then install the package file.
+- different content: move the managed file into the managed `backups/` subdirectory as `<filename>.backup-<UTC timestamp>`, then install the package file.
 
-The timestamp uses filesystem-safe UTC with millisecond precision. Backups do not end in `.cmpl`, never enter the template catalogue, and are not automatically deleted. Other managed templates are preserved.
+The timestamp uses filesystem-safe UTC with millisecond precision. Catalogue scans do not recurse into `backups/`, and backups do not end in `.cmpl` or appear in template selection. Backups are not automatically deleted. Other managed templates are preserved.
 
 Catalogue scans are nonrecursive. An optional configured addendum directory may shadow a managed template with the same filename. Call and dossier templates have separate configuration fields but share the same resolver. Each resolution uses:
 
