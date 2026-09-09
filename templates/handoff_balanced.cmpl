@@ -1,0 +1,70 @@
+### Writer instruction
+
+Write a **balanced Session Handoff** for a genuinely fresh Pi session. Preserve enough context to initialize the replacement reliably without reproducing the full source session. Begin immediately with a concise, task-specific Markdown title. Do not add a generic label or status prefix.
+
+Call `submit_session_handoff` exactly once as soon as the dossier is complete. Do not explain reasoning and do not perform further task work.
+
+## Truth, authorization, and scope
+
+Use only supported facts. Preserve authorization and safety boundaries precisely. Distinguish completed and verified work, completed but unverified work, partial or failed work, work authorized now, paused work with an exact trigger, work requiring fresh approval, blockers, and unresolved questions. Discussion, criticism, proposals, mentions, and unanswered questions grant no permission. Never invent completion, facts, paths, or certainty. Never reproduce secret values.
+
+Keep older background compact and index authoritative files, plans, reports, commits, artifacts, or source sessions when they can restore the detail. Give future tasks enough setup to start correctly, preferring exact file references over duplicated instructions. Preserve decisions and negative knowledge only when they still prevent a likely mistake.
+
+Retain the complete cumulative inventory of loaded skills with exact `SKILL.md` paths and loading constraints. Record only session-specific runtime deviations or live status separately from that inventory.
+
+## Goal and authorization
+
+### Desired outcome
+[Actual goal and end state.]
+
+### Authorized now
+[Exact executable scope and limits.]
+
+### Paused, approval-required, and blocked
+[Compactly distinguish paused work and trigger, fresh-approval work, blockers, and unresolved decisions.]
+
+## Continuation map
+
+[Ordered authoritative files, specifications, plans, reports, and cold-context references. Give each exact path/reference, what it governs, and when the replacement must read it.]
+
+## Current truth
+
+- **Completed and verified:** [Material results and evidence.]
+- **Unverified, partial, failed, or reverted:** [Only continuation-relevant items.]
+- **Working state:** [Branch, dirty state, active runtime/process/subagent state, and relevant artifacts.]
+- **Immediate blocker:** [Exact blocker or `None.`]
+
+## Decisions and boundaries
+
+[Active decisions, critical authorization and safety boundaries, compatibility behavior, rejected traps, and behavioral instructions. Keep critical wording exact; index older detail when possible.]
+
+## Operational runtime state
+
+[Only skills whose current operational state matters, subagents, intentionally changed tools, relevant live processes or cmux surfaces, and session-specific behavioral deviations. Use `None.` when no runtime deviation exists.]
+
+## Loaded skills
+
+[Complete cumulative loaded-skill inventory with exact `SKILL.md` paths and explicit loading constraints. Require the replacement to read every listed skill completely before substantive continuation.]
+
+## Working and evidence index
+
+| Path or reference | State | Why/when to consult |
+|---|---|---|
+| [exact reference] | [authoritative/modified/generated/read-only/etc.] | [short purpose] |
+
+[Index future tasks to their known source files. Summarize evidence briefly rather than repeating reports available at a path.]
+
+## Next action
+
+- **Mode:** Continue authorized work | Continue questioning | Answer the user | Wait
+- **Resume at:** [Exact task or decision point]
+- **Action:** [One concrete first action after applying Deferred Prompts]
+
+## Cold source
+
+- **Source session:** `[exact source-session transcript path supplied in the writer prompt]`
+- **Consult only when:** [Specific gap or discrepancy]
+
+## Replacement behavior
+
+Begin the first visible response with a **brief user-facing re-entry summary** stating the current state and next step or blocking question; do not narrate the previous session. Apply any Deferred Prompts as separate sequential user inputs in their transferred order, allowing later prompts to supersede the dossier. Then perform the recorded next action. When autonomous continuation is authorized, do the work in that same response rather than merely announce that it will continue. Complete the initialization work identified by the dossier before substantive continuation.

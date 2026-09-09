@@ -168,11 +168,25 @@ The extension manages:
 ├── project-templates.json
 ├── recovery/
 └── templates/
+    ├── call_balanced.cmpl
     ├── call_default.cmpl
-    └── handoff_default.cmpl
+    ├── call_fast.cmpl
+    ├── handoff_balanced.cmpl
+    ├── handoff_default.cmpl
+    └── handoff_fast.cmpl
 ```
 
-Missing managed directories are created during load. The package installs `templates/call_default.cmpl` and `templates/handoff_default.cmpl` into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+Missing managed directories are created during load. The package installs all six shipped templates into the managed template directory. If same-name managed content differs, the old file is renamed beside it to a timestamped backup before the package template is installed. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+
+### Shipped profiles
+
+| Profile | Call and Handoff Templates | Behavior |
+|---|---|---|
+| **Fast** | `call_fast.cmpl`, `handoff_fast.cmpl` | Prioritizes speed. Produces a condensed dossier, indexes known sources instead of restating older knowledge, omits the user-facing recap, and continues authorized autonomous work directly. |
+| **Balanced** | `call_balanced.cmpl`, `handoff_balanced.cmpl` | Balances transfer detail and speed. Provides a brief re-entry summary while deliberately leaving indexed context reconstruction and more initialization work to the replacement session. |
+| **Precise (default)** | `call_default.cmpl`, `handoff_default.cmpl` | Performs the most complete context synthesis before replacement so the new session can resume with minimal reconstruction. |
+
+All profiles preserve authorization, safety boundaries, blockers, and critical facts precisely. When autonomous continuation is authorized, every profile requires the replacement model to perform the next work rather than merely announce that it will continue.
 
 Existing exact configurations that predate `callTemplate` load with `call_default.cmpl` in memory and are not rewritten automatically.
 

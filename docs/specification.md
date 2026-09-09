@@ -64,8 +64,12 @@ Managed data lives below:
 ├── project-templates.json
 ├── recovery/
 └── templates/
+    ├── call_balanced.cmpl
     ├── call_default.cmpl
-    └── handoff_default.cmpl
+    ├── call_fast.cmpl
+    ├── handoff_balanced.cmpl
+    ├── handoff_default.cmpl
+    └── handoff_fast.cmpl
 ```
 
 The extension checks these directories while loading and creates missing directories. Deliberately configured symlinks are supported. The extension does not implement inode tracking, descriptor identity checks, `O_NOFOLLOW` policy, or a general filesystem security framework.
@@ -113,9 +117,17 @@ The dialog ends only with:
 
 Nothing is persisted before `save`. Confirmed missing directories are created as part of saving the validated draft. Dialog questions and answers do not enter model context. `/reload` or session replacement discards an unsaved draft. A TUI overlay is not part of v1.0.
 
-## 5. Managed defaults and template catalogue
+## 5. Managed templates and catalogue
 
-The package ships `templates/call_default.cmpl` and `templates/handoff_default.cmpl`. On load, each package asset is compared with its same-name file in the managed template directory:
+The package ships three paired profiles:
+
+- **Fast** — `call_fast.cmpl` and `handoff_fast.cmpl`; prioritizes transfer speed, condenses noncritical context, indexes known older and future-task sources instead of restating them, omits a user-facing previous-session recap, and leaves detail retrieval to the replacement session.
+- **Balanced** — `call_balanced.cmpl` and `handoff_balanced.cmpl`; balances transfer speed and context, provides a brief re-entry summary, and deliberately delegates more indexed context reconstruction and initialization to the replacement session.
+- **Precise (default)** — `call_default.cmpl` and `handoff_default.cmpl`; retains the existing complete dossier contract and performs the most context synthesis before replacement.
+
+All profiles preserve authorization, safety boundaries, blockers, and critical facts precisely. When autonomous continuation is authorized, each profile requires the replacement model to perform the next work rather than merely announce continuation.
+
+On load, each of the six package assets is compared with its same-name file in the managed template directory:
 
 - equal content: do not write;
 - missing managed file: install the package file;
@@ -255,7 +267,7 @@ The template instructs the model to begin the handoff with a concise, meaningful
 
 The dossier distinguishes completed and verified work, completed but unverified work, partial or reverted work, authorized work, work requiring fresh approval, blockers, open questions, working files, evidence, prior decisions, and precise cold-context references. It must not turn discussion, criticism, rejected proposals, or unanswered questions into authorization.
 
-The built-in template retains these continuation sections after its meaningful title:
+The Precise default Handoff Template retains these continuation sections after its meaningful title:
 
 1. `Goal and authorization`
 2. `Continuation map`
@@ -279,7 +291,7 @@ The built-in template retains these continuation sections after its meaningful t
 
 The final writer-produced dossier section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff. An ordinary unanswered question is resumable continuation context rather than an automatic readiness blocker. Only a concrete active collaboration that may still matter before replacement justifies the user-deferral entry point, and only for a manual or model-requested handoff.
 
-The built-in template requires every replacement session to begin its first visible assistant response with a concise user-facing re-entry summary, including during autonomous continuation. The summary states the latest relevant activity or exchange, current working state, and next step or exact reason user input is needed. It includes the latest material user question and answer when they determine the current state. The replacement then applies any deferred prompts as sequential user inputs and continues the task, answers or asks the user, or waits according to the latest applicable instruction and authorization. A deferred prompt may supersede the writer-recorded first action.
+The Precise default requires every replacement session to begin its first visible assistant response with a concise user-facing re-entry summary, including during autonomous continuation. Balanced requires a briefer re-entry summary and then more initialization work in the replacement session. Fast omits the previous-session recap and proceeds directly. Every profile applies deferred prompts sequentially before following the recorded action. A deferred prompt may supersede that action. When autonomous continuation is authorized, the replacement must actually perform the next work in its first response rather than merely state that it will continue.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -301,7 +313,7 @@ It then appends each unchanged prompt in original order with deterministic bound
 
 The private correlated transition command calls `ctx.newSession({ parentSession: sourceSessionPath })`. There is no intermediate handoff transport file and no model-authored transition command.
 
-The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. Under the built-in template, the replacement model's first visible response begins with the required concise re-entry summary before it handles deferred prompts or resumes the recorded action.
+The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. The selected Handoff Template determines whether the replacement begins with the Precise or Balanced re-entry summary or proceeds directly under Fast; in every profile it handles deferred prompts before the recorded action and performs authorized autonomous continuation rather than only announcing it.
 
 After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
@@ -364,11 +376,11 @@ Cleanup failure is reported with the affected path. It does not roll back a repl
 Automated tests cover the actual deterministic contracts:
 
 - configuration validation, atomic save, and in-chat draft/save/cancel behavior;
-- managed default comparison, backup, catalogue, and fallback;
+- synchronization of all six shipped profile templates, backup, catalogue, and fallback;
 - project-template validation, per-role immediate persistence, atomic create/edit/removal, independent upward lookup, `<Autodiscover>` inheritance, `<Default>` overrides, and corrupt-file role-default fallback;
 - explicit versus automatic initiation, including automatic rejection of user deferral;
 - one-instruction readiness, exact keyed tool correlation, explicit-attempt user-deferral choices, source-specific one-shot reminders, and normal pre-GO input;
-- writer prompt, tool isolation/restoration, submission validation, and configured attempts;
+- distinct Fast, Balanced, and Precise writer contracts, writer prompt, tool isolation/restoration, submission validation, and configured attempts;
 - deferred-prompt ordering, one-file persistence, and deterministic assembly;
 - direct native replacement and parent-session lineage inputs;
 - cancellation and stale-callback invalidation;

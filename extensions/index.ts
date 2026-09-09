@@ -46,6 +46,7 @@ import {
 import {
   CALL_DEFAULT_TEMPLATE,
   HANDOFF_DEFAULT_TEMPLATE,
+  SHIPPED_TEMPLATE_FILENAMES,
   checkTemplateHealth,
   resolveTemplate,
   shippedTemplatePath,
@@ -134,7 +135,7 @@ export async function initializeHandoffStorage(
   await ensureDirectory(paths.baseDirectory);
   await ensureDirectory(paths.recoveryDirectory);
   await ensureDirectory(paths.templateDirectory);
-  for (const filename of [CALL_DEFAULT_TEMPLATE, HANDOFF_DEFAULT_TEMPLATE]) {
+  for (const filename of SHIPPED_TEMPLATE_FILENAMES) {
     await synchronizeManagedTemplate(paths.templateDirectory, filename, shippedTemplatePath(filename));
   }
 

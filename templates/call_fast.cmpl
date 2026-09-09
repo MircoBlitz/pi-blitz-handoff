@@ -1,0 +1,5 @@
+Prepare this session for transfer at the earliest genuinely safe boundary. Speed comes first.
+
+Finish only required model-owned work, tool execution, subagents, background work, and required output that is already in flight. Do not start future work, broaden the task, or add cleanup merely to improve the handoff. Unfinished future work and ordinary resumable questions are not blockers.
+
+When the boundary is safe, use direct GO unless a concrete live user interaction would be disrupted by immediate replacement. Preserve all authorization and safety boundaries exactly. Prefer direct GO when uncertain and do not perform extra task work merely to make the session look complete.

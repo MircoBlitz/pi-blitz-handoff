@@ -53,7 +53,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.2.0");
+  assert.equal(manifest.version, "1.2.1");
   assert.equal(
     manifest.description,
     "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
@@ -68,8 +68,12 @@ test("package metadata declares the supported runtime and complete Pi package re
     "extensions",
     "docs",
     "assets",
+    "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",
+    "templates/call_fast.cmpl",
+    "templates/handoff_balanced.cmpl",
     "templates/handoff_default.cmpl",
+    "templates/handoff_fast.cmpl",
     "CHANGELOG.md",
     "README.md",
     "LICENSE",
@@ -97,24 +101,46 @@ test("public documentation carries the current tagline and supported line", asyn
   assert.doesNotMatch(security, /current 1\.1 code line/);
 });
 
-test("shipped handoff template contains the compact runtime state dossier section", async () => {
-  const template = await readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8");
+test("shipped template profiles preserve their distinct continuation contracts", async () => {
+  const [fastCall, balancedCall, fast, balanced, precise] = await Promise.all([
+    readFile(join(projectRoot, "templates", "call_fast.cmpl"), "utf8"),
+    readFile(join(projectRoot, "templates", "call_balanced.cmpl"), "utf8"),
+    readFile(join(projectRoot, "templates", "handoff_fast.cmpl"), "utf8"),
+    readFile(join(projectRoot, "templates", "handoff_balanced.cmpl"), "utf8"),
+    readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8"),
+  ]);
 
-  const runtimeState = template.indexOf("## Operational runtime state");
-  const activeInstructions = template.indexOf("## Active behavioral instructions");
-  const loadedSkills = template.indexOf("## Loaded skills");
+  assert.match(fastCall, /earliest genuinely safe boundary\. Speed comes first/);
+  assert.match(balancedCall, /next stable, genuinely safe boundary/);
+  assert.match(balancedCall, /Finish the coherent unit/);
+
+  assert.match(fast, /Speed comes first; precision comes last except where exactness is critical/);
+  assert.match(fast, /Prefer a precise file, specification, plan, report, commit, session, or artifact index over restating older knowledge/);
+  assert.match(fast, /Do \*\*not\*\* begin with a user-facing recap/);
+
+  assert.match(balanced, /initialize the replacement reliably without reproducing the full source session/);
+  assert.match(balanced, /brief user-facing re-entry summary/);
+  assert.match(balanced, /Complete the initialization work identified by the dossier/);
+
+  const runtimeState = precise.indexOf("## Operational runtime state");
+  const activeInstructions = precise.indexOf("## Active behavioral instructions");
+  const loadedSkills = precise.indexOf("## Loaded skills");
   assert.ok(activeInstructions < runtimeState && runtimeState < loadedSkills);
-  assert.match(template, /session-specific runtime deviations or status/);
-  assert.match(template, /Skills whose current state matters/);
-  assert.match(template, /Subagents/);
-  assert.match(template, /Intentionally changed active toolset/);
-  assert.match(template, /Relevant live processes or cmux surfaces/);
-  assert.match(template, /Session-specific behavioral deltas/);
-  assert.match(template, /For each category, write `None\.` when absent/);
+  assert.match(precise, /session-specific runtime deviations or status/);
+  assert.match(precise, /Skills whose current state matters/);
+  assert.match(precise, /Subagents/);
+  assert.match(precise, /Intentionally changed active toolset/);
+  assert.match(precise, /Relevant live processes or cmux surfaces/);
+  assert.match(precise, /Session-specific behavioral deltas/);
+  assert.match(precise, /For each category, write `None\.` when absent/);
+  assert.match(precise, /every replacement session to begin its first visible assistant response with a concise re-entry summary/);
+  assert.match(precise, /After the summary, the replacement must treat any Deferred Prompts as sequential user inputs/);
+  assert.match(precise, /Deferred Prompts may update or supersede the recorded `Action`/);
 
-  assert.match(template, /every replacement session to begin its first visible assistant response with a concise re-entry summary/);
-  assert.match(template, /After the summary, the replacement must treat any Deferred Prompts as sequential user inputs/);
-  assert.match(template, /Deferred Prompts may update or supersede the recorded `Action`/);
+  assert.match(fast, /autonomous continuation is authorized.*never stop after merely/s);
+  for (const template of [balanced, precise]) {
+    assert.match(template, /autonomous continuation is authorized.*rather than merely/s);
+  }
 });
 
 test("package lock root metadata remains coherent with the manifest", async () => {
@@ -148,8 +174,12 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "README.md",
     "SECURITY.md",
     "assets/logo.png",
+    "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",
+    "templates/call_fast.cmpl",
+    "templates/handoff_balanced.cmpl",
     "templates/handoff_default.cmpl",
+    "templates/handoff_fast.cmpl",
     "docs/specification.md",
     "docs/specification.sha256",
     "package.json",
@@ -183,7 +213,14 @@ test("loading the package entrypoint initializes and validates managed storage",
   assert.equal((await stat(baseDirectory)).isDirectory(), true);
   assert.equal((await stat(recoveryDirectory)).isDirectory(), true);
   assert.equal((await stat(templateDirectory)).isDirectory(), true);
-  for (const filename of ["call_default.cmpl", "handoff_default.cmpl"]) {
+  for (const filename of [
+    "call_balanced.cmpl",
+    "call_default.cmpl",
+    "call_fast.cmpl",
+    "handoff_balanced.cmpl",
+    "handoff_default.cmpl",
+    "handoff_fast.cmpl",
+  ]) {
     assert.equal(
       await readFile(join(templateDirectory, filename), "utf8"),
       await readFile(join(projectRoot, "templates", filename), "utf8"),

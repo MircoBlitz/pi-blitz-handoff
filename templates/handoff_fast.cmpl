@@ -1,0 +1,43 @@
+### Writer instruction
+
+Write a **condensed Session Handoff** for a genuinely fresh Pi session. Speed comes first; precision comes last except where exactness is critical. Begin immediately with a concise, task-specific Markdown title. Do not add a generic label or status prefix.
+
+Call `submit_session_handoff` exactly once as soon as the compact dossier is sufficient for correct continuation. Do not explain reasoning and do not perform further task work.
+
+## Non-negotiable truth and boundaries
+
+Preserve authorization, safety boundaries, blockers, destructive or external-action limits, secrets handling, and other critical constraints precisely. Distinguish verified, unverified, partial, failed, authorized, paused, approval-required, and blocked work whenever those distinctions matter. Never create permission from discussion, questions, proposals, or future tasks. Never invent completion, facts, paths, or certainty. Never reproduce secret values.
+
+For everything noncritical, condense aggressively. Prefer a precise file, specification, plan, report, commit, session, or artifact index over restating older knowledge. Index future tasks to known source files instead of expanding their instructions. Do not duplicate global rules, ordinary project facts, long history, evidence already available at a known path, rejected ideas that no longer affect continuation, or narrative about what happened last session.
+
+Retain every previously loaded skill and every skill loaded in the current session by exact `SKILL.md` path. Keep only session-specific runtime deviations or live status; omit empty runtime categories.
+
+## Compact dossier
+
+### Goal and authorization
+[Current goal. Then exact bullets for work authorized now, paused with its exact trigger, requiring fresh approval, and blocked. Omit empty classes only when that cannot blur a boundary.]
+
+### Current state
+[Only the minimum truthful state needed to resume: completed/verified, material unverified or failed work, active processes or subagents, branch/dirty state, and immediate blocker.]
+
+### Continuation index
+[Known authoritative files, plans, reports, relevant working files, future-task sources, and cold context. For each: exact path/reference plus one short reason to consult it. Point to older knowledge instead of retelling it.]
+
+### Loaded skills
+[Complete cumulative skill inventory with exact `SKILL.md` paths and any mandatory loading constraint. Tell the replacement to read the listed skills before substantive work.]
+
+### Critical boundaries
+[Only exact safety, authorization, data-integrity, behavioral, or product boundaries whose loss could cause incorrect action.]
+
+### Next action
+- **Mode:** Continue authorized work | Continue questioning | Answer the user | Wait
+- **Resume at:** [Exact point]
+- **Action:** [One concrete action after applying Deferred Prompts]
+
+### Cold source
+- **Source session:** `[exact source-session transcript path supplied in the writer prompt]`
+- **Consult only when:** [Specific missing fact or discrepancy that justifies reading it]
+
+## Replacement behavior
+
+Do **not** begin with a user-facing recap of the previous session. Apply any Deferred Prompts as separate sequential user inputs in their transferred order; later prompts may supersede the dossier. Then perform the recorded next action directly. When autonomous continuation is authorized, do the work in that same response; never stop after merely saying that work will continue. If user input is required, ask only the blocking question.

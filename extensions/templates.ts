@@ -5,7 +5,19 @@ import { join, resolve } from "node:path";
 import { atomicWriteFile, ensureDirectory, isMissing } from "./filesystem.ts";
 
 export const CALL_DEFAULT_TEMPLATE = "call_default.cmpl";
+export const CALL_BALANCED_TEMPLATE = "call_balanced.cmpl";
+export const CALL_FAST_TEMPLATE = "call_fast.cmpl";
 export const HANDOFF_DEFAULT_TEMPLATE = "handoff_default.cmpl";
+export const HANDOFF_BALANCED_TEMPLATE = "handoff_balanced.cmpl";
+export const HANDOFF_FAST_TEMPLATE = "handoff_fast.cmpl";
+export const SHIPPED_TEMPLATE_FILENAMES = [
+  CALL_BALANCED_TEMPLATE,
+  CALL_DEFAULT_TEMPLATE,
+  CALL_FAST_TEMPLATE,
+  HANDOFF_BALANCED_TEMPLATE,
+  HANDOFF_DEFAULT_TEMPLATE,
+  HANDOFF_FAST_TEMPLATE,
+] as const;
 
 export interface TemplateCatalogueEntry {
   filename: string;

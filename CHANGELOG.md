@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1 — 2026-09-10
+
+### Added
+
+- Added paired Fast and Balanced Call and Handoff Template profiles alongside the existing Precise defaults.
+
+### Changed
+
+- Fast prioritizes a condensed indexed handoff without a previous-session recap; Balanced transfers more context initialization to the replacement session while retaining a brief re-entry summary.
+- Every shipped profile now tells an autonomously continuing replacement to perform the next work instead of merely announcing continuation.
+
 ## 1.2.0 — 2026-09-10
 
 ### Added
