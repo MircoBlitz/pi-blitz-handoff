@@ -189,14 +189,9 @@ For manual and model-requested handoffs, the initial readiness instruction begin
 
 An automatic request is different: it is detected after a completed turn and its readiness instruction is delivered as steering before the next autonomous model turn, even when another continuation is already queued. This does not interrupt tools from the completed turn. The model still applies the same in-flight-work boundary, but only direct GO is permitted. User deferral is unavailable because a choice dialog could stop the autonomous run.
 
-The extension creates one unpredictable correlation key and sends one resolved Call Template. Deterministic code appends the exact tool protocol and interaction rules; editable template prose does not own correlation, user-choice, timer, or state invariants.
+The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends only the exact correlated tool protocol and non-configurable interaction constraints; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The current model makes the bounded semantic decision:
-
-- while required model-owned work, tool execution, subagents, background work, or required output is still in flight, call no readiness tool;
-- unfinished future work and ordinary unanswered or resumable questions are not blockers;
-- for manual and model-requested handoffs, prefer direct GO when uncertain and use user deferral only for a concrete active collaboration or user interaction that may still matter before replacement;
-- for automatic handoffs, use direct GO at the safe boundary and never request user deferral.
+The three shipped Call Templates guide the current model to make the bounded semantic decision appropriate to their Fast, Balanced, or Precise profile. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
 Two correlated tools exist:
 
@@ -211,7 +206,7 @@ The extension does not parse free-form user text or build a working-style detect
 
 After **Wait**, no timer or dialog runs automatically. A later ordinary user message may explicitly indicate readiness; the model then calls direct GO with the same key. The extension does not parse that message.
 
-After the initial instruction, one timer is scheduled for `readinessRetrySeconds`. If the permitted tool has not resolved readiness when it fires, one short visible reminder triggers a model turn. The reminder preserves the source-specific protocol: explicit attempts retain both choices, while automatic attempts permit only direct GO. The model calls the appropriate keyed tool if ready or produces no normal text while required work remains in flight. This one-shot reminder prevents deadlock when background work finishes without otherwise producing a new turn. There is no periodic polling.
+After the initial instruction, one timer is scheduled for `readinessRetrySeconds`. If the permitted tool has not resolved readiness when it fires, one short visible reminder triggers a model turn. The reminder reapplies the same resolved Call Template, then appends only the source-specific correlated tool protocol: explicit attempts retain both choices, while automatic attempts permit only direct GO. If the model calls no readiness tool, it produces no normal text. This one-shot reminder prevents deadlock when background work finishes without otherwise producing a new turn. There is no periodic polling.
 
 Before accepted GO, interactive and RPC input passes unchanged and is not deferred. Slash commands retain Pi's native command behavior because Pi dispatches them before the `input` event.
 

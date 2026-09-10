@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3 — 2026-09-10
+
+### Changed
+
+- The one-shot readiness reminder now reapplies the selected Call Template instead of imposing a separate hard-coded work-boundary policy.
+- Removed duplicated source-task stopping language from the Fast and Balanced Handoff Templates; turn-local writer control remains solely extension-owned.
+
 ## 1.2.2 — 2026-09-10
 
 ### Changed

@@ -53,7 +53,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.2.2");
+  assert.equal(manifest.version, "1.2.3");
   assert.equal(
     manifest.description,
     "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
@@ -138,6 +138,7 @@ test("shipped template profiles preserve their distinct continuation contracts",
   assert.match(precise, /Deferred Prompts may update or supersede the recorded `Action`/);
 
   for (const template of [fast, balanced, precise]) {
+    assert.doesNotMatch(template, /do not perform further task work/i);
     assert.match(template, /extension-owned writer control.*current writer turn/s);
     assert.match(template, /not a user instruction or continuation constraint/);
     assert.match(template, /must not appear in the dossier/);

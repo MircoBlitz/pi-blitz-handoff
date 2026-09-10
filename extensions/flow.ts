@@ -265,7 +265,7 @@ export class HandoffFlow {
       if (this.active !== active || active.reminderTimer !== timer) return;
       active.reminderTimer = undefined;
       this.options.onReadinessReminder(
-        readinessReminder(active.readinessKey, active.source !== "automatic"),
+        readinessReminder(active.callTemplate, active.readinessKey, active.source !== "automatic"),
         snapshot(active),
         ctx,
       );

@@ -153,6 +153,7 @@ test("reminder is single-shot and is suspended by either valid GO tool invocatio
   fired.timers[0]?.();
   fired.timers[0]?.();
   assert.equal(fired.reminders.length, 1);
+  assert.match(fired.reminders[0] ?? "", /CALL TEMPLATE/);
 
   const direct = setup({ idle: true, pending: false, sessionFile: "/sessions/source.jsonl" });
   direct.flow.start(direct.ctx, "command");
