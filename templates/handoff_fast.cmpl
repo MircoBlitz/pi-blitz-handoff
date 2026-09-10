@@ -2,7 +2,7 @@
 
 Write a **condensed Session Handoff** for a genuinely fresh Pi session. Speed comes first; precision comes last except where exactness is critical. Begin immediately with a concise, task-specific Markdown title. Do not add a generic label or status prefix.
 
-Call `submit_session_handoff` exactly once as soon as the compact dossier is sufficient for correct continuation. Do not explain reasoning and do not perform further task work.
+Call `submit_session_handoff` exactly once as soon as the compact dossier is sufficient for correct continuation. Do not explain reasoning and do not perform further task work. Any extension-owned writer control surrounding this template applies only to the current writer turn; it is not a user instruction or continuation constraint and must not appear in the dossier.
 
 ## Non-negotiable truth and boundaries
 

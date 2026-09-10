@@ -149,10 +149,14 @@ async function settlePromises(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-test("writer prompt contains the complete template, exact fresh ID, source transcript, and stop instruction", () => {
+test("writer prompt contains scoped writer control, the complete template, exact ID, and source transcript", () => {
   const prompt = writerPrompt("line one\nline two", "submission-exact", "/sessions/source exact.jsonl");
 
-  assert.match(prompt, /^Stop all further task work\./);
+  assert.match(prompt, /^This is an extension-owned writer turn\./);
+  assert.match(prompt, /Perform no source-task work during this turn/);
+  assert.match(prompt, /not a user instruction or continuation constraint/);
+  assert.match(prompt, /Do not include or preserve it in the handoff/);
+  assert.doesNotMatch(prompt, /Stop all further task work/);
   assert.equal(prompt.match(/submission-exact/g)?.length, 1);
   assert.equal(prompt.match(/\/sessions\/source exact\.jsonl/g)?.length, 1);
   assert.match(prompt, /submit it exactly once/);

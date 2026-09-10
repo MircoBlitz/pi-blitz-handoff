@@ -255,7 +255,7 @@ At each attempt the extension:
 3. allows only `submit_session_handoff`;
 4. sends the writer prompt to the source model.
 
-The writer prompt includes the complete dossier template, exact current submission ID, and exact source-session transcript path. It instructs the model to do no further task work and to submit exactly once.
+The writer prompt includes the complete dossier template, exact current submission ID, and exact source-session transcript path. Extension-owned writer control limits the model to handoff writing for that writer turn and requires exactly one submission. It explicitly states that this turn-local control is not a user instruction or continuation constraint and must not be included or preserved in the handoff.
 
 `submit_session_handoff` accepts only:
 

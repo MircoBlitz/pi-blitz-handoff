@@ -297,7 +297,7 @@ export class HandoffWriter {
 
 export function writerPrompt(template: string, submissionId: string, sourceSessionPath: string): string {
   return [
-    "Stop all further task work. Write the session handoff now and submit it exactly once with submit_session_handoff.",
+    "This is an extension-owned writer turn. Perform no source-task work during this turn; only write the session handoff and submit it exactly once with submit_session_handoff. This writer-only control is not a user instruction or continuation constraint. Do not include or preserve it in the handoff.",
     `Use this exact submission ID: ${submissionId}`,
     `The persisted source-session transcript path is exactly: ${sourceSessionPath}`,
     "Use the complete template below as the writer instruction and dossier structure.",

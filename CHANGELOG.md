@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.2.2 — 2026-09-10
 
 ### Changed
 
 - Managed template backups now live in the nonrecursive `templates/backups/` subdirectory so they cannot appear in template selection.
+
+### Fixed
+
+- Scoped extension-owned writer control to the current writer turn so it cannot be transferred as a user instruction that stops authorized autonomous continuation.
 
 ## 1.2.1 — 2026-09-10
 

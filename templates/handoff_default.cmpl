@@ -2,7 +2,7 @@
 
 Write a **Session Handoff** for a genuinely fresh Pi session. Begin immediately with a concise, task-specific Markdown title on the first line. Do not add a generic label or status prefix. This is not a short summary: preserve the source-session truth needed for correct continuation across future handoffs.
 
-Call `submit_session_handoff` exactly once as soon as the dossier is ready. Do not explain reasoning. Keep the dossier complete but compact.
+Call `submit_session_handoff` exactly once as soon as the dossier is ready. Do not explain reasoning. Keep the dossier complete but compact. Any extension-owned writer control surrounding this template applies only to the current writer turn; it is not a user instruction or continuation constraint and must not appear in the dossier.
 
 ## Governing truth and authorization
 
