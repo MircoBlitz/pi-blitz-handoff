@@ -26,6 +26,24 @@ The supplied default template tells the writer to:
 
 The handoff protocol and session transition are deterministic. The LLM only decides when the semantic readiness boundary has been reached, writes the continuation dossier, and continues from it in the replacement session.
 
+## In action
+
+### Handoff writer invocation
+
+The source session writes and submits the continuation dossier while the extension shows the active handoff state.
+
+<p align="center">
+  <img src="assets/screenshots/handoff-writer-invocation.png" alt="Pi writing and submitting a session handoff" width="900">
+</p>
+
+### Autonomous continuation in the new session
+
+The fresh linked session receives the dossier and immediately resumes the already authorized work.
+
+<p align="center">
+  <img src="assets/screenshots/autonomous-continuation-new-session.png" alt="A fresh Pi session autonomously continuing from the transferred handoff" width="900">
+</p>
+
 ## Requirements
 
 - Node.js 22.19.0 or later

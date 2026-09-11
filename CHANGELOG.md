@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added documented runtime screenshots of the handoff writer and autonomous continuation in the fresh session.
+
 ## 1.2.3 — 2026-09-10
 
 ### Changed
