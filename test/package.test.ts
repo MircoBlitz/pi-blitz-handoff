@@ -182,6 +182,7 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "SECURITY.md",
     "assets/logo.png",
     "assets/screenshots/autonomous-continuation-new-session.png",
+    "assets/screenshots/autonomous-continuation-work-in-progress.png",
     "assets/screenshots/handoff-writer-invocation.png",
     "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",

@@ -44,6 +44,14 @@ The fresh linked session receives the dossier and immediately resumes the alread
   <img src="assets/screenshots/autonomous-continuation-new-session.png" alt="A fresh Pi session autonomously continuing from the transferred handoff" width="900">
 </p>
 
+### Autonomous work in progress
+
+The replacement session continues execution by validating state and dispatching the next authorized reviewer without waiting for another user prompt.
+
+<p align="center">
+  <img src="assets/screenshots/autonomous-continuation-work-in-progress.png" alt="The replacement Pi session continuing authorized work with a background reviewer" width="900">
+</p>
+
 ## Requirements
 
 - Node.js 22.19.0 or later

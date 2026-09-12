@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added documented runtime screenshots of the handoff writer and autonomous continuation in the fresh session.
+- Added a documented three-stage runtime sequence showing the handoff writer, autonomous startup, and continued authorized work in the fresh session.
 
 ## 1.2.3 — 2026-09-10
 
