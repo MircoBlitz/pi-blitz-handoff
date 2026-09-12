@@ -1,7 +1,7 @@
 {
   "name": "pi-blitz-handoff",
   "version": "1.2.3",
-  "description": "Carry ongoing work and conversation into a fresh, natively linked Pi session with template-guided readiness and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission.",
+  "description": "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   "type": "module",
   "license": "MIT",
   "author": "Mirco Blitz",

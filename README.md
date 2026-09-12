@@ -6,7 +6,7 @@ Steer your context. Hand off what matters.
   <img src="assets/logo.png" alt="pi-blitz-handoff logo" width="320">
 </p>
 
-`pi-blitz-handoff` carries ongoing work and conversation into a fresh, natively linked Pi session through template-guided readiness checks and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission. The extension asks the current model to prepare a structured continuation dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
+This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!TIP]
 > **Latest feature addition: Project directory specific templates**
@@ -15,7 +15,7 @@ Steer your context. Hand off what matters.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
-Automatic handoff describes only how the transfer is triggered, not how the replacement session must work. Autonomous execution, interactive clarification, answering, research, and waiting are equal continuation modes. The extension preserves their current state and authorization boundaries; continuation context is not a new request and grants no new permission.
+Automatic handoff describes only how the transfer is triggered, not how the replacement session must work. Autonomous execution, interactive clarification, answering, research, and waiting are equal continuation modes. The extension transfers their existing instructions and authorization boundaries; it does not choose a workflow or grant new permission.
 
 The supplied default template tells the writer to:
 

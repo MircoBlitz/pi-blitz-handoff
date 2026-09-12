@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Clarified that handoffs preserve ongoing autonomous or interactive work equally; automatic initiation controls only the transfer trigger and grants no new permission.
+- Clarified the extension's sole purpose: capture continuation context more precisely than compaction and pass it as the first prompt to a fresh, natively linked Pi session. Existing user instructions, workflows, and templates determine how work continues.
 
 ## 1.2.3 — 2026-09-10
 

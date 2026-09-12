@@ -56,7 +56,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.2.3");
   assert.equal(
     manifest.description,
-    "Carry ongoing work and conversation into a fresh, natively linked Pi session with template-guided readiness and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission.",
+    "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   );
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
