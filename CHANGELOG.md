@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added a documented three-stage runtime sequence showing the handoff writer, autonomous startup, and continued authorized work in the fresh session.
+- Added a repository-hosted three-stage runtime sequence showing the handoff writer, autonomous startup, and continued authorized work in the fresh session without adding the screenshots to the npm package.
 
 ## 1.2.3 — 2026-09-10
 

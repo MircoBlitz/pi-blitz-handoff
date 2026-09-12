@@ -19,7 +19,7 @@
   "files": [
     "extensions",
     "docs",
-    "assets",
+    "assets/logo.png",
     "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",
     "templates/call_fast.cmpl",
