@@ -26,30 +26,18 @@ The supplied default template tells the writer to:
 
 The handoff protocol and session transition are deterministic. The LLM only decides when the semantic readiness boundary has been reached, writes the continuation dossier, and continues from it in the replacement session.
 
-## In action
+## Successful autonomous handoff
 
-### Handoff writer invocation
-
-The source session writes and submits the continuation dossier while the extension shows the active handoff state.
+These two screenshots show one continuous autonomous run. The fresh linked session receives the handoff with `Continue authorized autonomous work` and begins the recorded next action:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/handoff-writer-invocation.png" alt="Pi writing and submitting a session handoff" width="900">
+  <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/autonomous-handoff-start.png" alt="A fresh Pi session starting the authorized autonomous action from the transferred handoff" width="1200">
 </p>
 
-### Autonomous continuation in the new session
-
-The fresh linked session receives the dossier and immediately resumes the already authorized work.
+The same replacement session then validates the working state and dispatches the next authorized reviewer without another user prompt:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/autonomous-continuation-new-session.png" alt="A fresh Pi session autonomously continuing from the transferred handoff" width="900">
-</p>
-
-### Autonomous work in progress
-
-The replacement session continues execution by validating state and dispatching the next authorized reviewer without waiting for another user prompt.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/autonomous-continuation-work-in-progress.png" alt="The replacement Pi session continuing authorized work with a background reviewer" width="900">
+  <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/autonomous-continuation-work-in-progress.png" alt="The replacement Pi session continuing authorized work with a background reviewer" width="1200">
 </p>
 
 ## Requirements
