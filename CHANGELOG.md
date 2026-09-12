@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Stripped config of ugly MS style to a sane modern change as you change style config.
+
 ## 1.2.4 — 2026-09-12
 
 ### Added

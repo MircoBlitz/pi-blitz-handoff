@@ -88,6 +88,14 @@ export class HandoffWriter {
     return this.active?.attempt ?? 0;
   }
 
+  configure(writerAttempts: number, writerRetryDelaySeconds: number): void {
+    if (this.active !== undefined) {
+      throw new Error("Writer configuration cannot change while a handoff writer is active");
+    }
+    this.options.writerAttempts = writerAttempts;
+    this.options.writerRetryDelaySeconds = writerRetryDelaySeconds;
+  }
+
   start(
     handoff: ActiveHandoffSnapshot,
     ctx: ExtensionContext,

@@ -40,6 +40,31 @@ function setup(state: MutableContext) {
   return { flow, prompts, reminders, ready, timers, cleared, ctx: extensionContext(state) };
 }
 
+test("live readiness configuration controls subsequent handoffs", () => {
+  const delays: number[] = [];
+  const prompts: string[] = [];
+  const state = { idle: true, pending: false, sessionFile: "/sessions/source.jsonl" };
+  const flow = new HandoffFlow({
+    readinessRetrySeconds: 12,
+    callTemplate: "old call",
+    createHandoffId: () => "handoff-live",
+    createReadinessKey: () => "key-live",
+    onReadinessPrompt(prompt) { prompts.push(prompt); },
+    onReadinessReminder() {},
+    onReady() {},
+    setTimer(_callback, delay) {
+      delays.push(delay);
+      return delay;
+    },
+  });
+  flow.setReadinessRetrySeconds(7);
+  flow.setCallTemplate("live call");
+
+  assert.equal(flow.start(extensionContext(state), "command").accepted, true);
+  assert.match(prompts[0] ?? "", /live call/);
+  assert.deepEqual(delays, [7_000]);
+});
+
 test("start requires persistence and dispatches one instruction at an idle boundary", () => {
   const missing = setup({ idle: true, pending: false });
   assert.deepEqual(missing.flow.start(missing.ctx, "command"), { accepted: false, reason: "unpersisted" });

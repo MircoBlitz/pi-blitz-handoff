@@ -50,12 +50,14 @@ interface ActiveTransition extends NativeTransitionRequest {
 
 export class NativeHandoffTransition {
   private active?: ActiveTransition;
+  private recoveryDirectory: string;
   private readonly options: NativeHandoffTransitionOptions;
   private readonly createToken: () => string;
   private readonly removeRecoveryFile: (recoveryDirectory: string, fileName: string) => Promise<void>;
 
   constructor(options: NativeHandoffTransitionOptions) {
     this.options = options;
+    this.recoveryDirectory = options.recoveryDirectory;
     this.createToken = options.createToken ?? (() => randomUUID());
     this.removeRecoveryFile = options.removeRecoveryFile ?? deleteRecoveryFile;
   }
@@ -66,6 +68,13 @@ export class NativeHandoffTransition {
 
   get isProtected(): boolean {
     return this.active !== undefined;
+  }
+
+  setRecoveryDirectory(directory: string): void {
+    if (this.active !== undefined) {
+      throw new Error("Recovery directory cannot change during a handoff transition");
+    }
+    this.recoveryDirectory = directory;
   }
 
   prepare(request: NativeTransitionRequest): string | undefined {
@@ -131,7 +140,7 @@ export class NativeHandoffTransition {
       : undefined;
     const recoveryPath = recoveryFile === undefined
       ? undefined
-      : join(this.options.recoveryDirectory, recoveryFile);
+      : join(this.recoveryDirectory, recoveryFile);
 
     active.phase = "replacing";
     active.allowOwnSwitch = true;
@@ -166,7 +175,7 @@ export class NativeHandoffTransition {
 
       if (recoveryFile !== undefined) {
         try {
-          await this.removeRecoveryFile(this.options.recoveryDirectory, recoveryFile);
+          await this.removeRecoveryFile(this.recoveryDirectory, recoveryFile);
         } catch (error) {
           replacementContext.ui.notify(
             `Session handoff succeeded, but the deferred-prompt recovery file could not be deleted at ${recoveryPath}: ${errorMessage(error)}`,

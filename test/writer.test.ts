@@ -149,6 +149,23 @@ async function settlePromises(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+test("live writer configuration controls subsequent attempt count and retry delay", async () => {
+  const testRig = rig();
+  testRig.writer.configure(2, 4);
+
+  assert.equal(testRig.writer.start(handoff(), testRig.ctx), true);
+  await settlePromises();
+  testRig.writer.handleSettled(testRig.ctx);
+
+  assert.equal(testRig.writer.phase, "retry-delay");
+  assert.equal(testRig.timers[0]?.delay, 4_000);
+  testRig.timers[0]?.callback();
+  await settlePromises();
+  testRig.writer.handleSettled(testRig.ctx);
+  assert.equal(testRig.writer.phase, "exhausted");
+  assert.match(testRig.terminals[0]?.message ?? "", /exhausted 2 attempts/);
+});
+
 test("writer prompt contains scoped writer control, the complete template, exact ID, and source transcript", () => {
   const prompt = writerPrompt("line one\nline two", "submission-exact", "/sessions/source exact.jsonl");
 

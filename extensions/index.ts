@@ -151,7 +151,7 @@ export async function initializeHandoffStorage(
 
 export function activateHandoffExtension(
   pi: ExtensionAPI,
-  config: HandoffConfig,
+  initialConfig: HandoffConfig,
   paths: HandoffPaths,
   callTemplate: string,
   startupTemplateWarnings: readonly string[] = [],
@@ -161,9 +161,10 @@ export function activateHandoffExtension(
   let pendingStartupTemplateWarnings = [...startupTemplateWarnings];
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
+  let configDialog: ConfigDialog;
+  const config = { ...initialConfig };
   const handoffTemplates = new Map<string, string>();
   const agentDirectory = dirname(paths.baseDirectory);
-  const configDialog = new ConfigDialog(agentDirectory);
   const projectTemplateDialog = new ProjectTemplateDialog(agentDirectory);
   const recoveryDialog = new RecoveryDialog(
     config.recoveryDirectory,
@@ -371,6 +372,31 @@ export function activateHandoffExtension(
       );
     },
   });
+  configDialog = new ConfigDialog(agentDirectory, async (persisted, ctx) => {
+    const templatesChanged =
+      persisted.templateDirectory !== config.templateDirectory ||
+      persisted.callTemplate !== config.callTemplate ||
+      persisted.handoffTemplate !== config.handoffTemplate;
+    Object.assign(config, persisted);
+    flow.setReadinessRetrySeconds(config.readinessRetrySeconds);
+    writer?.configure(config.writerAttempts, config.writerRetryDelaySeconds);
+    recoveryDialog.setRecoveryDirectory(config.recoveryDirectory);
+    transition.setRecoveryDirectory(config.recoveryDirectory);
+
+    if (!templatesChanged) return;
+    try {
+      const health = await resolveHandoffTemplateHealth(config, paths);
+      callTemplate = health.callTemplate;
+      flow.setCallTemplate(callTemplate);
+      for (const warning of health.warnings) ctx.ui.notify(warning, "warning");
+    } catch (error) {
+      ctx.ui.notify(
+        `Configuration was saved, but current template resolution could not be refreshed: ${errorMessage(error)}`,
+        "error",
+      );
+    }
+  });
+
   registerSessionHandoffGoTools(pi, {
     accept: (key, ctx) => flow.acceptGo(key, ctx),
     beginUserDeferral: (key, ctx) => flow.beginUserDeferral(key, ctx),
@@ -458,11 +484,21 @@ export function activateHandoffExtension(
     ctx: ExtensionContext,
     source: ExplicitHandoffStartSource,
   ): Promise<string> => {
+    if (configDialog.isActive) {
+      const message = "Session handoff cannot start while configuration is active.";
+      ctx.ui.notify(message, "warning");
+      return message;
+    }
     if (flow.phase !== "inactive" || ctx.sessionManager.getSessionFile() === undefined) {
       return reportStart(flow.start(ctx, source), ctx);
     }
     try {
       const templates = await effectiveTemplates(ctx);
+      if (configDialog.isActive) {
+        const message = "Session handoff cannot start while configuration is active.";
+        ctx.ui.notify(message, "warning");
+        return message;
+      }
       const result = flow.start(ctx, source, templates.callTemplate);
       if (result.accepted) handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
       return reportStart(result, ctx);
@@ -474,9 +510,10 @@ export function activateHandoffExtension(
   };
 
   const requestAutomaticStart = async (ctx: ExtensionContext): Promise<void> => {
-    if (flow.phase !== "inactive") return;
+    if (flow.phase !== "inactive" || configDialog.isActive) return;
     try {
       const templates = await effectiveTemplates(ctx);
+      if (configDialog.isActive) return;
       const result = flow.startAutomaticAtTurnBoundary(ctx, templates.callTemplate);
       if (result.accepted) {
         handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
@@ -499,12 +536,24 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "config") {
+      if (flow.phase !== "inactive" || writer?.isActive || transition.isProtected) {
+        ctx.ui.notify("Configuration cannot be changed while a session handoff is active.", "warning");
+        return;
+      }
+      if (recoveryDialog.isActive) {
+        ctx.ui.notify("Configuration cannot be changed while recovery is active.", "warning");
+        return;
+      }
       try {
         const configured = await loadConfig(dirname(paths.baseDirectory));
         const templateHealth = await resolveHandoffTemplateHealth(configured, paths);
         for (const warning of templateHealth.warnings) ctx.ui.notify(warning, "warning");
       } catch (error) {
         ctx.ui.notify(`Template health check failed: ${errorMessage(error)}`, "error");
+        return;
+      }
+      if (flow.phase !== "inactive" || writer?.isActive || transition.isProtected || recoveryDialog.isActive) {
+        ctx.ui.notify("Configuration cannot be changed while another handoff operation is active.", "warning");
         return;
       }
       await configDialog.run(ctx);
@@ -515,6 +564,10 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "recover") {
+      if (configDialog.isActive) {
+        ctx.ui.notify("Recovery cannot start while configuration is active.", "warning");
+        return;
+      }
       await recoveryDialog.run(ctx);
       return;
     }

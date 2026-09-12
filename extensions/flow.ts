@@ -94,6 +94,14 @@ export class HandoffFlow {
     return this.active?.phase === "ready";
   }
 
+  setReadinessRetrySeconds(seconds: number): void {
+    this.options.readinessRetrySeconds = seconds;
+  }
+
+  setCallTemplate(template: string): void {
+    this.options.callTemplate = template;
+  }
+
   start(
     ctx: ExtensionContext,
     source: ExplicitHandoffStartSource,

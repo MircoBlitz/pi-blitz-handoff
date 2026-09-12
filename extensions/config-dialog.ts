@@ -37,16 +37,21 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   handoffTemplate: "Handoff template",
 };
 
-const SAVE_OPTION = "Save configuration";
-const CANCEL_OPTION = "Cancel configuration";
 const ENTER_TEMPLATE_OPTION = "Enter another filename";
+
+type ConfigPersistedHandler = (
+  config: HandoffConfig,
+  ctx: ConfigDialogContext,
+) => void | Promise<void>;
 
 export class ConfigDialog {
   private activeController: AbortController | undefined;
   private readonly agentDirectory: string;
+  private readonly onPersisted?: ConfigPersistedHandler;
 
-  constructor(agentDirectory: string) {
+  constructor(agentDirectory: string, onPersisted?: ConfigPersistedHandler) {
     this.agentDirectory = agentDirectory;
+    this.onPersisted = onPersisted;
   }
 
   get isActive(): boolean {
@@ -71,31 +76,30 @@ export class ConfigDialog {
     this.activeController = controller;
 
     try {
-      let draft = { ...(await loadConfig(this.agentDirectory)) };
+      let config = await loadConfig(this.agentDirectory);
 
       while (!controller.signal.aborted) {
-        const options = settingOptions(draft);
+        const options = settingOptions(config);
         const choice = await ctx.ui.select("Configure pi-blitz-handoff", options, {
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
-
-        if (choice === undefined || choice === CANCEL_OPTION) {
-          ctx.ui.notify("Configuration changes discarded.", "info");
-          return;
-        }
-        if (choice === SAVE_OPTION) {
-          if (await saveDraft(this.agentDirectory, draft, ctx, controller.signal)) {
-            ctx.ui.notify("Configuration saved.", "info");
-            return;
-          }
-          continue;
-        }
+        if (controller.signal.aborted || choice === undefined) return;
 
         const settingIndex = options.indexOf(choice);
         const key = SETTING_KEYS[settingIndex];
         if (key !== undefined) {
-          draft = await editSetting(this.agentDirectory, draft, key, ctx, controller.signal);
+          const persisted = await editSetting(
+            this.agentDirectory,
+            config,
+            key,
+            ctx,
+            controller.signal,
+          );
+          if (persisted !== config) {
+            config = persisted;
+            await this.onPersisted?.(config, ctx);
+            ctx.ui.notify(`${SETTING_LABELS[key]} saved.`, "info");
+          }
         }
       }
     } catch (error) {
@@ -110,12 +114,8 @@ export class ConfigDialog {
   }
 }
 
-function settingOptions(draft: HandoffConfig): string[] {
-  return [
-    ...SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(draft[key])}`),
-    SAVE_OPTION,
-    CANCEL_OPTION,
-  ];
+function settingOptions(config: HandoffConfig): string[] {
+  return SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(config[key])}`);
 }
 
 function formatValue(value: HandoffConfig[SettingKey]): string {
@@ -174,7 +174,7 @@ async function editSetting(
   }
 
   try {
-    return validateConfig(candidate);
+    return await persistCandidate(agentDirectory, validateConfig(candidate), ctx, signal) ?? draft;
   } catch (error) {
     ctx.ui.notify(`That value is not valid: ${errorMessage(error)}`, "warning");
     return draft;
@@ -285,20 +285,12 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
   }
 }
 
-async function saveDraft(
+async function persistCandidate(
   agentDirectory: string,
-  draft: HandoffConfig,
+  config: HandoffConfig,
   ctx: ConfigDialogContext,
   signal: AbortSignal,
-): Promise<boolean> {
-  let config: HandoffConfig;
-  try {
-    config = validateConfig(draft);
-  } catch (error) {
-    ctx.ui.notify(`Configuration was not saved: ${errorMessage(error)}`, "error");
-    return false;
-  }
-
+): Promise<HandoffConfig | undefined> {
   const configuredDirectories = [config.recoveryDirectory];
   if (config.templateDirectory !== null) configuredDirectories.push(config.templateDirectory);
   const confirmedDirectories: string[] = [];
@@ -309,30 +301,35 @@ async function saveDraft(
     } catch (error) {
       if (!isMissing(error)) {
         ctx.ui.notify(`Configuration was not saved: ${errorMessage(error)}`, "error");
-        return false;
+        return undefined;
       }
 
-      const confirmed = await ctx.ui.confirm(
-        "Create missing directory?",
-        `Saving requires this directory. Create exactly this directory?\n${directory}`,
-        { signal },
-      );
-      if (signal.aborted) return false;
+      let confirmed: boolean;
+      try {
+        confirmed = await ctx.ui.confirm(
+          "Create missing directory?",
+          `Saving requires this directory. Create exactly this directory?\n${directory}`,
+          { signal },
+        );
+      } catch (confirmationError) {
+        ctx.ui.notify(`Configuration was not saved: ${errorMessage(confirmationError)}`, "error");
+        return undefined;
+      }
+      if (signal.aborted) return undefined;
       if (!confirmed) {
         ctx.ui.notify(`Configuration was not saved because directory creation was not confirmed: ${directory}`, "warning");
-        return false;
+        return undefined;
       }
       confirmedDirectories.push(directory);
     }
   }
 
-  if (signal.aborted) return false;
+  if (signal.aborted) return undefined;
   try {
-    await saveConfig(agentDirectory, config, confirmedDirectories);
-    return true;
+    return await saveConfig(agentDirectory, config, confirmedDirectories);
   } catch (error) {
     ctx.ui.notify(`Configuration was not saved: ${errorMessage(error)}`, "error");
-    return false;
+    return undefined;
   }
 }
 

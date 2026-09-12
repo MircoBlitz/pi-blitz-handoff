@@ -64,6 +64,11 @@ type SelectHandler = (
   options: string[],
   opts?: { signal?: AbortSignal },
 ) => Promise<string | undefined>;
+type PromptInputHandler = (
+  title: string,
+  placeholder?: string,
+  opts?: { signal?: AbortSignal },
+) => Promise<string | undefined>;
 type ToolExecute = (
   toolCallId: string,
   params: Record<string, string>,
@@ -124,6 +129,7 @@ function createRig(
   } = {};
   const toolExecutions = new Map<string, ToolExecute>();
   let selectHandler: SelectHandler = async () => undefined;
+  let promptInputHandler: PromptInputHandler = async () => undefined;
 
   const context = {
     mode: "tui",
@@ -144,8 +150,8 @@ function createRig(
       select(title: string, options: string[], opts?: { signal?: AbortSignal }) {
         return selectHandler(title, options, opts);
       },
-      async input() {
-        return undefined;
+      input(title: string, placeholder?: string, opts?: { signal?: AbortSignal }) {
+        return promptInputHandler(title, placeholder, opts);
       },
       async confirm() {
         return false;
@@ -229,6 +235,9 @@ function createRig(
     hasWidgetComponent: () => widgetComponent !== undefined,
     setSelectHandler(handler: SelectHandler) {
       selectHandler = handler;
+    },
+    setPromptInputHandler(handler: PromptInputHandler) {
+      promptInputHandler = handler;
     },
     getToolExecute: (name = "blitz_handoff") => {
       const execute = toolExecutions.get(name);
@@ -376,7 +385,7 @@ test("/sh recover reports an empty recovery directory factually", async (t) => {
   assert.equal(rig.notifications.at(-1)?.message, "No session handoff recovery files remain.");
 });
 
-test("/sh config stays in extension UI and reload or session replacement discards its draft", async (t) => {
+test("/sh config stays in extension UI and reload or session replacement closes it", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
@@ -394,7 +403,7 @@ test("/sh config stays in extension UI and reload or session replacement discard
     });
     rig.setSelectHandler(async (title, options, opts) => {
       assert.equal(title, "Configure pi-blitz-handoff");
-      assert.equal(options.length, 13);
+      assert.equal(options.length, 11);
       observedSignal = opts?.signal;
       markPromptStarted?.();
       return new Promise<string | undefined>((resolve) => {
@@ -412,6 +421,95 @@ test("/sh config stays in extension UI and reload or session replacement discard
     assert.equal(rig.sentMessages.length, 0);
     assert.equal(rig.notifications.length, 0);
   }
+});
+
+test("persisted configuration updates live status, thresholds, templates, writer, and recovery", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-live-config-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  const initial = defaultConfig(agentDirectory);
+  const recoveryDirectory = join(agentDirectory, "live-recovery");
+  const addendumDirectory = join(agentDirectory, "live-templates");
+  await mkdir(paths.recoveryDirectory, { recursive: true });
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await mkdir(recoveryDirectory);
+  await mkdir(addendumDirectory);
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "default call");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
+  await writeFile(join(addendumDirectory, "call_live.cmpl"), "live call template");
+  await writeFile(join(addendumDirectory, "handoff_live.cmpl"), "live handoff template");
+  await saveConfig(agentDirectory, initial);
+
+  const toolRuntime: ToolRuntimeOptions = { activeTools: ["read"], loading: false, setCalls: [] };
+  const rig = createRig({}, { percent: 70 }, agentDirectory, toolRuntime);
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
+
+  const selections: Array<string | undefined> = [
+    "Context warning percentage: 60",
+    "Critical warning percentage: 90",
+    "Automatic session handoff: disabled",
+    "Enabled",
+    "Automatic session handoff percentage: 70",
+    "Readiness reminder seconds: 60",
+    "Writer attempts: 3",
+    "Writer retry delay seconds: 30",
+    `Recovery directory: ${initial.recoveryDirectory}`,
+    "Template directory: not configured",
+    "Call template: call_default.cmpl",
+    "call_live.cmpl",
+    "Handoff template: handoff_default.cmpl",
+    "handoff_live.cmpl",
+    undefined,
+  ];
+  const inputs = ["55", "85", "75", "7", "2", "4", recoveryDirectory, addendumDirectory];
+  rig.setSelectHandler(async () => selections.shift());
+  rig.setPromptInputHandler(async () => inputs.shift());
+  await rig.commands.get("sh-config")?.("", rig.context);
+
+  const persisted = JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig;
+  assert.deepEqual(persisted, {
+    ...initial,
+    contextWarningPercent: 55,
+    criticalWarningPercent: 85,
+    automaticSessionHandoff: true,
+    automaticSessionHandoffPercent: 75,
+    readinessRetrySeconds: 7,
+    writerAttempts: 2,
+    writerRetryDelaySeconds: 4,
+    recoveryDirectory,
+    templateDirectory: addendumDirectory,
+    callTemplate: "call_live.cmpl",
+    handoffTemplate: "handoff_live.cmpl",
+  });
+
+  const status = await rig.getToolExecute()("status", { action: "status" }, undefined, undefined, rig.context);
+  assert.match(status.content[0]?.text ?? "", /enabled at 75%/);
+  assert.match(status.content[0]?.text ?? "", /Warning threshold: 55%; critical threshold: 85%/);
+  assert.match(status.content[0]?.text ?? "", /Readiness reminder delay: 7 seconds/);
+
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
+  await rig.handlers.turn_end?.({ type: "turn_end" }, rig.context);
+  assert.equal(rig.flow.phase, "inactive");
+  rig.state.percent = 75;
+  await rig.handlers.turn_end?.({ type: "turn_end" }, rig.context);
+  assert.equal(rig.flow.snapshot?.source, "automatic");
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /live call template/);
+
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+  await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  for (let attempt = 0; attempt < 10 && rig.sentUserMessages.length === 0; attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.match(rig.sentUserMessages.at(-1) ?? "", /live handoff template/);
+  await rig.handlers.input?.({ type: "input", text: "deferred", source: "interactive" }, rig.context);
+  assert.equal((await readdir(recoveryDirectory)).length, 1);
+
+  await rig.commands.get("sh-config")?.("", rig.context);
+  assert.equal(rig.notifications.at(-1)?.message, "Configuration cannot be changed while a session handoff is active.");
 });
 
 test("/sh-project-template commits each role immediately and removes Autodiscover/Autodiscover", async (t) => {

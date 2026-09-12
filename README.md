@@ -144,11 +144,13 @@ Recovery is always explicit. It never automatically executes leftover prompts. E
 
 ## Configuration
 
-Run `/sh-config` in an interactive UI. Changes remain an in-memory draft until **Save configuration**. **Cancel configuration**, `/reload`, or session replacement discards an unsaved draft. Saving validates the complete draft and asks before creating a missing configured directory.
+Run `/sh-config` in an interactive UI. Each confirmed setting change validates the complete resulting configuration, persists atomically, and takes effect immediately without `/reload`. Invalid input, rejected directory creation, or persistence failure retains the previous value and shows a concrete correction message. A missing configured directory is created only after confirmation of its exact path.
+
+There is no overall draft, **Save**, or **Cancel** action. Escape discards an unconfirmed setting input; Escape from the setting list closes the dialog without undoing changes already persisted. Configuration cannot overlap an active handoff or recovery dialog, and a handoff cannot start while configuration is open.
 
 Call and handoff template settings list the available, readable, nonempty templates for their role: `call_*.cmpl` for Call Templates and `handoff_*.cmpl` for dossier templates. **Enter another filename** remains available for manual `.cmpl` filename entry.
 
-Saved configuration takes effect after `/reload`; the currently loaded extension instance is not dynamically rebuilt.
+Persisted configuration updates the currently loaded extension directly.
 
 | Setting | Default | Constraint |
 |---|---:|---|

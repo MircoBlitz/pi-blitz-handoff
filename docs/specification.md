@@ -111,14 +111,11 @@ Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a p
 
 ### In-chat configuration
 
-`/sh-config` starts an extension-owned chat dialog. It shows the available settings and the current draft values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
+`/sh-config` starts an extension-owned chat dialog. It shows the available settings and their current persisted values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
 
-The dialog ends only with:
+Each confirmed edit is validated against the complete resulting configuration and atomically persisted immediately. The running extension applies the persisted configuration immediately; it does not require `/reload`. Invalid input, rejected directory creation, or persistence failure leaves the previous value active and shows a concrete message with a useful correction hint. A missing configured directory is created only after the user confirms its exact path.
 
-- `save` — validate and atomically persist the complete draft;
-- `cancel` — discard the complete draft.
-
-Nothing is persisted before `save`. Confirmed missing directories are created as part of saving the validated draft. Dialog questions and answers do not enter model context. `/reload` or session replacement discards an unsaved draft. A TUI overlay is not part of v1.0.
+There is no overall draft, Save action, or Cancel action. Escape discards only an unconfirmed setting input; Escape from the setting list closes the dialog without rolling back prior edits. Configuration cannot overlap an active handoff or recovery dialog, and a handoff cannot start while configuration is open. Dialog questions and answers do not enter model context. `/reload` or session replacement closes the dialog without affecting changes already persisted. A TUI overlay is not part of v1.0.
 
 ## 5. Managed templates and catalogue
 
@@ -373,7 +370,7 @@ Cleanup failure is reported with the affected path. It does not roll back a repl
 
 Automated tests cover the actual deterministic contracts:
 
-- configuration validation, atomic save, and in-chat draft/save/cancel behavior;
+- configuration validation, immediate per-setting atomic persistence, runtime refresh, and failure retention;
 - synchronization of all six shipped profile templates, backup, catalogue, and fallback;
 - project-template validation, per-role immediate persistence, atomic create/edit/removal, independent upward lookup, `<Autodiscover>` inheritance, `<Default>` overrides, and corrupt-file role-default fallback;
 - explicit versus automatic initiation, including automatic rejection of user deferral;

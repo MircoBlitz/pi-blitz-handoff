@@ -25,7 +25,7 @@ interface RecoveryFile {
 
 export class RecoveryDialog {
   private activeController: AbortController | undefined;
-  private readonly recoveryDirectory: string;
+  private recoveryDirectory: string;
   private readonly sendUserMessage: RecoveryDispatch;
 
   constructor(recoveryDirectory: string, sendUserMessage: RecoveryDispatch) {
@@ -39,6 +39,13 @@ export class RecoveryDialog {
 
   discard(): void {
     this.activeController?.abort();
+  }
+
+  setRecoveryDirectory(directory: string): void {
+    if (this.activeController !== undefined) {
+      throw new Error("Recovery directory cannot change while recovery is active");
+    }
+    this.recoveryDirectory = directory;
   }
 
   async run(ctx: RecoveryDialogContext): Promise<void> {
