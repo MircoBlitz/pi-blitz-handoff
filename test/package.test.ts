@@ -53,7 +53,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.2.3");
+  assert.equal(manifest.version, "1.2.4");
   assert.equal(
     manifest.description,
     "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
