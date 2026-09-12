@@ -6,7 +6,7 @@ Steer your context. Hand off what matters.
   <img src="assets/logo.png" alt="pi-blitz-handoff logo" width="320">
 </p>
 
-`pi-blitz-handoff` carries the material continuation context of a persisted Pi session into a fresh Pi session through template-guided readiness checks and handoff dossiers. It asks the current model to prepare a structured handoff dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
+`pi-blitz-handoff` carries ongoing work and conversation into a fresh, natively linked Pi session through template-guided readiness checks and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission. The extension asks the current model to prepare a structured continuation dossier, creates the replacement through Pi's native session API with the source session as its parent, and sends the dossier as the replacement session's first user turn.
 
 > [!TIP]
 > **Latest feature addition: Project directory specific templates**
@@ -15,7 +15,7 @@ Steer your context. Hand off what matters.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
-A handoff preserves authorization boundaries: continuation context is not a new request and grants no new permission.
+Automatic handoff describes only how the transfer is triggered, not how the replacement session must work. Autonomous execution, interactive clarification, answering, research, and waiting are equal continuation modes. The extension preserves their current state and authorization boundaries; continuation context is not a new request and grants no new permission.
 
 The supplied default template tells the writer to:
 

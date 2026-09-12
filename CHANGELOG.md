@@ -6,6 +6,10 @@
 
 - Added a repository-hosted two-image sequence from one successful run, showing autonomous startup and continued authorized work in the fresh session without adding the screenshots to the npm package.
 
+### Changed
+
+- Clarified that handoffs preserve ongoing autonomous or interactive work equally; automatic initiation controls only the transfer trigger and grants no new permission.
+
 ## 1.2.3 — 2026-09-10
 
 ### Changed

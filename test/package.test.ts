@@ -56,7 +56,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.2.3");
   assert.equal(
     manifest.description,
-    "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
+    "Carry ongoing work and conversation into a fresh, natively linked Pi session with template-guided readiness and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission.",
   );
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);

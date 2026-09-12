@@ -6,9 +6,11 @@
 
 ## 1. Purpose
 
-`pi-blitz-handoff` carries the material continuation context of a Pi session into a genuinely fresh, natively linked Pi session and starts that replacement session with the handoff.
+`pi-blitz-handoff` carries ongoing work and conversation from a Pi session into a genuinely fresh, natively linked Pi session and starts that replacement session with the handoff.
 
-The handoff is a self-contained continuation dossier, not a short summary. It preserves authorization boundaries: continuation context is not a new request and grants no new permission.
+The extension improves continuity across session boundaries equally for autonomous work and interactive collaboration. Automatic handoff describes only how transfer is triggered; it does not select or authorize the replacement session's working mode. Autonomous execution, interactive clarification, answering, research, and waiting are all transferred continuation modes rather than extension-owned workflows.
+
+The handoff is a self-contained continuation dossier, not a short summary. It preserves the existing interaction mode, next action, and authorization boundaries: continuation context is not a new request and grants no new permission.
 
 The implementation must use Pi's native lifecycle and session APIs. It must not simulate a replacement session or build a parallel scheduler around Pi.
 

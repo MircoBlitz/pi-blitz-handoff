@@ -1,7 +1,7 @@
 {
   "name": "pi-blitz-handoff",
   "version": "1.2.3",
-  "description": "Carry focused task context into a genuinely fresh, natively linked Pi session with template-guided readiness checks and handoff dossiers.",
+  "description": "Carry ongoing work and conversation into a fresh, natively linked Pi session with template-guided readiness and handoff dossiers. Whether invoked manually or near the context limit, the replacement resumes the existing interaction mode and next action without granting new permission.",
   "type": "module",
   "license": "MIT",
   "author": "Mirco Blitz",
