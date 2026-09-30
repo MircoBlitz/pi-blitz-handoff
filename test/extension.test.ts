@@ -144,6 +144,7 @@ function createRig(
     }),
     sessionManager: {
       getSessionFile: () => state.sessionFile,
+      getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
       getEntries: () => state.entries,
     },
     ui: {
@@ -403,7 +404,7 @@ test("/sh config stays in extension UI and reload or session replacement closes 
     });
     rig.setSelectHandler(async (title, options, opts) => {
       assert.equal(title, "Configure pi-blitz-handoff");
-      assert.equal(options.length, 11);
+      assert.equal(options.length, 12);
       observedSignal = opts?.signal;
       markPromptStarted?.();
       return new Promise<string | undefined>((resolve) => {

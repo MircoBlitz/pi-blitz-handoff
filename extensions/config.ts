@@ -9,6 +9,7 @@ export interface HandoffConfig {
   automaticSessionHandoff: boolean;
   automaticSessionHandoffPercent: number;
   readinessRetrySeconds: number;
+  maxSessionChainLength: number;
   writerAttempts: number;
   writerRetryDelaySeconds: number;
   recoveryDirectory: string;
@@ -31,6 +32,7 @@ const CONFIG_KEYS = [
   "automaticSessionHandoff",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
+  "maxSessionChainLength",
   "writerAttempts",
   "writerRetryDelaySeconds",
   "recoveryDirectory",
@@ -58,6 +60,7 @@ export function defaultConfig(agentDirectory: string): HandoffConfig {
     automaticSessionHandoff: false,
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
+    maxSessionChainLength: 25,
     writerAttempts: 3,
     writerRetryDelaySeconds: 30,
     recoveryDirectory: `${paths.recoveryDirectory}${sep}`,
@@ -92,6 +95,7 @@ export function validateConfig(value: unknown): HandoffConfig {
   }
 
   const readinessRetrySeconds = integerSetting(record, "readinessRetrySeconds", 1, 300);
+  const maxSessionChainLength = integerSetting(record, "maxSessionChainLength", 1);
   const writerAttempts = integerSetting(record, "writerAttempts", 1);
   const writerRetryDelaySeconds = integerSetting(record, "writerRetryDelaySeconds", 1, 300);
   const recoveryDirectory = absoluteDirectorySetting(record, "recoveryDirectory");
@@ -110,6 +114,7 @@ export function validateConfig(value: unknown): HandoffConfig {
     automaticSessionHandoff,
     automaticSessionHandoffPercent,
     readinessRetrySeconds,
+    maxSessionChainLength,
     writerAttempts,
     writerRetryDelaySeconds,
     recoveryDirectory,
@@ -123,7 +128,7 @@ export async function loadConfig(agentDirectory: string): Promise<HandoffConfig>
   const { configFile } = handoffPaths(agentDirectory);
   try {
     const persisted = JSON.parse(await readFile(configFile, "utf8")) as unknown;
-    return validateConfig(withLegacyCallTemplate(persisted));
+    return validateConfig(upgradePersistedConfig(persisted));
   } catch (error) {
     if (isMissing(error)) {
       return defaultConfig(agentDirectory);
@@ -162,16 +167,15 @@ export async function saveConfig(
   return config;
 }
 
-function withLegacyCallTemplate(value: unknown): unknown {
+function upgradePersistedConfig(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  if (record.callTemplate !== undefined) return value;
-  const legacyKeys = CONFIG_KEYS.filter((key) => key !== "callTemplate").sort();
-  const actualKeys = Object.keys(record).sort();
-  if (actualKeys.length !== legacyKeys.length || actualKeys.some((key, index) => key !== legacyKeys[index])) {
+  const optionalKeys = new Set(["callTemplate", "maxSessionChainLength"]);
+  const requiredKeys = CONFIG_KEYS.filter((key) => !optionalKeys.has(key));
+  if (requiredKeys.some((key) => !(key in record)) || Object.keys(record).some((key) => !CONFIG_KEYS.includes(key as typeof CONFIG_KEYS[number]))) {
     return value;
   }
-  return { ...record, callTemplate: "call_default.cmpl" };
+  return { callTemplate: "call_default.cmpl", maxSessionChainLength: 25, ...record };
 }
 
 function templateSetting(record: Record<string, unknown>, name: "callTemplate" | "handoffTemplate"): string {

@@ -105,7 +105,7 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 7. After GO is accepted, ordinary interactive and RPC prompts are deferred immediately. They do not reach the source writer; they remain unchanged and ordered in memory and are atomically written to one recovery Markdown file.
 8. At the next boundary where Pi is idle and has no pending messages, the writer resolves the current dossier template, temporarily allows only its private submission tool, and submits a dossier correlated to the current attempt. Writer-only control is explicitly turn-local and must not be transferred as a user instruction or continuation constraint. The template filename and content are deliberately resolved at each writer start or retry rather than captured immutably when the handoff is requested. The original active tool list is restored on success, cancellation, exhaustion, or terminal failure.
 9. Deterministic code appends any deferred prompts to the dossier. No additional model call assembles the transition prompt.
-10. The extension calls `ctx.newSession({ parentSession: sourceSessionPath })` and sends the assembled Markdown through the fresh replacement-session context. The source transcript therefore remains available through Pi's native parent lineage.
+10. The extension normally calls `ctx.newSession({ parentSession: sourceSessionPath })` and sends the assembled Markdown through the fresh replacement-session context. Once the source chain reaches `maxSessionChainLength` (default 25, including the master), it omits `parentSession` to start an independent master and keep `/resume` readable. The same complete handoff is transferred; no work is abandoned and no old session is deleted.
 11. Once Pi has created the replacement session and queued the assembled handoff as its first user turn, the extension deletes the corresponding recovery file. If deletion fails, the replacement remains successful and the extension reports the retained file path.
 
 The previous protocol repeatedly asked a broad “session-owned work” question and required exact text `GO` or `NOT-YET` responses. That wording confused unfinished future work with work actually in flight, while retries spent model turns without improving the decision. The keyed tools make correlation deterministic, the Call Template states the semantic boundary once, and the single reminder exists only to recover from a genuinely quiet background-work boundary.
@@ -159,6 +159,7 @@ Persisted configuration updates the currently loaded extension directly.
 | `automaticSessionHandoff` | `false` | Boolean |
 | `automaticSessionHandoffPercent` | `70` | Finite number from 0 through 100; 0 disables automatic initiation; first automatic-attempt threshold |
 | `readinessRetrySeconds` | `60` | Integer from 1 through 300; delay before the single silent re-evaluation turn |
+| `maxSessionChainLength` | `25` | Positive integer; includes the master; the next handoff at the limit starts an independent master |
 | `writerAttempts` | `3` | Positive integer; total attempts including the first |
 | `writerRetryDelaySeconds` | `30` | Integer from 1 through 300 |
 | `recoveryDirectory` | managed recovery directory | Absolute directory path |
@@ -205,7 +206,7 @@ Missing managed directories are created during load. The package installs all si
 
 All profiles preserve authorization, safety boundaries, blockers, and critical facts precisely. When autonomous continuation is authorized, every profile requires the replacement model to perform the next work rather than merely announce that it will continue.
 
-Existing exact configurations that predate `callTemplate` load with `call_default.cmpl` in memory and are not rewritten automatically.
+Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh-config` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
 
 ### Project template assignments
 

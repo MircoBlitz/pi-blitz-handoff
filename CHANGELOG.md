@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Configurable maximum session chain length through `/sh-config`, default 25 including the master. At the limit, the next handoff starts an independent master with the same continuation context, keeping `/resume` readable. Persisted native lineage determines the count across resume and reload.
+
 ### Changed
 
 - Stripped config of ugly MS style to a sane modern change as you change style config.

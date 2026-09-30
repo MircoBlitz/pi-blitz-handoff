@@ -173,6 +173,7 @@ export function activateHandoffExtension(
 
   const transition = new NativeHandoffTransition({
     recoveryDirectory: config.recoveryDirectory,
+    getMaxSessionChainLength: () => config.maxSessionChainLength,
     async settleDeferredWrites() {
       await recoveryWrites;
     },

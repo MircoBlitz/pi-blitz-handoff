@@ -15,6 +15,7 @@ const SETTING_KEYS: readonly SettingKey[] = [
   "automaticSessionHandoff",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
+  "maxSessionChainLength",
   "writerAttempts",
   "writerRetryDelaySeconds",
   "recoveryDirectory",
@@ -29,6 +30,7 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   automaticSessionHandoff: "Automatic session handoff",
   automaticSessionHandoffPercent: "Automatic session handoff percentage",
   readinessRetrySeconds: "Readiness reminder seconds",
+  maxSessionChainLength: "Maximum session chain length",
   writerAttempts: "Writer attempts",
   writerRetryDelaySeconds: "Writer retry delay seconds",
   recoveryDirectory: "Recovery directory",
@@ -191,6 +193,8 @@ function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff">, draft:
       return "At what context percentage should automatic handoff start? Enter a number from 0 through 100; 0 disables it.";
     case "readinessRetrySeconds":
       return "How many seconds should pass before the one-time readiness reminder? Enter an integer from 1 through 300.";
+    case "maxSessionChainLength":
+      return "How many sessions may one chain contain, including its master? Enter a positive integer.";
     case "writerAttempts":
       return "How many total writer attempts should be made? Enter a positive integer.";
     case "writerRetryDelaySeconds":
@@ -236,6 +240,10 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
       const value = integer(answer, 1, 300);
       return value === undefined ? undefined : { ...draft, readinessRetrySeconds: value };
     }
+    case "maxSessionChainLength": {
+      const value = integer(answer, 1);
+      return value === undefined ? undefined : { ...draft, maxSessionChainLength: value };
+    }
     case "writerAttempts": {
       const value = integer(answer, 1);
       return value === undefined ? undefined : { ...draft, writerAttempts: value };
@@ -273,6 +281,7 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
     case "readinessRetrySeconds":
     case "writerRetryDelaySeconds":
       return "Enter an integer from 1 through 300.";
+    case "maxSessionChainLength":
     case "writerAttempts":
       return "Enter a positive integer.";
     case "recoveryDirectory":

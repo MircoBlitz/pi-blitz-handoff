@@ -33,6 +33,7 @@ test("defaults exactly match the specified values and managed paths", async (t) 
     automaticSessionHandoff: false,
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
+    maxSessionChainLength: 25,
     writerAttempts: 3,
     writerRetryDelaySeconds: 30,
     recoveryDirectory: `${paths.recoveryDirectory}${sep}`,
@@ -64,6 +65,10 @@ test("validation enforces all numeric and boolean boundaries", async (t) => {
     { readinessRetrySeconds: 0 },
     { readinessRetrySeconds: 301 },
     { readinessRetrySeconds: 1.5 },
+    { maxSessionChainLength: 0 },
+    { maxSessionChainLength: -1 },
+    { maxSessionChainLength: 1.5 },
+    { maxSessionChainLength: Infinity },
     { writerAttempts: 0 },
     { writerAttempts: 1.5 },
     { writerRetryDelaySeconds: 0 },
@@ -136,6 +141,21 @@ test("an exact old config gains callTemplate only in memory and is not rewritten
 
   assert.deepEqual(await loadConfig(agentDirectory), { ...old, callTemplate: "call_default.cmpl" });
   assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+});
+
+test("existing configs gain the chain default in memory without rewriting, including pre-call-template configs", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  for (const omitCallTemplate of [false, true]) {
+    const old = { ...defaultConfig(agentDirectory) } as Record<string, unknown>;
+    delete old.maxSessionChainLength;
+    if (omitCallTemplate) delete old.callTemplate;
+    const persisted = `${JSON.stringify(old, null, 2)}\n`;
+    await writeFile(paths.configFile, persisted);
+    assert.deepEqual(await loadConfig(agentDirectory), defaultConfig(agentDirectory));
+    assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+  }
 });
 
 test("invalid persisted configuration is rejected rather than merged with defaults", async (t) => {

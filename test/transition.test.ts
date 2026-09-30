@@ -20,6 +20,7 @@ interface Notification {
 
 interface TransitionRigOptions {
   deferred?: string[];
+  maxSessionChainLength?: number;
   newSessionCancelled?: boolean;
   newSessionError?: Error;
   afterSendResult?: "cancelled" | "throw";
@@ -61,7 +62,10 @@ function rig(options: TransitionRigOptions = {}) {
   } as unknown as Parameters<NonNullable<NonNullable<Parameters<ExtensionCommandContext["newSession"]>[0]>["withSession"]>>[0];
 
   const context = {
-    sessionManager: { getSessionFile: () => "/sessions/exact-source.jsonl" },
+    sessionManager: {
+      getSessionFile: () => "/sessions/exact-source.jsonl",
+      getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
+    },
     ui: {
       notify(message: string, type?: Notification["type"]) {
         notifications.push({ message, type });
@@ -87,6 +91,7 @@ function rig(options: TransitionRigOptions = {}) {
 
   const transition = new NativeHandoffTransition({
     recoveryDirectory: "/recovery",
+    getMaxSessionChainLength: () => options.maxSessionChainLength ?? 25,
     createToken: () => "token-1",
     getDeferredSnapshot(handoffId) {
       assert.equal(handoffId, "handoff-1");
@@ -154,6 +159,36 @@ test("the bridge registers one description-free command and uses Pi command disp
   assert.deepEqual(testRig.parents, ["/sessions/exact-source.jsonl"]);
 });
 
+test("lineage lookup stays cancellable and snapshots deferred input only after lookup", async () => {
+  const cancelled = rig();
+  const cancelledToken = cancelled.transition.prepare(request());
+  const cancelledExecution = cancelled.transition.execute(cancelledToken ?? "", cancelled.context);
+  assert.equal(cancelled.transition.cancel(), "cancelled");
+  assert.equal(await cancelledExecution, false);
+  assert.deepEqual(cancelled.parents, []);
+
+  const latest = rig();
+  const token = latest.transition.prepare(request());
+  const execution = latest.transition.execute(token ?? "", latest.context);
+  latest.setDeferred(["arrived during lineage lookup"]);
+  assert.equal(await execution, true);
+  assert.ok(latest.prompts[0]?.endsWith("arrived during lineage lookup"));
+  assert.equal(latest.cleanup.length, 1);
+});
+
+test("a chain cut starts a parentless master while preserving dossier and deferred prompts", async () => {
+  const options: TransitionRigOptions = { maxSessionChainLength: 25, deferred: ["next instruction"] };
+  const testRig = rig(options);
+  const token = testRig.transition.prepare(request());
+  options.maxSessionChainLength = 1;
+  assert.equal(await testRig.transition.execute(token ?? "", testRig.context), true);
+  assert.deepEqual(testRig.parents, [undefined]);
+  assert.ok(testRig.prompts[0]?.startsWith(request().dossier));
+  assert.ok(testRig.prompts[0]?.endsWith("next instruction"));
+  assert.equal(testRig.cleanup.length, 1);
+  assert.deepEqual(testRig.finished, ["handoff-1"]);
+});
+
 test("native replacement preserves the dossier first line and omits an empty deferred section", async () => {
   const testRig = rig();
   const token = testRig.transition.prepare(request());
@@ -203,17 +238,20 @@ test("cancellation invalidates a pending token, while native invocation is commi
   const nativeStarted = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let entered: (() => void) | undefined;
+  const nativeEntered = new Promise<void>((resolve) => { entered = resolve; });
   const committed = rig();
   const committedContext = {
     ...committed.context,
     async newSession() {
+      entered?.();
       await nativeStarted;
       return { cancelled: true };
     },
   } as ExtensionCommandContext;
   const token = committed.transition.prepare(request());
   const execution = committed.transition.execute(token ?? "", committedContext);
-  await Promise.resolve();
+  await nativeEntered;
   assert.equal(committed.transition.phase, "replacing");
   assert.equal(committed.transition.cancel(), "committed");
   assert.equal(committed.transition.allowNativeNewSession("resume"), false);

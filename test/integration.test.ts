@@ -76,7 +76,11 @@ async function activateIntegrationRig(
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
-    sessionManager: { getSessionFile: () => state.sessionFile, getEntries: () => [] },
+    sessionManager: {
+      getSessionFile: () => state.sessionFile,
+      getEntries: () => [],
+      getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
+    },
     abort() {},
     ui: {
       async select() {

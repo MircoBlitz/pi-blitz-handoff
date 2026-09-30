@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { open } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
+  SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 
 import { assembleHandoffMarkdown, type DeferredPromptSnapshot } from "./deferred.ts";
@@ -29,6 +31,7 @@ export interface NativeTransitionRequest {
 
 export interface NativeHandoffTransitionOptions {
   recoveryDirectory: string;
+  getMaxSessionChainLength(): number;
   settleDeferredWrites?(): Promise<void>;
   getDeferredSnapshot(handoffId: string): DeferredPromptSnapshot | undefined;
   onReplacementStarted?(request: NativeTransitionRequest, ctx: ReplacementContext): void;
@@ -120,7 +123,12 @@ export class NativeHandoffTransition {
       return false;
     }
 
+    let newMaster: boolean;
     try {
+      newMaster = await sessionChainLimitReached(
+        ctx.sessionManager.getHeader(),
+        this.options.getMaxSessionChainLength(),
+      );
       await this.options.settleDeferredWrites?.();
     } catch (error) {
       this.fail(
@@ -142,13 +150,13 @@ export class NativeHandoffTransition {
       ? undefined
       : join(this.recoveryDirectory, recoveryFile);
 
-    active.phase = "replacing";
-    active.allowOwnSwitch = true;
     let replacementContext: ReplacementContext | undefined;
 
     try {
+      active.phase = "replacing";
+      active.allowOwnSwitch = true;
       const result = await ctx.newSession({
-        parentSession: active.sourceSessionPath,
+        ...(newMaster ? {} : { parentSession: active.sourceSessionPath }),
         withSession: async (freshCtx) => {
           replacementContext = freshCtx;
           this.options.onReplacementStarted?.(active, freshCtx);
@@ -212,6 +220,31 @@ export function registerNativeTransitionBridge(
 
 export function nativeTransitionCommand(token: string): string {
   return `/${PRIVATE_TRANSITION_COMMAND} ${token}`;
+}
+
+export async function sessionChainLimitReached(header: SessionHeader | null, limit: number): Promise<boolean> {
+  if (header === null) throw new Error("The source session header is unavailable");
+  let length = 1;
+  let parent = header.parentSession;
+  while (length < limit && parent !== undefined) {
+    const file = await open(parent, "r");
+    try {
+      const lines = file.readLines();
+      try {
+        const first = await lines[Symbol.asyncIterator]().next();
+        if (first.done) throw new Error(`Empty parent session: ${parent}`);
+        const ancestor = JSON.parse(first.value) as SessionHeader;
+        if (ancestor.type !== "session") throw new Error(`Missing parent session header: ${parent}`);
+        parent = ancestor.parentSession;
+        length += 1;
+      } finally {
+        lines.close();
+      }
+    } finally {
+      await file.close();
+    }
+  }
+  return length >= limit;
 }
 
 function replacementFailure(error: unknown, recoveryPath: string | undefined): string {

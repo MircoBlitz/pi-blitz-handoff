@@ -18,7 +18,7 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 
 - Pi v0.84.2 or later.
 - Node.js v22.19.0 or later.
-- Native replacement uses `ctx.newSession({ parentSession })` through Pi's command context.
+- Native replacement uses `ctx.newSession()` through Pi's command context, with `parentSession` until the configured chain limit is reached.
 - The commands and in-chat interactions work in Pi's interactive chat surface.
 - A persisted source session is required. Initiation is rejected visibly in `--no-session` or other in-memory sessions because they have no source transcript path or native parent lineage.
 
@@ -88,6 +88,7 @@ Internally generated filenames cannot contain path traversal. New private files 
   "automaticSessionHandoff": false,
   "automaticSessionHandoffPercent": 70,
   "readinessRetrySeconds": 60,
+  "maxSessionChainLength": 25,
   "writerAttempts": 3,
   "writerRetryDelaySeconds": 30,
   "recoveryDirectory": "<getAgentDir()>/pi-blitz-handoff/recovery/",
@@ -104,6 +105,8 @@ Warning thresholds satisfy:
 ```
 
 Automatic handoff is disabled when `automaticSessionHandoff` is false or `automaticSessionHandoffPercent` is `0`. When enabled with a nonzero threshold, the threshold is from `1` through `100`. A zero automatic threshold never gates explicit `/sh` or `blitz_handoff start`.
+
+`maxSessionChainLength` is a positive integer, default `25`, counting the master as session one. At or above the limit, the next handoff creates an independent master by omitting `parentSession`, transferring the unchanged complete handoff and deferred prompts. This bounds chain depth for readability in `/resume`, not work duration. Old sessions remain untouched. Length is read from native persisted parent-session headers and survives resume and reload; a new master starts at one. Configuration changes apply immediately. Unreadable required lineage causes a visible cutover failure rather than an invented count.
 
 Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a positive integer and means total attempts including the first.
 
@@ -145,7 +148,7 @@ Each physical candidate path is attempted at most once. A valid template is a re
 
 Both configured roles are health-checked during extension startup and whenever `/sh-config` or `/sh config` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
 
-An exact older configuration lacking only `callTemplate` loads with `call_default.cmpl` added in memory and is not rewritten automatically.
+Exact older configurations lacking `maxSessionChainLength` gain `25` in memory, and those lacking `callTemplate` gain `call_default.cmpl`. This intentional configuration compatibility does not automatically rewrite the persisted file; other missing or unsupported settings remain invalid.
 
 ### Project-template assignments
 
@@ -306,13 +309,13 @@ When deferred prompts exist, the extension appends this section to the submitted
 
 It then appends each unchanged prompt in original order with deterministic boundaries. The section tells the replacement model to treat the entries semantically as separate sequential user inputs after the dossier, so later deferred prompts may update or supersede earlier context. When no deferred prompt exists, the handoff is not given an empty deferred section.
 
-The private correlated transition command calls `ctx.newSession({ parentSession: sourceSessionPath })`. There is no intermediate handoff transport file and no model-authored transition command.
+The private correlated transition command normally calls `ctx.newSession({ parentSession: sourceSessionPath })`. When the source chain is at or above `maxSessionChainLength`, it omits `parentSession` and creates an independent master instead. The same assembled Markdown is sent in either case. There is no intermediate handoff transport file and no model-authored transition command.
 
 The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. The selected Handoff Template determines whether the replacement begins with the Precise or Balanced re-entry summary or proceeds directly under Fast; in every profile it handles deferred prompts before the recorded action and performs authorized autonomous continuation rather than only announcing it.
 
 After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
-The source transcript remains available through native parent-session lineage and the exact source path recorded in the handoff. The submitted handoff also remains visible in the source session's tool log.
+The source transcript remains available through the exact source path recorded in the handoff, and through native parent-session lineage unless this handoff starts an independent master at the chain limit. The submitted handoff also remains visible in the source session's tool log.
 
 ## 11. Cancellation and lifecycle
 
@@ -377,7 +380,7 @@ Automated tests cover the actual deterministic contracts:
 - one-instruction readiness, exact keyed tool correlation, explicit-attempt user-deferral choices, source-specific one-shot reminders, and normal pre-GO input;
 - distinct Fast, Balanced, and Precise writer contracts, writer prompt, tool isolation/restoration, submission validation, and configured attempts;
 - deferred-prompt ordering, one-file persistence, and deterministic assembly;
-- direct native replacement and parent-session lineage inputs;
+- direct native replacement, parent-session lineage inputs, configurable chain limits including the master, parentless cutover with unchanged prompts, and persisted-lineage counting across resume/reload;
 - cancellation and stale-callback invalidation;
 - per-file recovery inspection, execution, discard, and delete-after-acceptance;
 - public commands, public tool, and factual status.

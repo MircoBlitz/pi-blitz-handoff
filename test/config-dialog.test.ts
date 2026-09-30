@@ -93,13 +93,35 @@ async function pathExists(path: string): Promise<boolean> {
   return stat(path).then(() => true, () => false);
 }
 
+test("chain limit rejects zero and fractions, persists immediately and applies live", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  await persistedConfig(agentDirectory);
+  const applied: number[] = [];
+  const rig = scriptedContext([
+    chooseSetting("Maximum session chain length: 25"),
+    { method: "input", answer: "0" },
+    chooseSetting("Maximum session chain length: 25"),
+    { method: "input", answer: "1.5" },
+    chooseSetting("Maximum session chain length: 25"),
+    { method: "input", answer: "10" },
+    { method: "select", answer: undefined, check(_title, options) {
+      assert.ok(options.includes("Maximum session chain length: 10"));
+    } },
+  ]);
+  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.maxSessionChainLength); }).run(rig.context);
+  rig.assertFinished();
+  assert.equal((await loadConfig(agentDirectory)).maxSessionChainLength, 10);
+  assert.deepEqual(applied, [10]);
+  assert.equal(rig.notifications.filter(({ type }) => type === "warning").length, 2);
+});
+
 test("setting list persists every confirmed edit immediately and Escape closes naturally", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
   const original = await persistedConfig(agentDirectory);
   const applied: HandoffConfig[] = [];
   const rig = scriptedContext([
     chooseSetting("Writer attempts: 3", (options) => {
-      assert.equal(options.length, 11);
+      assert.equal(options.length, 12);
       assert.equal(options.some((option) => option.startsWith("Save configuration")), false);
       assert.equal(options.some((option) => option.startsWith("Cancel configuration")), false);
     }),
