@@ -8,7 +8,11 @@
 
 ### Changed
 
-- Stripped config of ugly MS style to a sane modern change as you change style config.
+- Configuration edits now validate, persist, and apply immediately after each confirmed setting change. Escape closes the dialog without undoing saved changes; the overall Save/Cancel workflow is removed.
+
+### Validation
+
+- Confirmed native master rollover in Real-Pi on 2026-09-30, resuming an existing 10-session chain with an isolated test limit of 10. The replacement header had no parent reference and the new session waited as instructed. The global default remained 25. See [validation scope and evidence](docs/session-chain-validation.md).
 
 ## 1.2.4 — 2026-09-12
 

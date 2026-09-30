@@ -253,3 +253,5 @@ npm pack --dry-run
 ```
 
 The candidate is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
+
+On 2026-09-30, a Real-Pi handoff at the end of an existing 10-session chain, using an isolated test limit of 10, created an independent master with no native parent reference. The replacement continued with its re-entry summary and waited as instructed. The default 25-session boundary is covered by deterministic tests, not that Real-Pi run. See [session-chain validation](docs/session-chain-validation.md) for evidence and scope.

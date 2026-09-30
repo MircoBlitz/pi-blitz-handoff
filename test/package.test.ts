@@ -187,6 +187,7 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "templates/handoff_balanced.cmpl",
     "templates/handoff_default.cmpl",
     "templates/handoff_fast.cmpl",
+    "docs/session-chain-validation.md",
     "docs/specification.md",
     "docs/specification.sha256",
     "package.json",
