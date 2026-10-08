@@ -19,16 +19,17 @@ Automatic handoff describes only how the transfer is triggered, not how the repl
 
 The supplied default template tells the writer to:
 
-- distinguish verified, unverified, partial, authorized, and approval-dependent work;
-- preserve blockers and unresolved questions;
-- record session-specific runtime state separately from the cumulative skill inventory, using `None.` for absent categories; and
-- make every replacement session begin with a concise re-entry summary before it continues work, handles deferred prompts, asks a question, or waits.
+- record the actual continuation mode, `userfacing` or `autonom`;
+- preserve commissioned work, continuing grants and conditions, dirty state, blockers and evidence limits;
+- list active skills by name, purpose and scope rather than accumulate every past read;
+- keep the continuation core inline and reference known detail sources only for concrete retrieval needs; and
+- apply deferred prompts first, then resume the dialogue or perform authorized autonomous work without a previous-session recap.
 
 The handoff protocol and session transition are deterministic. The LLM only decides when the semantic readiness boundary has been reached, writes the continuation dossier, and continues from it in the replacement session.
 
 ## Successful autonomous handoff
 
-These two screenshots show one continuous autonomous run. The fresh linked session receives the handoff with `Continue authorized autonomous work` and begins the recorded next action:
+These two screenshots document an earlier continuous autonomous run, before V2 became the default. The fresh linked session receives the handoff with `Continue authorized autonomous work` and begins the recorded next action:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/MircoBlitz/pi-blitz-handoff/main/assets/screenshots/autonomous-handoff-start.png" alt="A fresh Pi session starting the authorized autonomous action from the transferred handoff" width="1200">
@@ -99,7 +100,7 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 1. An explicit `/sh` or `blitz_handoff start` records the request. Explicit starts ignore all context thresholds.
 2. Automatic initiation is optional. When enabled, it detects the first completed turn at or above its configured threshold and inserts readiness before the next autonomous model turn without interrupting completed-turn tool work. If that automatic attempt ends without successful replacement, one final automatic attempt becomes eligible at or above the configured critical-warning percentage; a second unsuccessful attempt is not repeated. The two-attempt limit survives `/reload` through native session metadata. Every successful manual, threshold, or overflow compaction resets that budget; failed or aborted compaction does not.
 3. Manual or model-requested starts send one Call Template plus a fresh correlation key at the first boundary where Pi is idle and has no pending messages. An automatic start steers the same instruction into the next model turn. The selected Call Template owns the semantic work-boundary and working-style guidance; deterministic code adds only the correlated tool protocol and non-configurable interaction constraints.
-4. At the boundary defined by the Call Template, an explicit handoff lets the model choose one keyed entry point. `session_handoff_go` accepts direct readiness. `session_handoff_go_with_user_deferral` supplies a short reason and opens an extension-owned **Ready / Wait / Cancel** selection. The shipped templates reserve that choice for a concrete active collaboration that may still need the current user. An automatically initiated handoff permits only direct GO and rejects user deferral so the autonomous run cannot be stopped by a choice dialog.
+4. At the boundary defined by the Call Template, an explicit handoff lets the model choose one keyed entry point. `session_handoff_go` accepts direct readiness. `session_handoff_go_with_user_deferral` supplies a short reason and opens an extension-owned **Ready / Wait / Cancel** selection. The shipped Call default reserves that choice for a concrete active collaboration that may still need the current user. An automatically initiated handoff permits only direct GO and rejects user deferral so the autonomous run cannot be stopped by a choice dialog.
 5. For an explicit handoff, **Ready** accepts GO. **Wait** keeps input normal, suspends the reminder, and shows `Awaiting User GO · Tell your LLM to start when ready`; a later explicit user readiness message lets the model call direct GO. **Cancel** ends the request. The extension does not parse free-form user replies.
 6. If the permitted entry point has not been invoked after `readinessRetrySeconds`, exactly one visible reminder reapplies the same Call Template and source-specific tool protocol. This prevents a deadlock when background work completed without producing another model turn without imposing a separate hard-coded work-boundary policy. There is no periodic polling, and no reminder runs after **Wait**.
 7. After GO is accepted, ordinary interactive and RPC prompts are deferred immediately. They do not reach the source writer; they remain unchanged and ordered in memory and are atomically written to one recovery Markdown file.
@@ -186,25 +187,22 @@ The extension manages:
 ├── recovery/
 └── templates/
     ├── backups/
-    ├── call_balanced.cmpl
     ├── call_default.cmpl
-    ├── call_fast.cmpl
-    ├── handoff_balanced.cmpl
-    ├── handoff_default.cmpl
-    └── handoff_fast.cmpl
+    └── handoff_default.cmpl
 ```
 
-Missing managed directories are created during load. The package installs all six shipped templates into the managed template directory. If same-name managed content differs, the old file is moved into the managed `templates/backups/` subdirectory with a timestamped filename before the package template is installed. Catalogue scans are nonrecursive, so backups do not appear in template selection. Other managed templates are retained. Deliberately configured directory symlinks are supported.
+Missing managed directories are created during load. The package installs its two default templates into the managed template directory. If same-name managed content differs, the old file is moved into the managed `templates/backups/` subdirectory with a timestamped filename before the package template is installed. Catalogue scans are nonrecursive, so backups do not appear in template selection. Other managed templates are retained. Deliberately configured directory symlinks are supported.
 
-### Shipped profiles
+### Shipped defaults
 
-| Profile | Call and Handoff Templates | Behavior |
-|---|---|---|
-| **Fast** | `call_fast.cmpl`, `handoff_fast.cmpl` | Prioritizes speed. Produces a condensed dossier, indexes known sources instead of restating older knowledge, omits the user-facing recap, and continues authorized autonomous work directly. |
-| **Balanced** | `call_balanced.cmpl`, `handoff_balanced.cmpl` | Balances transfer detail and speed. Provides a brief re-entry summary while deliberately leaving indexed context reconstruction and more initialization work to the replacement session. |
-| **Precise (default)** | `call_default.cmpl`, `handoff_default.cmpl` | Performs the most complete context synthesis before replacement so the new session can resume with minimal reconstruction. |
+| Template | Purpose |
+|---|---|
+| `call_default.cmpl` | Finish only required work already in flight, then transfer at a genuinely safe boundary. Prefer direct GO unless a concrete active user interaction still matters. |
+| `handoff_default.cmpl` | The V2 dossier: explicit mode, commissioned work, permissions, current state, binding instructions, evidence limits and targeted retrieval. |
 
-All profiles preserve authorization, safety boundaries, blockers, and critical facts precisely. When autonomous continuation is authorized, every profile requires the replacement model to perform the next work rather than merely announce that it will continue.
+There are no packaged Fast, Balanced or development variants. Custom managed and addendum templates remain available; the extension does not delete other user-owned templates or rewrite existing selections.
+
+The V2 default keeps the continuation core inline and references unambiguous known sources for details. It separates continuing grants from consumed individual approvals, preserves relevant unread frontiers and does not turn proposals into assignments. Active skills are recorded as name, purpose and scope, with no cumulative read inventory or skill-path list. The replacement applies deferred prompts first and resumes its actual mode without a previous-session recap. Authorized autonomous work is performed, not merely promised. These are model instructions, not guarantees of lossless transfer or semantically validated output.
 
 Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh-config` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
 

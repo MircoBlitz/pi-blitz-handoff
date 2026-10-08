@@ -67,17 +67,17 @@ test("saving edits one normalized directory and removal restores an unselected s
     handoffTemplate: "handoff_precise.cmpl",
   });
   await saveProjectTemplateAssignment(file, `${project}/.`, {
-    callTemplate: "call_fast.cmpl",
+    callTemplate: "call_custom.cmpl",
     handoffTemplate: null,
   });
 
   const loaded = await loadProjectTemplateAssignments(file);
   assert.equal(loaded.size, 1);
   assert.deepEqual(loaded.get(project), {
-    callTemplate: "call_fast.cmpl",
+    callTemplate: "call_custom.cmpl",
     handoffTemplate: null,
   });
-  assert.match(await readFile(file, "utf8"), /"callTemplate": "call_fast\.cmpl"/);
+  assert.match(await readFile(file, "utf8"), /"callTemplate": "call_custom\.cmpl"/);
 
   assert.equal(await removeProjectTemplateAssignment(file, project), true);
   assert.equal((await loadProjectTemplateAssignments(file)).size, 0);

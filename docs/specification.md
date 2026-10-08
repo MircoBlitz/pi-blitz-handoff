@@ -67,12 +67,8 @@ Managed data lives below:
 ├── recovery/
 └── templates/
     ├── backups/
-    ├── call_balanced.cmpl
     ├── call_default.cmpl
-    ├── call_fast.cmpl
-    ├── handoff_balanced.cmpl
-    ├── handoff_default.cmpl
-    └── handoff_fast.cmpl
+    └── handoff_default.cmpl
 ```
 
 The extension checks these directories while loading and creates missing directories. Deliberately configured symlinks are supported. The extension does not implement inode tracking, descriptor identity checks, `O_NOFOLLOW` policy, or a general filesystem security framework.
@@ -122,15 +118,14 @@ There is no overall draft, Save action, or Cancel action. Escape discards only a
 
 ## 5. Managed templates and catalogue
 
-The package ships three paired profiles:
+The package ships exactly two templates:
 
-- **Fast** — `call_fast.cmpl` and `handoff_fast.cmpl`; prioritizes transfer speed, condenses noncritical context, indexes known older and future-task sources instead of restating them, omits a user-facing previous-session recap, and leaves detail retrieval to the replacement session.
-- **Balanced** — `call_balanced.cmpl` and `handoff_balanced.cmpl`; balances transfer speed and context, provides a brief re-entry summary, and deliberately delegates more indexed context reconstruction and initialization to the replacement session.
-- **Precise (default)** — `call_default.cmpl` and `handoff_default.cmpl`; retains the existing complete dossier contract and performs the most context synthesis before replacement.
+- `call_default.cmpl` defines the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters.
+- `handoff_default.cmpl` contains the V2 continuation dossier: explicit working mode, commissioned work, continuing grants and conditions, current state, binding decisions, active skills, evidence limits and targeted retrieval.
 
-All profiles preserve authorization, safety boundaries, blockers, and critical facts precisely. When autonomous continuation is authorized, each profile requires the replacement model to perform the next work rather than merely announce continuation.
+The package has no Fast, Balanced or development template variants. Custom managed and addendum templates remain supported; loading the package does not delete other user-owned templates or rewrite existing selections.
 
-On load, each of the six package assets is compared with its same-name file in the managed template directory:
+On load, each of the two package assets is compared with its same-name file in the managed template directory:
 
 - equal content: do not write;
 - missing managed file: install the package file;
@@ -193,7 +188,7 @@ An automatic request is different: it is detected after a completed turn and its
 
 The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends only the exact correlated tool protocol and non-configurable interaction constraints; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The three shipped Call Templates guide the current model to make the bounded semantic decision appropriate to their Fast, Balanced, or Precise profile. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
+The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
 Two correlated tools exist:
 
@@ -265,31 +260,22 @@ The template instructs the model to begin the handoff with a concise, meaningful
 
 The dossier distinguishes completed and verified work, completed but unverified work, partial or reverted work, authorized work, work requiring fresh approval, blockers, open questions, working files, evidence, prior decisions, and precise cold-context references. It must not turn discussion, criticism, rejected proposals, or unanswered questions into authorization.
 
-The Precise default Handoff Template retains these continuation sections after its meaningful title:
+The V2 default Handoff Template places `Working mode` immediately after the meaningful title, using the actual pre-writer continuation mode, `userfacing` or `autonom`. Neither automatic initiation nor the writer turn establishes autonomous work or grants permission.
 
-1. `Goal and authorization`
-2. `Continuation map`
-3. `Current truth`
-4. `History and decisions`
-5. `Active behavioral instructions`
-6. `Operational runtime state`
-7. `Loaded skills`
-8. `Working-set inventory`
-9. `Validation and evidence`
-10. `Upcoming work`
-11. `Task packets`
-12. `Open questions`
-13. `Context catalogue`
-14. `Precision anchors`
-15. `Cold context`
-16. `Integrity notes`
-17. `Post-Handoff Initial Action`
+Its continuation sections are:
 
-`Operational runtime state` records only session-specific runtime deviations or status. It covers skills whose current operational state matters, subagents, intentionally changed tools, relevant live processes or cmux surfaces, and session-specific behavioral deltas; each category uses `None.` when absent. It does not duplicate the cumulative `Loaded skills` inventory or ordinary project facts.
+1. `Work and assignment` — confirmed goal, brief source-session completion labels with the exact supplied transcript reference, future already commissioned work and one precise open step.
+2. `Permissions and boundaries` — continuing grants with provenance and remaining coverage, authorized access/elevation, material conditions and separate gates. Completed individual actions are not reactivated; undertaking-wide grants are not consumed merely by finishing one step.
+3. `Current work state` — relevant file/system state, dirty or unintegrated work, actual running work and currently effective blockers.
+4. `Binding instructions` — decisions, genuine governing sources and active skills as name, purpose and scope. No cumulative read inventory, skill-path field or blanket reload list; selected frozen authority stays bound through its actual plan/source reference.
+5. `Evidence and uncertainty` — observed facts, checked state/result/limits and unresolved or unread frontiers. Later edits do not inherit an earlier PASS.
+6. `Targeted retrieval` — genuine detail sources, what they contain and the concrete occasion for reading them, without duplicating inline facts.
 
-The final writer-produced dossier section records one precise next mode, resume point, and first action. It may continue autonomous work or questioning only when that activity was already authorized before the handoff. An ordinary unanswered question is resumable continuation context rather than an automatic readiness blocker. Only a concrete active collaboration that may still matter before replacement justifies the user-deferral entry point, and only for a manual or model-requested handoff.
+The continuation core stays inline: current permissions and their material conditions, decisive known facts and the actual work state cannot be replaced by references. Unambiguous known governing sources may carry detail. Each fact has one primary place; no length quota replaces completeness. Empty or inapplicable optional fields are omitted. Discussion and ideas are not future commissioned work.
 
-The Precise default requires every replacement session to begin its first visible assistant response with a concise user-facing re-entry summary, including during autonomous continuation. Balanced requires a briefer re-entry summary and then more initialization work in the replacement session. Fast omits the previous-session recap and proceeds directly. Every profile applies deferred prompts sequentially before following the recorded action. A deferred prompt may supersede that action. When autonomous continuation is authorized, the replacement must actually perform the next work in its first response rather than merely state that it will continue.
+The recorded open step incorporates the receiving-session instruction once. Apply Deferred Prompts as separate sequential inputs before the recorded action; later prompts may supersede it. Restore only authorities and active skills required by applicable instructions and their contracts. Do not start with a previous-session recap. In `userfacing` mode resume the current dialogue, answer or question. In `autonom` mode actually perform the authorized next work in the first response. Ask only a concrete blocking question when a real missing decision, permission or blocker prevents continuation; do not re-request a still-valid grant.
+
+The source-session transcript is a targeted fallback only for a concrete discrepancy not answerable from the dossier or known governing/detail sources. Do not prescribe routine transcript reading or ancestor scans. These are semantic writer/receiver instructions, not deterministic output or restoration guarantees.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -311,7 +297,7 @@ It then appends each unchanged prompt in original order with deterministic bound
 
 The private correlated transition command normally calls `ctx.newSession({ parentSession: sourceSessionPath })`. When the source chain is at or above `maxSessionChainLength`, it omits `parentSession` and creates an independent master instead. The same assembled Markdown is sent in either case. There is no intermediate handoff transport file and no model-authored transition command.
 
-The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. The selected Handoff Template determines whether the replacement begins with the Precise or Balanced re-entry summary or proceeds directly under Fast; in every profile it handles deferred prompts before the recorded action and performs authorized autonomous continuation rather than only announcing it.
+The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. The selected Handoff Template determines continuation behavior. The V2 default handles deferred prompts before the recorded action, resumes the actual mode without a previous-session recap and performs authorized autonomous continuation rather than only announcing it.
 
 After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
@@ -374,11 +360,11 @@ Cleanup failure is reported with the affected path. It does not roll back a repl
 Automated tests cover the actual deterministic contracts:
 
 - configuration validation, immediate per-setting atomic persistence, runtime refresh, and failure retention;
-- synchronization of all six shipped profile templates, backup, catalogue, and fallback;
+- synchronization of the two shipped defaults, backup, custom-template catalogue, and fallback;
 - project-template validation, per-role immediate persistence, atomic create/edit/removal, independent upward lookup, `<Autodiscover>` inheritance, `<Default>` overrides, and corrupt-file role-default fallback;
 - explicit versus automatic initiation, including automatic rejection of user deferral;
 - one-instruction readiness, exact keyed tool correlation, explicit-attempt user-deferral choices, source-specific one-shot reminders, and normal pre-GO input;
-- distinct Fast, Balanced, and Precise writer contracts, writer prompt, tool isolation/restoration, submission validation, and configured attempts;
+- the V2 default template structure and continuation instructions, writer prompt, tool isolation/restoration, submission validation, and configured attempts;
 - deferred-prompt ordering, one-file persistence, and deterministic assembly;
 - direct native replacement, parent-session lineage inputs, configurable chain limits including the master, parentless cutover with unchanged prompts, and persisted-lineage counting across resume/reload;
 - cancellation and stale-callback invalidation;

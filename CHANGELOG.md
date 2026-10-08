@@ -9,6 +9,12 @@
 ### Changed
 
 - Configuration edits now validate, persist, and apply immediately after each confirmed setting change. Escape closes the dialog without undoing saved changes; the overall Save/Cancel workflow is removed.
+- Replaced `handoff_default.cmpl` with the unchanged reviewed V2 dossier, recording the actual working mode, commissioned work, continuing permissions, active skills and targeted retrieval. It resumes without a previous-session recap; these are model instructions, not lossless-transfer guarantees.
+- The package now ships only `call_default.cmpl` and `handoff_default.cmpl`. The Call default is unchanged; custom templates, existing selections and managed backups remain supported.
+
+### Removed
+
+- Fast, Balanced and local development template variants from the product. Loading the package does not delete other user-owned templates.
 
 ### Validation
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,6 +11,7 @@ import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { defaultConfig } from "../extensions/config.ts";
+import { SHIPPED_TEMPLATE_FILENAMES } from "../extensions/templates.ts";
 import { loadExtension } from "./extension-harness.ts";
 
 interface PackageManifest {
@@ -68,12 +70,8 @@ test("package metadata declares the supported runtime and complete Pi package re
     "extensions",
     "docs",
     "assets/logo.png",
-    "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",
-    "templates/call_fast.cmpl",
-    "templates/handoff_balanced.cmpl",
     "templates/handoff_default.cmpl",
-    "templates/handoff_fast.cmpl",
     "CHANGELOG.md",
     "README.md",
     "LICENSE",
@@ -101,53 +99,61 @@ test("public documentation carries the current tagline and supported line", asyn
   assert.doesNotMatch(security, /current 1\.1 code line/);
 });
 
-test("shipped template profiles preserve their distinct continuation contracts", async () => {
-  const [fastCall, balancedCall, fast, balanced, precise] = await Promise.all([
-    readFile(join(projectRoot, "templates", "call_fast.cmpl"), "utf8"),
-    readFile(join(projectRoot, "templates", "call_balanced.cmpl"), "utf8"),
-    readFile(join(projectRoot, "templates", "handoff_fast.cmpl"), "utf8"),
-    readFile(join(projectRoot, "templates", "handoff_balanced.cmpl"), "utf8"),
-    readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8"),
+test("the package ships only the unchanged Call default and reviewed V2 Handoff default", async () => {
+  const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
+  assert.deepEqual(SHIPPED_TEMPLATE_FILENAMES, filenames);
+  assert.deepEqual((await readdir(join(projectRoot, "templates"))).sort(), filenames);
+
+  const [call, handoff] = await Promise.all([
+    readFile(join(projectRoot, "templates", "call_default.cmpl")),
+    readFile(join(projectRoot, "templates", "handoff_default.cmpl")),
   ]);
+  assert.equal(
+    createHash("sha256").update(call).digest("hex"),
+    "02f4ea823262d5faf5f6ab0fea0e510fcf99887df14f55d3a5cae1562bfe2e08",
+  );
+  assert.equal(
+    createHash("sha256").update(handoff).digest("hex"),
+    "70eb0966d79ce166397b09e467cd49058cd4e2e0c38476aefef998603992f080",
+  );
+});
 
-  assert.match(fastCall, /earliest genuinely safe boundary\. Speed comes first/);
-  assert.match(balancedCall, /next stable, genuinely safe boundary/);
-  assert.match(balancedCall, /Finish the coherent unit/);
-
-  assert.match(fast, /Speed comes first; precision comes last except where exactness is critical/);
-  assert.match(fast, /Prefer a precise file, specification, plan, report, commit, session, or artifact index over restating older knowledge/);
-  assert.match(fast, /Do \*\*not\*\* begin with a user-facing recap/);
-
-  assert.match(balanced, /initialize the replacement reliably without reproducing the full source session/);
-  assert.match(balanced, /brief user-facing re-entry summary/);
-  assert.match(balanced, /Complete the initialization work identified by the dossier/);
-
-  const runtimeState = precise.indexOf("## Operational runtime state");
-  const activeInstructions = precise.indexOf("## Active behavioral instructions");
-  const loadedSkills = precise.indexOf("## Loaded skills");
-  assert.ok(activeInstructions < runtimeState && runtimeState < loadedSkills);
-  assert.match(precise, /session-specific runtime deviations or status/);
-  assert.match(precise, /Skills whose current state matters/);
-  assert.match(precise, /Subagents/);
-  assert.match(precise, /Intentionally changed active toolset/);
-  assert.match(precise, /Relevant live processes or cmux surfaces/);
-  assert.match(precise, /Session-specific behavioral deltas/);
-  assert.match(precise, /For each category, write `None\.` when absent/);
-  assert.match(precise, /every replacement session to begin its first visible assistant response with a concise re-entry summary/);
-  assert.match(precise, /After the summary, the replacement must treat any Deferred Prompts as sequential user inputs/);
-  assert.match(precise, /Deferred Prompts may update or supersede the recorded `Action`/);
-
-  for (const template of [fast, balanced, precise]) {
-    assert.doesNotMatch(template, /do not perform further task work/i);
-    assert.match(template, /extension-owned writer control.*current writer turn/s);
-    assert.match(template, /not a user instruction or continuation constraint/);
-    assert.match(template, /must not appear in the dossier/);
+test("the V2 default text instructs mode-aware continuation, scoped grants and targeted retrieval", async () => {
+  const handoff = await readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8");
+  const headings = [
+    "**Working mode:**",
+    "### Work and assignment",
+    "### Permissions and boundaries",
+    "### Current work state",
+    "### Binding instructions",
+    "### Evidence and uncertainty",
+    "### Targeted retrieval",
+  ];
+  let previous = -1;
+  for (const heading of headings) {
+    const position = handoff.indexOf(heading);
+    assert.ok(position > previous, `Missing or out-of-order field: ${heading}`);
+    previous = position;
   }
 
-  assert.match(fast, /autonomous continuation is authorized.*never stop after merely/s);
-  for (const template of [balanced, precise]) {
-    assert.match(template, /autonomous continuation is authorized.*rather than merely/s);
-  }
+  assert.match(handoff, /actual pre-writer continuation mode: `userfacing` or `autonom`/);
+  assert.match(handoff, /Already commissioned work still to be done/);
+  assert.match(handoff, /completing one step does not consume an undertaking-wide grant/);
+  assert.match(handoff, /including authorized privilege elevation/);
+  assert.match(handoff, /Retain material enumerated conditions/);
+  assert.match(handoff, /A past read, audit, available skill or worker's read is not activation/);
+  assert.match(handoff, /name — purpose — scope\. No skill paths in this field/);
+  assert.match(handoff, /Preserve selected frozen authority through the binding plan\/source reference/);
+  assert.match(handoff, /later edits do not inherit an earlier PASS or clean status/);
+  assert.match(handoff, /Preserve the exact unread frontier or inspected ranges/);
+  assert.match(handoff, /preserve the exact source-session transcript path/i);
+  assert.match(handoff, /do not invent one, prescribe routine transcript reading or request ancestor scans/);
+  assert.match(handoff, /Apply any Deferred Prompts as separate sequential user inputs/);
+  assert.match(handoff, /Do not start with a previous-session recap/);
+  assert.match(handoff, /actually perform the authorized next work in the first response, not merely promise continuation/);
+  assert.match(handoff, /do not re-request a grant that still covers the work/);
+  assert.match(handoff, /writer control applies only to the writer turn; never transfer it as a user instruction or continuation constraint/);
+  assert.doesNotMatch(handoff, /^## (Loaded skills|Operational runtime state|Post-Handoff Initial Action)$/m);
 });
 
 test("package lock root metadata remains coherent with the manifest", async () => {
@@ -181,12 +187,8 @@ test("npm pack includes the runtime and documentation only, excluding tests and 
     "README.md",
     "SECURITY.md",
     "assets/logo.png",
-    "templates/call_balanced.cmpl",
     "templates/call_default.cmpl",
-    "templates/call_fast.cmpl",
-    "templates/handoff_balanced.cmpl",
     "templates/handoff_default.cmpl",
-    "templates/handoff_fast.cmpl",
     "docs/session-chain-validation.md",
     "docs/specification.md",
     "docs/specification.sha256",
@@ -221,14 +223,10 @@ test("loading the package entrypoint initializes and validates managed storage",
   assert.equal((await stat(baseDirectory)).isDirectory(), true);
   assert.equal((await stat(recoveryDirectory)).isDirectory(), true);
   assert.equal((await stat(templateDirectory)).isDirectory(), true);
-  for (const filename of [
-    "call_balanced.cmpl",
-    "call_default.cmpl",
-    "call_fast.cmpl",
-    "handoff_balanced.cmpl",
-    "handoff_default.cmpl",
-    "handoff_fast.cmpl",
-  ]) {
+  const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
+  assert.deepEqual((await readdir(templateDirectory)).sort(), ["backups", ...filenames]);
+  assert.equal((await stat(join(templateDirectory, "backups"))).isDirectory(), true);
+  for (const filename of filenames) {
     assert.equal(
       await readFile(join(templateDirectory, filename), "utf8"),
       await readFile(join(projectRoot, "templates", filename), "utf8"),

@@ -1,178 +1,53 @@
 ### Writer instruction
 
-Write a **Session Handoff** for a genuinely fresh Pi session. Begin immediately with a concise, task-specific Markdown title on the first line. Do not add a generic label or status prefix. This is not a short summary: preserve the source-session truth needed for correct continuation across future handoffs.
+Write a compact, self-contained continuation dossier for a fresh Pi session, in the user's conversation language. Start with a concise, task-specific Markdown title, followed immediately by the fixed working-mode field. Use the dossier structure below; replace instructional brackets with actual source facts.
 
-Call `submit_session_handoff` exactly once as soon as the dossier is ready. Do not explain reasoning. Keep the dossier complete but compact. Any extension-owned writer control surrounding this template applies only to the current writer turn; it is not a user instruction or continuation constraint and must not appear in the dossier.
+Call `submit_session_handoff` exactly once when the dossier is sufficient. Do not explain your reasoning or perform source-task work. This extension-owned writer control applies only to the writer turn; never transfer it as a user instruction or continuation constraint.
 
-## Governing truth and authorization
+## Writing rules
 
-Use only facts supported by the supplied session context. Distinguish among:
+- Give each fact one primary place. Use short, dedicated answers, not a chronological recap. Omit inapplicable optional fields and empty sections, but never shorten away a necessary condition, current permission, decisive observation or unresolved issue. No length quota replaces completeness.
+- Preserve the latest confirmed instructions and decisions. Separate user decisions, authorized technical choices, proposals, assumptions and open questions. Attach available provenance or evidence anchors to the relevant statement, not to a separate duplicate narrative.
+- Record the actual continuation mode established before this writer turn. An automatic handoff, a writer turn or merely having permission does not establish autonomous work. Do not invent a mode, grant, fact, path, live status, completion or certainty. Mark missing information where it matters. Never include secret values or credential payloads.
+- The continuation core belongs inline. A reference cannot replace current permissions, their material conditions, decisive known facts or the actual work state. Refer out only for details whose known source really contains them. An attractive filename is not evidence of coverage.
 
-- completed and verified work;
-- completed but unverified work;
-- partial, failed, or reverted work;
-- authorized work executable now;
-- authorized scope paused pending an exact, source-supported trigger;
-- proposals or work requiring fresh approval;
-- blockers and unresolved questions.
+## Dossier
 
-Do not perform, authorize, or list as executable any activity merely because it appears as a question, criticism, discussion, consideration, mention, or rejected proposal. Authorization applies per concrete action. Approval for an implementation direction does not authorize later state-changing validation, process or service startup, external effects, cleanup, deletion, publication, or scope expansion.
+**Working mode:** [The actual pre-writer continuation mode: `userfacing` or `autonom`.]
 
-Never invent completion, permission, facts, paths, or uncertainty. Preserve limitations honestly. Never reproduce passwords, private keys, API tokens, recovery codes, or other secrets; retain only safe references and handling requirements. The deterministic extension does not provide automatic secret detection.
+### Work and assignment
+- **Goal:** [The confirmed desired result and undertaking.]
+- **Completed in the source session:** [Only brief labels of completed work, with session reference; no account of how it was done. Preserve the exact source-session transcript path supplied in the writer prompt once as the session reference, not as an instruction to read it. Do not inventory completed ancestor sessions. Continuing consequences belong under state or evidence, not in this history note.]
+- **Future commissioned work:** [Already commissioned work still to be done, with necessary ordering or dependencies. Ideas, suggestions and independently inferred new tasks are not commissioned work. Do not reactivate completed tasks.]
+- **Open work step:** [The exact continuation point and one concrete next action. For an ongoing user dialogue, preserve the current question or conversational unit and remaining-question count when applicable. For a partial read, give the exact frontier in Evidence rather than repeating it here. If blocked or waiting, name the actual blocking question or trigger.]
 
-Before returning, check that every authorization label, next step, and task packet agrees with this classification. A paused action must name its exact resumption trigger; if the trigger is absent or ambiguous, classify it as requiring fresh approval. Preserve cumulative history and behavior indexes from incoming handoffs, updating them rather than silently replacing them with a shorter account. Account for every unresolved earlier user topic and classify it as active, superseded, deferred, resolved, or no longer material.
+### Permissions and boundaries
+[Only applicable task- or session-specific permissions and limits, not a copy of generic global rules. Keep shared grants once and identify which commissioned work they cover.]
+- **Continuing grants:** [For each still-valid grant: provenance, target/environment, allowed actions, scope and remaining coverage. State positive authorization explicitly, including conditional future actions already covered. A completed individual action is not a continuing grant; completing one step does not consume an undertaking-wide grant.]
+- **Authorized access:** [The permitted access route and relevant connection identity, including authorized privilege elevation. Do not infer current availability from an old pane assignment.]
+- **Conditions:** [The concrete prerequisites and action-blocking conditions for the grants. Retain material enumerated conditions; do not compress them into "guarded work" or "existing rules".]
+- **Separate gates:** [Actions still requiring a new explicit decision or approval. Do not create per-task or per-command approval for necessary steps already covered by a valid grant. Discussion and future intent grant nothing. A narrower new grant supersedes an older prohibition only within its actual scope.]
 
-Preserve the complete cumulative inventory of loaded skills: retain every skill named in an incoming handoff's loaded-skills inventory and add every skill whose full instructions were loaded in the current session. Never remove a loaded skill because its task appears complete or because it seems irrelevant now; do not make a semantic relevance decision. Record each skill's exact `SKILL.md` path and any explicit loading or routing constraint already attached to it. Do not add merely available skills that were never loaded and do not invent paths or constraints. The replacement session must read every listed skill completely before substantive continuation.
+### Current work state
+- **Relevant state:** [The actual continuation-relevant state of files, artifacts and systems, with observation time/checkpoint where needed. Preserve dirty, staged, uncommitted or unintegrated work and consequential partial, failed or reverted results. No activity chronicle.]
+- **Running work:** [Actually active processes or workers: identity, responsibility, status and pending result. Distinguish assigned, running, completed and unknown; do not invent availability or completion.]
+- **Blockers:** [Currently effective obstacles or faults. Do not repeat grant conditions or resolved historical errors.]
 
-Omit a subsection only when genuinely irrelevant. Keep the final section exactly as specified. Make `Resume At` and `Action` precise enough that the next session does not stall. “Continue authorized autonomous work” may refer only to work already authorized before the handoff.
+### Binding instructions
+- **Decisions:** [Still-binding decisions and their scope; rationale only when necessary for continuation. Preserve relevant ownership boundaries. A proposal or unverified implementation is not an accepted decision.]
+- **Governing sources:** [The actual relevant specification, plan or project authority, with an unambiguous locator and version/checkpoint where necessary. Preserve selected frozen authority through the binding plan/source reference; never silently substitute global copies. Retrieval purpose belongs with the reference.]
+- **Active skills:** [For each skill active for this undertaking or its continuing conversation: name — purpose — scope. No skill paths in this field, cumulative read inventory or blanket reload list. A past read, audit, available skill or worker's read is not activation. Preserve confirmed task-bound activation; do not extend it to other assignments or deactivate it just because the immediate step differs. Mark unresolved activation as unresolved.]
 
-Require every replacement session to begin its first visible assistant response with a concise re-entry summary for the user, including during autonomous continuation. The summary must state the latest relevant activity or exchange, the current working state, and the next step or exact reason user input is needed. Include the latest material user question and answer when they determine the present state. After the summary, the replacement must treat any Deferred Prompts as sequential user inputs in their transferred order, then continue the task, answer or ask the user, or wait as required by the latest applicable instruction and authorization. When autonomous continuation is authorized, it must actually perform the next work in that same response rather than merely announce that it will continue. Deferred Prompts may update or supersede the recorded `Action`; without a superseding Deferred Prompt, follow `Action`.
+### Evidence and uncertainty
+- **Observed:** [Concrete continuation-relevant findings, including material actual-input differences or access asymmetries. Separate observation from interpretation and assumption. Configured, designated active or reported is not independently verified or valid.]
+- **Checked:** [What was checked, against which state, the actual result and limits. A partial test does not prove the whole flow; later edits do not inherit an earlier PASS or clean status. Keep only consequential results, not test logs or an execution chronology.]
+- **Unresolved or unread:** [Missing checks, uncertain claims, pending independent verification and relevant unread portions. Preserve the exact unread frontier or inspected ranges where continuation depends on them. A locator or metadata read does not prove the source contents were read.]
 
-## Goal and authorization
+### Targeted retrieval
+[Only needed detail references not already attached to their primary statement: source — information it contains — concrete occasion for reading it. Use known literal locators; mark a missing locator instead of inventing one. Do not duplicate inline facts or already recorded references.]
 
-### Desired outcome
-[The user's actual goal and desired end state.]
+[Consult the source-session transcript recorded above only for a concrete unresolved fact or discrepancy that cannot be answered from the dossier or a known governing/detail source. Record such an existing need if there is one; do not invent one, prescribe routine transcript reading or request ancestor scans.]
 
-### Authorized and executable now
-[Only work executable now, with exact scope and limits.]
+## Continuation behavior
 
-### Authorized scope but currently paused
-[Paused work and its exact source-supported resumption trigger. If no trigger exists, place it under fresh approval.]
-
-### Not authorized or requiring fresh approval
-[Proposals, undecided choices, external or destructive actions, publication, purchases, or other work lacking current permission.]
-
-## Continuation map
-
-### Read first
-[Minimal ordered list of authoritative specifications, plans, indexes, or files, with what each governs. State precedence where sources disagree.]
-
-### Safest next action
-[The first concrete authorized action. If execution is paused or approval is ambiguous, ask the required question instead.]
-
-### Current blockers
-[Concrete blockers and what would resolve them.]
-
-## Current truth
-
-### Latest-session delta
-[What changed in the source session, including “no implementation change” when material.]
-
-### Completed and verified
-[Completed results and evidence.]
-
-### Completed but not verified
-[Changes lacking sufficient validation.]
-
-### Partial, failed, or reverted
-[Incomplete work, defects, failed attempts, reverted approaches, and consequences.]
-
-### Not started
-[Important planned or authorized work not yet begun.]
-
-### Working state
-[Branch, commit/staging/dirty state, runtime/process state, temporary artifacts, and other continuation-relevant state.]
-
-## History and decisions
-
-### Session history index
-
-| Session or period | Material change or decision | Current consequence/status | Exact reference |
-|---|---|---|---|
-| [date/label] | [what happened] | [why it matters now] | [path or durable anchor] |
-
-Keep this cumulative and short. Mark earlier topics active, superseded, deferred, resolved, or no longer material when supported.
-
-### Governing decisions and constraints
-[Active technical/product decisions, user answers, non-goals, compatibility rules, and reasons. Distinguish current decisions from discarded or superseded ideas.]
-
-### Negative knowledge
-[Failed experiments, rejected alternatives, known traps, and evidence preventing repeated work.]
-
-## Active behavioral instructions
-
-[Still-applicable user corrections and preferences not already covered by system/project guidance. Record known supersession relationships and preserve exact wording where paraphrase could change scope or tone.]
-
-## Operational runtime state
-
-Record only session-specific runtime deviations or status, not ordinary project facts or the cumulative `Loaded skills` inventory. For each category, write `None.` when absent.
-
-- **Skills whose current state matters:** [Actually loaded or re-read skills only when their current operational state matters; give the name, exact `SKILL.md` path, and state. Otherwise `None.`]
-- **Subagents:** [Each subagent's ID, mode, status, and result path. Otherwise `None.`]
-- **Intentionally changed active toolset:** [Describe the change from the normal toolset. Otherwise `None.`]
-- **Relevant live processes or cmux surfaces:** [Identify each relevant process or surface and its status. Otherwise `None.`]
-- **Session-specific behavioral deltas:** [Record behavior changed for this session that is not already global. Otherwise `None.`]
-
-## Loaded skills
-
-[List the cumulative union of (a) every skill retained in the incoming handoff's loaded-skills inventory and (b) every skill whose full instructions were loaded in this session. For each skill, give its name and exact `SKILL.md` path, plus any explicit loading or routing constraint already attached to it. Do not filter by current relevance or task completion. Do not include merely available skills that were never loaded. Instruct the replacement session to read every listed skill completely before substantive continuation. Write `None.` only when no skill was loaded.]
-
-## Working-set inventory
-
-| Path or reference | Purpose | Status | Why needed |
-|---|---|---|---|
-| [exact path] | [role] | [modified/read/generated/planned/authoritative/etc.] | [continuation relevance] |
-
-Include every materially relevant modified, created, deleted, read, generated, or planned file and external reference. Distinguish authoritative sources, temporary notes, and read-only context.
-
-## Validation and evidence
-
-| Check or evidence | Exact result | Scope | Remaining uncertainty |
-|---|---|---|---|
-| [test/inspection/review] | [pass/fail/not run] | [what it establishes] | [what it does not establish] |
-
-Never convert a partial pass into full validation.
-
-## Upcoming work
-
-List remaining work in real execution order. Label each item:
-
-- **Authorized continuation**
-- **Authorized scope but paused — trigger: [exact event]**
-- **Planned but approval required**
-- **Blocked**
-
-Do not create permission by listing an item here. State-changing validation, process/service startup, external effects, cleanup, deletion, publication, or scope expansion require their own authorization.
-
-## Task packets
-
-For each substantial upcoming task, provide:
-
-### Task: [name]
-- **Authorization:** [exact status, limits, and trigger or approval requirement]
-- **Current state:** [where it stands]
-- **Required outcome:** [observable end state and acceptance]
-- **Inputs and constraints:** [read-first paths, dependencies, non-goals, and hazards]
-- **Blockers:** [prerequisites or unresolved issues]
-
-A precise link to a sufficient approved plan may replace duplicated detail, but state why it is sufficient.
-
-## Open questions
-
-[Only genuinely unresolved questions, with decision owner and consequence when known.]
-
-## Context catalogue
-
-[Index broader material that may become relevant later: project `.pi` documents, plans, audits, research, artifacts, installed documentation, earlier handoffs, and source sessions. For each entry state what it contains and when to consult it.]
-
-## Precision anchors
-
-[Exact user statements, error text, identifiers, paths, versions, or wording where paraphrase could alter meaning, permission, or diagnosis. Keep bounded.]
-
-## Cold context
-
-- **Source session:** `[exact JSONL path supplied in the writer prompt]`
-- **Incoming handoff/source lineage:** `[exact references or none]`
-- **When to consult:** [specific gaps that justify loading cold context; do not scan or read the transcript routinely]
-
-Record the exact source-session transcript path supplied in the writer prompt. Do not scan or read the transcript routinely and do not invent or infer a fallback path.
-
-## Integrity notes
-
-[Known omissions, unavailable evidence, uncertain claims intentionally excluded, and unverified references. State limitations truthfully.]
-
-## Post-Handoff Initial Action
-
-Mode: Continue authorized questioning | Continue authorized autonomous work | Answer the user | Wait for the user
-Resume At: [Exact question, plan step, task, or decision point.]
-Action: [Tell the replacement session to begin with the concise user-facing re-entry summary specified above, then state exactly one concrete action to take after applying any Deferred Prompts. Use “None after the summary.” only when genuinely no further action is required.]
+Include this receiving-session instruction once with the open work step: Apply any Deferred Prompts as separate sequential user inputs in their transferred order before following the recorded action; later prompts may supersede the dossier. Restore only authorities and active skills required by applicable current instructions and their contracts. Do not start with a previous-session recap. In `userfacing` mode, resume the recorded dialogue, answer or question. In `autonom` mode, actually perform the authorized next work in the first response, not merely promise continuation. Neither mode grants extra permission. If a real missing decision, authorization or blocker prevents continuation, ask only the concrete blocking question; do not re-request a grant that still covers the work.

@@ -272,7 +272,7 @@ test("template settings list role-prefixed templates and allow manual entry", as
   const agentDirectory = await temporaryDirectory(t);
   const addendumDirectory = join(agentDirectory, "addendum");
   await mkdir(addendumDirectory);
-  await writeFile(join(addendumDirectory, "call_fast.cmpl"), "call fast");
+  await writeFile(join(addendumDirectory, "call_custom.cmpl"), "custom call");
   await writeFile(join(addendumDirectory, "handoff_compact.cmpl"), "handoff compact");
   await writeFile(join(addendumDirectory, "unrelated.cmpl"), "not role prefixed");
   await persistedConfig(agentDirectory, { templateDirectory: addendumDirectory });
@@ -281,14 +281,14 @@ test("template settings list role-prefixed templates and allow manual entry", as
     chooseSetting("Call template: call_default.cmpl"),
     {
       method: "select",
-      answer: "call_fast.cmpl",
+      answer: "call_custom.cmpl",
       check(title, options) {
         assert.equal(title, "Which session handoff call template should be used?");
-        assert.deepEqual(options, ["call_default.cmpl", "call_fast.cmpl", "Enter another filename"]);
+        assert.deepEqual(options, ["call_custom.cmpl", "call_default.cmpl", "Enter another filename"]);
       },
     },
     chooseSetting("Handoff template: handoff_default.cmpl", (options) => {
-      assert.ok(options.includes("Call template: call_fast.cmpl"));
+      assert.ok(options.includes("Call template: call_custom.cmpl"));
     }),
     {
       method: "select",

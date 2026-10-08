@@ -519,7 +519,7 @@ test("/sh-project-template commits each role immediately and removes Autodiscove
   const paths = handoffPaths(agentDirectory);
   await mkdir(paths.templateDirectory, { recursive: true });
   await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "default call");
-  await writeFile(join(paths.templateDirectory, "call_fast.cmpl"), "fast call");
+  await writeFile(join(paths.templateDirectory, "call_custom.cmpl"), "custom call");
   await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
   await writeFile(join(paths.templateDirectory, "handoff_precise.cmpl"), "precise handoff");
 
@@ -528,7 +528,7 @@ test("/sh-project-template commits each role immediately and removes Autodiscove
   rig.setSelectHandler(async (title, options) => {
     const answer = answers.shift();
     if (title.includes("Which Call Template")) {
-      assert.deepEqual(options, ["<Autodiscover>", "<Default>", "call_fast.cmpl"]);
+      assert.deepEqual(options, ["<Autodiscover>", "<Default>", "call_custom.cmpl"]);
     } else {
       assert.match(title, /^Which Handoff Template/);
       assert.deepEqual(options, ["<Autodiscover>", "<Default>", "handoff_precise.cmpl"]);
