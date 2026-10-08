@@ -102,24 +102,37 @@ function captureRegistration() {
   };
 }
 
-test("handoff commands expose the main command and separate documented helpers", async () => {
+test("handoff exposes only /sh publicly and documents its subcommands", async () => {
   const rig = captureRegistration();
   assert.deepEqual(
     [...rig.commands.keys()].sort(),
-    ["__pi_blitz_handoff_transition", "sh", "sh-cancel", "sh-config", "sh-help", "sh-project-template", "sh-recover"],
+    ["__pi_blitz_handoff_transition", "sh"],
   );
 
   const advertised = [...rig.commands.entries()]
     .filter(([, command]) => command.description !== undefined)
     .map(([name]) => name);
-  assert.deepEqual(advertised, ["sh", "sh-help", "sh-cancel", "sh-recover", "sh-config", "sh-project-template"]);
+  assert.deepEqual(advertised, ["sh"]);
   assert.match(rig.commands.get("sh")?.description ?? "", /Start a session handoff/);
   assert.equal(rig.commands.get("sh")?.getArgumentCompletions, undefined);
   assert.equal(rig.commands.get("__pi_blitz_handoff_transition")?.description, undefined);
 
-  await rig.commands.get("sh")?.handler("retry", rig.context);
-  assert.equal(rig.notifications.at(-1), "Usage: /sh, /sh-help, /sh-recover, /sh-config, /sh-project-template, or /sh-cancel");
-  assert.deepEqual([...rig.commands.keys()].filter((name) => ["shconfig", "sh-retry", "sh-cleanup"].includes(name)), []);
+  const command = rig.commands.get("sh");
+  assert.ok(command);
+  await command.handler("help", rig.context);
+  const help = rig.notifications.at(-1) ?? "";
+  for (const subcommand of ["help", "cancel", "recover", "settings", "project-template"]) {
+    assert.ok(help.includes(`/sh ${subcommand}`));
+  }
+  assert.doesNotMatch(help, /\/sh-|\/sh config/);
+
+  for (const unsupported of ["config", "retry", "cleanup"]) {
+    await command.handler(unsupported, rig.context);
+    assert.equal(rig.notifications.at(-1),
+      "Usage: /sh, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel");
+  }
+  assert.deepEqual(rig.userMessages, []);
+  assert.equal(rig.getNativeStarts(), 0);
 });
 
 test("blitz_handoff exposes only status and initializes the writer submission tool at session_start", async () => {

@@ -11,7 +11,7 @@ This extension is designed for one purpose: to capture a session’s continuatio
 > [!TIP]
 > **Latest feature addition: Project directory specific templates**
 >
-> Run `/sh-project-template` to select the Call and Handoff Templates for the current Pi working directory and its descendants. Each role independently uses its nearest concrete selection while walking upward.
+> Run `/sh project-template` to select the Call and Handoff Templates for the current Pi working directory and its descendants. Each role independently uses its nearest concrete selection while walking upward.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
@@ -77,12 +77,13 @@ Pi reads the extension entry point from `package.json`. Review third-party exten
 ### Commands
 
 - `/sh` — request a handoff.
-- `/sh-help` — show handoff commands and usage.
-- `/sh-cancel` — cancel the active handoff when cutover has not started.
-- `/sh-recover` — inspect, execute, or discard leftover deferred-prompt files.
-- `/sh-config` — edit global configuration in an extension-owned chat dialog.
-- `/sh-project-template` — select or remove project-specific Call and Handoff Templates for the current Pi working directory.
-- The `/sh cancel`, `/sh recover`, `/sh config`, `/sh project-template`, and `/sh help` forms remain available as subcommand aliases.
+- `/sh help` — show handoff commands and usage.
+- `/sh cancel` — cancel the active handoff when cutover has not started.
+- `/sh recover` — inspect, execute, or discard leftover deferred-prompt files.
+- `/sh settings` — edit global configuration in an extension-owned chat dialog.
+- `/sh project-template` — select or remove project-specific Call and Handoff Templates for the current Pi working directory.
+
+Only `/sh` is registered publicly. The former hyphenated commands and `/sh config` are no longer accepted.
 
 There is no public retry command, cleanup command, or public transition command.
 
@@ -126,7 +127,7 @@ The activity line is rendered as a Pi widget directly above the input editor. It
 
 Failure and cancellation override those states. Finished status remains in the replacement session until its next agent run starts, ordinary user input arrives, or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
 
-Before GO is accepted, canonical `/sh-cancel` clears pending readiness or the user-wait state. After GO is accepted but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Every successful cancellation sends a follow-up instruction that releases the model from the earlier readiness or writer request and resumes normal work. The spaced `/sh cancel` alias remains accepted. Deferred prompts are not replayed automatically to the source session.
+Before GO is accepted, canonical `/sh cancel` clears pending readiness or the user-wait state. After GO is accepted but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Every successful cancellation sends a follow-up instruction that releases the model from the earlier readiness or writer request and resumes normal work. Deferred prompts are not replayed automatically to the source session.
 
 From `GO` until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked. The extension's own correlated native replacement is allowed.
 
@@ -145,7 +146,7 @@ Recovery is always explicit. It never automatically executes leftover prompts. E
 
 ## Configuration
 
-Run `/sh-config` in an interactive UI. Each confirmed setting change validates the complete resulting configuration, persists atomically, and takes effect immediately without `/reload`. Invalid input, rejected directory creation, or persistence failure retains the previous value and shows a concrete correction message. A missing configured directory is created only after confirmation of its exact path.
+Run `/sh settings` in an interactive UI. Each confirmed setting change validates the complete resulting configuration, persists atomically, and takes effect immediately without `/reload`. Invalid input, rejected directory creation, or persistence failure retains the previous value and shows a concrete correction message. A missing configured directory is created only after confirmation of its exact path.
 
 There is no overall draft, **Save**, or **Cancel** action. Escape discards an unconfirmed setting input; Escape from the setting list closes the dialog without undoing changes already persisted. Configuration cannot overlap an active handoff or recovery dialog, and a handoff cannot start while configuration is open.
 
@@ -204,11 +205,11 @@ There are no packaged Fast, Balanced or development variants. Custom managed and
 
 The V2 default keeps the continuation core inline and references unambiguous known sources for details. It separates continuing grants from consumed individual approvals, preserves relevant unread frontiers and does not turn proposals into assignments. Active skills are recorded as name, purpose and scope, with no cumulative read inventory or skill-path list. The replacement applies deferred prompts first and resumes its actual mode without a previous-session recap. Authorized autonomous work is performed, not merely promised. These are model instructions, not guarantees of lossless transfer or semantically validated output.
 
-Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh-config` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
+Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh settings` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
 
 ### Project template assignments
 
-Run `/sh-project-template` to configure the current Pi working directory. The extension shows separate Call and Handoff selection boxes. `<Autodiscover>` leaves that role without a local override, `<Default>` selects its existing role-default filename directly, and the remaining choices are readable, nonempty role-specific templates. The default filename is not duplicated in the catalogue choices.
+Run `/sh project-template` to configure the current Pi working directory. The extension shows separate Call and Handoff selection boxes. `<Autodiscover>` leaves that role without a local override, `<Default>` selects its existing role-default filename directly, and the remaining choices are readable, nonempty role-specific templates. The default filename is not duplicated in the catalogue choices.
 
 Each Enter persists that role immediately. If no exact assignment exists, the other role begins as `<Autodiscover>`. Escape discards only the currently unconfirmed choice, so a role confirmed earlier in the dialog remains saved. There is no separate Save action. Selecting `<Autodiscover>` for both roles removes the exact assignment: an existing assignment is reported as removed; when none exists, no file is written and the dialog reports that fact.
 
@@ -224,7 +225,7 @@ Template discovery is nonrecursive. An optional addendum directory shadows a man
 2. the role-specific addendum default (`call_default.cmpl` or `handoff_default.cmpl`), when configured;
 3. the corresponding managed role-specific default.
 
-A candidate must be a readable, nonempty `.cmpl` file. Both configured roles are checked at startup and whenever `/sh-config` or `/sh config` opens. A failed non-default selection falls back to its role default with a visible warning that names the failure and actual fallback; selecting the role default does not itself warn. If the role default cannot resolve, startup or configuration opening fails visibly. There is no placeholder engine or embedded template fallback. Deterministic code always appends the current key, exact tool protocol, and interaction rules to the editable Call Template, so a custom template cannot own or remove those invariants.
+A candidate must be a readable, nonempty `.cmpl` file. Both configured roles are checked at startup and whenever `/sh settings` opens. A failed non-default selection falls back to its role default with a visible warning that names the failure and actual fallback; selecting the role default does not itself warn. If the role default cannot resolve, startup or configuration opening fails visibly. There is no placeholder engine or embedded template fallback. Deterministic code always appends the current key, exact tool protocol, and interaction rules to the editable Call Template, so a custom template cannot own or remove those invariants.
 
 ## Data and security
 

@@ -27,13 +27,13 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 ### Commands
 
 - `/sh` — request a handoff.
-- `/sh-help` — show handoff commands and usage.
-- `/sh-cancel` — cancel the active handoff.
-- `/sh-recover` — inspect and act on leftover deferred-prompt files.
-- `/sh-config` — configure global extension settings through an in-chat question-and-answer flow.
-- `/sh-project-template` — configure or remove the project-template assignment for the current Pi working directory.
+- `/sh help` — show handoff commands and usage.
+- `/sh cancel` — cancel the active handoff.
+- `/sh recover` — inspect and act on leftover deferred-prompt files.
+- `/sh settings` — configure global extension settings through an in-chat question-and-answer flow.
+- `/sh project-template` — configure or remove the project-template assignment for the current Pi working directory.
 
-The spaced `/sh help`, `/sh cancel`, `/sh recover`, `/sh config`, and `/sh project-template` forms remain quietly accepted as subcommand aliases. There is no public transition command, `/sh retry`, `/sh cleanup`, or `/shconfig`. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
+Only `/sh` is registered publicly; help, cancel, recover, settings and project-template are its subcommands. The former hyphenated commands and `/sh config` are not accepted as compatibility aliases. There is no public transition command, `/sh retry`, `/sh cleanup`, or `/shconfig`. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
 
 ### Model-callable tool
 
@@ -110,7 +110,7 @@ Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a p
 
 ### In-chat configuration
 
-`/sh-config` starts an extension-owned chat dialog. It shows the available settings and their current persisted values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
+`/sh settings` starts an extension-owned chat dialog. It shows the available settings and their current persisted values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
 
 Each confirmed edit is validated against the complete resulting configuration and atomically persisted immediately. The running extension applies the persisted configuration immediately; it does not require `/reload`. Invalid input, rejected directory creation, or persistence failure leaves the previous value active and shows a concrete message with a useful correction hint. A missing configured directory is created only after the user confirms its exact path.
 
@@ -141,7 +141,7 @@ Catalogue scans are nonrecursive. An optional configured addendum directory may 
 
 Each physical candidate path is attempted at most once. A valid template is a readable, nonempty `.cmpl` file. Every failed candidate is reported. There is no placeholder engine, embedded TypeScript template, or fourth fallback.
 
-Both configured roles are health-checked during extension startup and whenever `/sh-config` or `/sh config` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
+Both configured roles are health-checked during extension startup and whenever `/sh settings` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
 
 Exact older configurations lacking `maxSessionChainLength` gain `25` in memory, and those lacking `callTemplate` gain `call_default.cmpl`. This intentional configuration compatibility does not automatically rewrite the persisted file; other missing or unsupported settings remain invalid.
 
@@ -158,7 +158,7 @@ Project-template assignments are stored separately from global settings in `<get
 
 Both role keys are always present, and at least one contains a concrete role-prefixed `.cmpl` filename. `null` is displayed as `<Autodiscover>` and means that the exact directory has no local override for that role. A stored `null`/`null` pair is invalid because the dialog represents that state by removing the entry. Missing files represent no project assignments.
 
-`/sh-project-template` uses `ctx.cwd` as the assignment root without asking for a path. It presents separate extension-owned role selections. Each contains `<Autodiscover>`, `<Default>`, and the readable, nonempty role-specific catalogue; the concrete default filename is omitted from the catalogue when `<Default>` already represents it. `<Default>` stores the existing role-default filename. Each Enter atomically persists that role immediately, with the other role initially `<Autodiscover>` when no exact assignment exists. Escape discards only the currently unconfirmed selection; it does not undo an earlier confirmed role. There is no Save action. Selecting `<Autodiscover>` for both roles uses the exact-entry removal path and preserves the factual existing-assignment versus no-assignment messages.
+`/sh project-template` uses `ctx.cwd` as the assignment root without asking for a path. It presents separate extension-owned role selections. Each contains `<Autodiscover>`, `<Default>`, and the readable, nonempty role-specific catalogue; the concrete default filename is omitted from the catalogue when `<Default>` already represents it. `<Default>` stores the existing role-default filename. Each Enter atomically persists that role immediately, with the other role initially `<Autodiscover>` when no exact assignment exists. Escape discards only the currently unconfirmed selection; it does not undo an earlier confirmed role. There is no Save action. Selecting `<Autodiscover>` for both roles uses the exact-entry removal path and preserves the factual existing-assignment versus no-assignment messages.
 
 At each explicit or automatic handoff request, the extension reads the assignment file afresh and resolves the two roles independently while walking only upward from the normalized current Pi working directory. Each role uses its nearest concrete ancestor selection. If a role remains unresolved after the root, its global `config.json` selection applies. `<Default>` is a concrete selection and therefore bypasses further upward and global selection; the existing addendum-shadowing and managed-template resolver remains unchanged. Descendant assignments are never inspected.
 
@@ -305,9 +305,9 @@ The source transcript remains available through the exact source path recorded i
 
 ## 11. Cancellation and lifecycle
 
-Before GO, canonical `/sh-cancel` clears the pending request, correlation key, timer, and any user-wait state.
+Before GO, canonical `/sh cancel` clears the pending request, correlation key, timer, and any user-wait state.
 
-After GO and before native replacement starts, `/sh-cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh-recover`. Every successful cancellation sends a visible follow-up instruction that tells the model to disregard the earlier readiness or writer request and submission ID, resume normal conversation and task work, and not submit a handoff. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
+After GO and before native replacement starts, `/sh cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. Every successful cancellation sends a visible follow-up instruction that tells the model to disregard the earlier readiness or writer request and submission ID, resume normal conversation and task work, and not submit a handoff. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
 Before GO, user session navigation may discard the pending handoff. From GO until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked because they would invalidate the active transfer. The extension's own native replacement is allowed.
 
@@ -345,7 +345,7 @@ The extension exposes concise factual status in chat and through `blitz_handoff 
 - `Writing Session Handoff` with an indeterminate activity indicator;
 - `Session Handoff Finished` in the replacement session until the next agent run starts, ordinary user input arrives, or another handoff begins.
 
-The active widget advertises canonical `/sh-cancel`. After **Wait**, the normal first activity line remains and a second width-safe line reads `Awaiting User GO · Tell your LLM to start when ready`.
+The active widget advertises canonical `/sh cancel`. After **Wait**, the normal first activity line remains and a second width-safe line reads `Awaiting User GO · Tell your LLM to start when ready`.
 
 Failure and cancellation override those states. A successful final status adds a second line with `Wait Time`, measured from initiation to accepted `GO`, and `Handoff Time`, measured from `GO` to successful completion. After `GO`, the persistent activity line shows `Inputs deferred (0)` and increments that factual count for every captured prompt. Concrete attempt information may appear in factual chat or tool status, but the persistent indicator does not invent fractional or numbered progress.
 

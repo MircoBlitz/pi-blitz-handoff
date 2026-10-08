@@ -56,7 +56,7 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(setWidgetCalls.length, 1);
   assert.equal(renderRequests, 1);
   assert.deepEqual(component?.render(120), [
-    "Waiting for Session Handoff · Input available · /sh-cancel",
+    "Waiting for Session Handoff · Input available · /sh cancel",
   ]);
   const startedAt = getHandoffActivityStartedAt("stable-handoff");
   assert.notEqual(startedAt, undefined);
@@ -68,7 +68,7 @@ test("persistent TUI component registers once and renders phase, terminal, and c
   assert.equal(setWidgetCalls.length, 1);
   assert.equal(renderRequests, 2);
   assert.deepEqual(component?.render(120), [
-    "User Input Required · Input available · /sh-cancel",
+    "User Input Required · Input available · /sh cancel",
   ]);
   assert.equal(getHandoffActivityStartedAt("stable-handoff"), startedAt);
 
@@ -144,7 +144,7 @@ test("persistent TUI component respects narrow widths for ANSI-colored status", 
   registerPersistentHandoffStatus(ui, "narrow-handoff");
   updatePersistentHandoffStatus(ui, "narrow-handoff", "waiting", undefined, false, undefined, 0, undefined, true);
   assert.deepEqual(component?.render(120), [
-    "\u001b[33mWaiting for Session Handoff · Input available · /sh-cancel\u001b[39m",
+    "\u001b[33mWaiting for Session Handoff · Input available · /sh cancel\u001b[39m",
     "\u001b[33mAwaiting User GO · Tell your LLM to start when ready\u001b[39m",
   ]);
 
@@ -204,13 +204,13 @@ test("writing status uses an indeterminate public activity indicator and termina
   };
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true);
-  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (0) · /sh-cancel");
+  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (0) · /sh cancel");
   assert.ok((indicators.at(-1)?.frames?.length ?? 0) > 1);
   assert.equal(indicators.at(-1)?.intervalMs, 120);
   assert.doesNotMatch(statuses.at(-1) ?? "", /\d+\s*\/\s*\d+|\d+%/);
 
   updatePersistentHandoffStatus(ui, "handoff", "ready", undefined, true, undefined, 2);
-  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (2) · /sh-cancel");
+  assert.equal(statuses.at(-1), "Writing Session Handoff · Inputs deferred (2) · /sh cancel");
 
   updatePersistentHandoffStatus(ui, "handoff", "inactive", "failed", true);
   assert.match(statuses.at(-1) ?? "", /^Session Handoff Failed · \d+ sec$/);

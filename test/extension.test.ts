@@ -260,7 +260,7 @@ test("TUI session startup reserves one widget that active and terminal updates r
 
   await rig.commands.get("sh")?.("", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
-  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel");
+  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh cancel");
 
   await rig.commands.get("sh")?.("cancel", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
@@ -313,9 +313,9 @@ test("/sh help displays subcommands and usage", async () => {
   const rig = createRig();
   await rig.commands.get("sh")?.("help", rig.context);
   assert.equal(rig.notifications.at(-1)?.type, "info");
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-recover/);
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-config/);
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh-project-template/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh recover/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh settings/);
+  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh project-template/);
   assert.doesNotMatch(rig.notifications.at(-1)?.message ?? "", /\\n/);
 });
 
@@ -386,7 +386,7 @@ test("/sh recover reports an empty recovery directory factually", async (t) => {
   assert.equal(rig.notifications.at(-1)?.message, "No session handoff recovery files remain.");
 });
 
-test("/sh config stays in extension UI and reload or session replacement closes it", async (t) => {
+test("/sh settings stays in extension UI and reload or session replacement closes it", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-extension-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
@@ -412,7 +412,7 @@ test("/sh config stays in extension UI and reload or session replacement closes 
       });
     });
 
-    const running = rig.commands.get("sh")?.("config", rig.context);
+    const running = rig.commands.get("sh")?.("settings", rig.context);
     assert.ok(running);
     await promptStarted;
     await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason }, rig.context);
@@ -466,7 +466,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
   const inputs = ["55", "85", "75", "7", "2", "4", recoveryDirectory, addendumDirectory];
   rig.setSelectHandler(async () => selections.shift());
   rig.setPromptInputHandler(async () => inputs.shift());
-  await rig.commands.get("sh-config")?.("", rig.context);
+  await rig.commands.get("sh")?.("settings", rig.context);
 
   const persisted = JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig;
   assert.deepEqual(persisted, {
@@ -509,11 +509,11 @@ test("persisted configuration updates live status, thresholds, templates, writer
   await rig.handlers.input?.({ type: "input", text: "deferred", source: "interactive" }, rig.context);
   assert.equal((await readdir(recoveryDirectory)).length, 1);
 
-  await rig.commands.get("sh-config")?.("", rig.context);
+  await rig.commands.get("sh")?.("settings", rig.context);
   assert.equal(rig.notifications.at(-1)?.message, "Configuration cannot be changed while a session handoff is active.");
 });
 
-test("/sh-project-template commits each role immediately and removes Autodiscover/Autodiscover", async (t) => {
+test("/sh project-template commits each role immediately and removes Autodiscover/Autodiscover", async (t) => {
   const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-dialog-"));
   t.after(() => rm(agentDirectory, { recursive: true, force: true }));
   const paths = handoffPaths(agentDirectory);
@@ -536,7 +536,7 @@ test("/sh-project-template commits each role immediately and removes Autodiscove
     return answer;
   });
 
-  await rig.commands.get("sh-project-template")?.("", rig.context);
+  await rig.commands.get("sh")?.("project-template", rig.context);
   assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {
     "/projects/app": { callTemplate: "call_default.cmpl", handoffTemplate: null },
   });
@@ -547,13 +547,13 @@ test("/sh-project-template commits each role immediately and removes Autodiscove
     assert.equal(options.includes("<Remove project assignment>"), false);
     return removalAnswers.shift();
   });
-  await rig.commands.get("sh-project-template")?.("", rig.context);
+  await rig.commands.get("sh")?.("project-template", rig.context);
   assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {});
   assert.match(rig.notifications.at(-2)?.message ?? "", /assignment removed/);
   assert.match(rig.notifications.at(-1)?.message ?? "", /No exact project template assignment exists/);
 });
 
-test("/sh-project-template reports no exact assignment and performs no write for Autodiscover/Autodiscover", async (t) => {
+test("/sh project-template reports no exact assignment and performs no write for Autodiscover/Autodiscover", async (t) => {
   const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-project-dialog-empty-"));
   t.after(() => rm(agentDirectory, { recursive: true, force: true }));
   const paths = handoffPaths(agentDirectory);
@@ -573,7 +573,7 @@ test("/sh-project-template reports no exact assignment and performs no write for
     return answers.shift();
   });
 
-  await rig.commands.get("sh-project-template")?.("", rig.context);
+  await rig.commands.get("sh")?.("project-template", rig.context);
   await assert.rejects(readFile(paths.projectTemplatesFile, "utf8"), { code: "ENOENT" });
   assert.match(
     rig.notifications.at(-1)?.message ?? "",
@@ -686,7 +686,7 @@ test("template health checks both roles and config opening reports each non-defa
   assert.match(health.warnings[1] ?? "", /Handoff template "missing-handoff\.cmpl"/);
 
   const rig = createRig(config, {}, agentDirectory);
-  await rig.commands.get("sh-config")?.("", rig.context);
+  await rig.commands.get("sh")?.("settings", rig.context);
   const warnings = rig.notifications.filter(({ type }) => type === "warning");
   assert.equal(warnings.length, 2);
   assert.match(warnings[0]?.message ?? "", /Using fallback .*call_default\.cmpl/);
@@ -756,7 +756,7 @@ test("finished status clears when the next agent run starts, on ordinary input, 
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
   await startRig.commands.get("sh")?.("", startRig.context);
-  assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel");
+  assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh cancel");
 });
 
 test("automatic initiation enters autonomous work at turn end and retries once at critical", async () => {
@@ -800,7 +800,7 @@ test("automatic initiation enters autonomous work at turn end and retries once a
   );
   assert.equal(enabled.flow.phase, "waiting");
 
-  await enabled.commands.get("sh-cancel")?.("", enabled.context);
+  await enabled.commands.get("sh")?.("cancel", enabled.context);
   const afterFirstAttempt = createRig(
     { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
     { percent: 89, idle: false, pending: true, entries: [...enabled.state.entries] },
@@ -829,7 +829,7 @@ test("automatic initiation enters autonomous work at turn end and retries once a
   assert.equal(alreadyCritical.flow.snapshot?.source, "automatic");
   assert.equal(alreadyCritical.sentMessages.length, 1);
 
-  await afterFirstAttempt.commands.get("sh-cancel")?.("", afterFirstAttempt.context);
+  await afterFirstAttempt.commands.get("sh")?.("cancel", afterFirstAttempt.context);
   const afterSecondAttempt = createRig(
     { automaticSessionHandoff: true, automaticSessionHandoffPercent: 70, criticalWarningPercent: 90 },
     { percent: 99, idle: false, pending: true, entries: [...afterFirstAttempt.state.entries] },
@@ -963,7 +963,7 @@ test("user deferral Wait uses extension selection, keeps input normal, and later
     undefined,
     rig.context,
   );
-  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh-cancel\nAwaiting User GO · Tell your LLM to start when ready");
+  assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh cancel\nAwaiting User GO · Tell your LLM to start when ready");
   assert.deepEqual(await rig.handlers.input?.({ type: "input", text: "continue", source: "interactive" }, rig.context), { action: "continue" });
   assert.equal(rig.flow.phase, "waiting");
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);

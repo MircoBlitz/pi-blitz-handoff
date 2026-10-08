@@ -246,7 +246,7 @@ function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, deferr
   const input = phase === "ready" || writing
     ? `Inputs deferred (${deferredInputCount})`
     : "Input available";
-  return `${activity} · ${input} · /sh-cancel`;
+  return `${activity} · ${input} · /sh cancel`;
 }
 
 export function contextWarning(

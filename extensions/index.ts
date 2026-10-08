@@ -84,12 +84,12 @@ const CANCELLATION_MESSAGE_TYPE = "pi-blitz-handoff-cancelled";
 const CANCELLATION_INSTRUCTION = "Session handoff cancelled. Disregard the previous handoff readiness or writer instruction and any submission ID. Resume normal conversation and task work. Do not submit a session handoff.";
 const HANDOFF_HELP = [
   "Session handoff commands:",
-  "  /sh              Start a session handoff",
-  "  /sh-cancel       Cancel the active handoff",
-  "  /sh-recover      Inspect or replay deferred prompts",
-  "  /sh-config       Configure handoff settings",
-  "  /sh-project-template  Configure templates for the current directory",
-  "  /sh-help         Show this help",
+  "  /sh                   Start a session handoff",
+  "  /sh cancel            Cancel the active handoff",
+  "  /sh recover           Inspect or replay deferred prompts",
+  "  /sh settings          Configure handoff settings",
+  "  /sh project-template  Configure templates for the current directory",
+  "  /sh help              Show this help",
 ].join("\n");
 
 export interface HandoffTemplateHealth {
@@ -536,7 +536,7 @@ export function activateHandoffExtension(
       await requestStart(ctx, "command");
       return;
     }
-    if (action === "config") {
+    if (action === "settings") {
       if (flow.phase !== "inactive" || writer?.isActive || transition.isProtected) {
         ctx.ui.notify("Configuration cannot be changed while a session handoff is active.", "warning");
         return;
@@ -595,30 +595,15 @@ export function activateHandoffExtension(
       );
       return;
     }
-    ctx.ui.notify("Usage: /sh, /sh-help, /sh-recover, /sh-config, /sh-project-template, or /sh-cancel", "warning");
+    ctx.ui.notify("Usage: /sh, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel", "warning");
   };
 
   pi.registerCommand("sh", {
-    description: "Start a session handoff (use /sh-help for commands)",
+    description: "Start a session handoff (use /sh help for commands)",
     handler: async (args, ctx) => {
       await handleHandoffAction(args.trim(), ctx);
     },
   });
-
-  for (const [command, action, description] of [
-    ["sh-help", "help", "Show session handoff help"],
-    ["sh-cancel", "cancel", "Cancel the active session handoff"],
-    ["sh-recover", "recover", "Recover deferred session handoff prompts"],
-    ["sh-config", "config", "Configure session handoff settings"],
-    ["sh-project-template", "project-template", "Configure templates for the current directory"],
-  ] as const) {
-    pi.registerCommand(command, {
-      description,
-      handler: async (_args, ctx) => {
-        await handleHandoffAction(action, ctx);
-      },
-    });
-  }
 
   registerPublicHandoffTool(pi, {
     status(ctx) {
