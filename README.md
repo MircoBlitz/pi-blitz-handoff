@@ -9,15 +9,17 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!TIP]
-> **Latest feature addition: Project directory specific templates**
+> **New default: V2 for better session handoffs**
 >
-> Run `/sh project-template` to select the Call and Handoff Templates for the current Pi working directory and its descendants. Each role independently uses its nearest concrete selection while walking upward.
+> V2 replaces the previous Handoff Templates with a focused continuation dossier: the actual working mode, commissioned work, continuing permissions and the next concrete step. It is now shipped as `handoff_default.cmpl` alongside the unchanged Call default.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
 Automatic handoff describes only how the transfer is triggered, not how the replacement session must work. Autonomous execution, interactive clarification, answering, research, and waiting are equal continuation modes. The extension transfers their existing instructions and authorization boundaries; it does not choose a workflow or grant new permission.
 
-The supplied default template tells the writer to:
+## Why V2 is the default
+
+V2 has worked better in practice than the previous templates. It focuses the dossier on what the replacement session needs to continue, rather than accumulating session history and every past skill read. The template instructs the writer to:
 
 - record the actual continuation mode, `userfacing` or `autonom`;
 - preserve commissioned work, continuing grants and conditions, dirty state, blockers and evidence limits;
@@ -25,7 +27,7 @@ The supplied default template tells the writer to:
 - keep the continuation core inline and reference known detail sources only for concrete retrieval needs; and
 - apply deferred prompts first, then resume the dialogue or perform authorized autonomous work without a previous-session recap.
 
-The handoff protocol and session transition are deterministic. The LLM only decides when the semantic readiness boundary has been reached, writes the continuation dossier, and continues from it in the replacement session.
+The transfer protocol is deterministic; the dossier and continuation are model-generated. V2 is an improved default, not a guarantee of lossless transfer. Results still depend on the model and available source context.
 
 ## Successful autonomous handoff
 
@@ -76,12 +78,14 @@ Pi reads the extension entry point from `package.json`. Review third-party exten
 
 ### Commands
 
-- `/sh` — request a handoff.
-- `/sh help` — show handoff commands and usage.
-- `/sh cancel` — cancel the active handoff when cutover has not started.
-- `/sh recover` — inspect, execute, or discard leftover deferred-prompt files.
-- `/sh settings` — edit global configuration in an extension-owned chat dialog.
-- `/sh project-template` — select or remove project-specific Call and Handoff Templates for the current Pi working directory.
+| Command | Action |
+|---|---|
+| `/sh` | Request a handoff. |
+| `/sh help` | Show commands and usage. |
+| `/sh cancel` | Cancel the active handoff before native cutover starts. |
+| `/sh recover` | Inspect, execute or discard leftover deferred prompts. |
+| `/sh settings` | Change global settings. Each confirmed edit applies immediately. |
+| `/sh project-template` | Set or remove per-role template selections for the current directory. |
 
 Only `/sh` is registered publicly. The former hyphenated commands and `/sh config` are no longer accepted.
 
@@ -98,21 +102,30 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 
 ## How a handoff works
 
-1. An explicit `/sh` or `blitz_handoff start` records the request. Explicit starts ignore all context thresholds.
-2. Automatic initiation is optional. When enabled, it detects the first completed turn at or above its configured threshold and inserts readiness before the next autonomous model turn without interrupting completed-turn tool work. If that automatic attempt ends without successful replacement, one final automatic attempt becomes eligible at or above the configured critical-warning percentage; a second unsuccessful attempt is not repeated. The two-attempt limit survives `/reload` through native session metadata. Every successful manual, threshold, or overflow compaction resets that budget; failed or aborted compaction does not.
-3. Manual or model-requested starts send one Call Template plus a fresh correlation key at the first boundary where Pi is idle and has no pending messages. An automatic start steers the same instruction into the next model turn. The selected Call Template owns the semantic work-boundary and working-style guidance; deterministic code adds only the correlated tool protocol and non-configurable interaction constraints.
-4. At the boundary defined by the Call Template, an explicit handoff lets the model choose one keyed entry point. `session_handoff_go` accepts direct readiness. `session_handoff_go_with_user_deferral` supplies a short reason and opens an extension-owned **Ready / Wait / Cancel** selection. The shipped Call default reserves that choice for a concrete active collaboration that may still need the current user. An automatically initiated handoff permits only direct GO and rejects user deferral so the autonomous run cannot be stopped by a choice dialog.
-5. For an explicit handoff, **Ready** accepts GO. **Wait** keeps input normal, suspends the reminder, and shows `Awaiting User GO · Tell your LLM to start when ready`; a later explicit user readiness message lets the model call direct GO. **Cancel** ends the request. The extension does not parse free-form user replies.
-6. If the permitted entry point has not been invoked after `readinessRetrySeconds`, exactly one visible reminder reapplies the same Call Template and source-specific tool protocol. This prevents a deadlock when background work completed without producing another model turn without imposing a separate hard-coded work-boundary policy. There is no periodic polling, and no reminder runs after **Wait**.
-7. After GO is accepted, ordinary interactive and RPC prompts are deferred immediately. They do not reach the source writer; they remain unchanged and ordered in memory and are atomically written to one recovery Markdown file.
-8. At the next boundary where Pi is idle and has no pending messages, the writer resolves the current dossier template, temporarily allows only its private submission tool, and submits a dossier correlated to the current attempt. Writer-only control is explicitly turn-local and must not be transferred as a user instruction or continuation constraint. The template filename and content are deliberately resolved at each writer start or retry rather than captured immutably when the handoff is requested. The original active tool list is restored on success, cancellation, exhaustion, or terminal failure.
-9. Deterministic code appends any deferred prompts to the dossier. No additional model call assembles the transition prompt.
-10. The extension normally calls `ctx.newSession({ parentSession: sourceSessionPath })` and sends the assembled Markdown through the fresh replacement-session context. Once the source chain reaches `maxSessionChainLength` (default 25, including the master), it omits `parentSession` to start an independent master and keep `/resume` readable. The same complete handoff is transferred; no work is abandoned and no old session is deleted.
-11. Once Pi has created the replacement session and queued the assembled handoff as its first user turn, the extension deletes the corresponding recovery file. If deletion fails, the replacement remains successful and the extension reports the retained file path.
+1. **Request a transfer.** Use `/sh`, explicitly ask the model to start one, or enable automatic initiation. Explicit starts ignore context thresholds.
+2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
+3. **Defer incoming prompts.** After GO, ordinary interactive and RPC prompts are captured unchanged and in order. They are kept in memory and atomically persisted to one recovery Markdown file; slash commands retain Pi’s native behavior.
+4. **Write the dossier.** At the next idle boundary with no pending messages, the source model receives the current Handoff Template and can use only `submit_session_handoff`. Writer control is turn-local, not a transferred task restriction. Each attempt resolves the template afresh. An attempt that settles without a valid submission retries according to the configured count and delay. Terminal errors stop the writer; the original tools are restored on success, cancellation, exhaustion or terminal failure.
+5. **Start the replacement.** Deterministic code appends any deferred prompts and sends the complete Markdown as the fresh session’s first user turn. Native `parentSession` linkage normally preserves lineage. At the configured chain limit, the next session starts as an independent master with the same handoff instead.
+6. **Complete the transfer.** After successful replacement and prompt delivery, the recovery file is deleted. Cleanup failure reports the retained path without undoing the successful replacement.
 
-The previous protocol repeatedly asked a broad “session-owned work” question and required exact text `GO` or `NOT-YET` responses. That wording confused unfinished future work with work actually in flight, while retries spent model turns without improving the decision. The keyed tools make correlation deterministic, the Call Template states the semantic boundary once, and the single reminder exists only to recover from a genuinely quiet background-work boundary.
+### Readiness and user deferral
 
-The submitted dossier's first line is its model-written, task-specific Markdown title. The extension does not semantically validate the title or dossier headings.
+`session_handoff_go` accepts direct GO. For a manual or model-requested handoff, `session_handoff_go_with_user_deferral` can open **Ready / Wait / Cancel** when a concrete active collaboration may still need the current session:
+
+- **Ready** accepts GO.
+- **Wait** keeps ordinary input available, suspends the reminder and shows `Awaiting User GO · Tell your LLM to start when ready`. A later explicit user readiness message lets the model call direct GO with the same key.
+- **Cancel** ends the request.
+
+The extension does not parse free-form replies. If neither permitted readiness tool is called, one reminder after `readinessRetrySeconds` reapplies the same Call Template and source-specific tool protocol. There is no periodic polling and no reminder after **Wait**.
+
+### Automatic initiation
+
+Automatic handoff is off by default. When enabled, the first completed turn at or above the configured threshold inserts readiness before the next model turn without interrupting tool work from the completed turn. Automatic readiness permits only direct GO; user deferral is unavailable so a choice dialog cannot stop autonomous work. Automatic initiation does not choose the replacement’s working mode or grant permission.
+
+If the first automatic attempt fails or is cancelled, one final attempt becomes eligible at the critical-warning threshold. A second unsuccessful attempt is not repeated. Native session metadata preserves this budget across `/reload`. Successful manual, threshold or overflow compaction resets it; failed or aborted compaction does not.
+
+The dossier’s first line is a model-written, task-specific Markdown title. The extension validates submission correlation and nonempty, NUL-free content, not the title’s meaning or dossier structure.
 
 At most one handoff is active. A second start is rejected without replacing the active state. Once native cutover has been invoked, cancellation is no longer available.
 
@@ -144,7 +157,7 @@ A potential race between a still-pending asynchronous start and cancellation or 
 
 Recovery is always explicit. It never automatically executes leftover prompts. Execution deletes the file only after message dispatch returns without an immediate error; unreadable files and immediately rejected dispatches are reported and retained.
 
-## Configuration
+## Settings
 
 Run `/sh settings` in an interactive UI. Each confirmed setting change validates the complete resulting configuration, persists atomically, and takes effect immediately without `/reload`. Invalid input, rejected directory creation, or persistence failure retains the previous value and shows a concrete correction message. A missing configured directory is created only after confirmation of its exact path.
 
@@ -201,9 +214,13 @@ Missing managed directories are created during load. The package installs its tw
 | `call_default.cmpl` | Finish only required work already in flight, then transfer at a genuinely safe boundary. Prefer direct GO unless a concrete active user interaction still matters. |
 | `handoff_default.cmpl` | The V2 dossier: explicit mode, commissioned work, permissions, current state, binding instructions, evidence limits and targeted retrieval. |
 
-There are no packaged Fast, Balanced or development variants. Custom managed and addendum templates remain available; the extension does not delete other user-owned templates or rewrite existing selections.
+There are no packaged Fast, Balanced or development variants. Custom managed and addendum templates remain available.
 
-The V2 default keeps the continuation core inline and references unambiguous known sources for details. It separates continuing grants from consumed individual approvals, preserves relevant unread frontiers and does not turn proposals into assignments. Active skills are recorded as name, purpose and scope, with no cumulative read inventory or skill-path list. The replacement applies deferred prompts first and resumes its actual mode without a previous-session recap. Authorized autonomous work is performed, not merely promised. These are model instructions, not guarantees of lossless transfer or semantically validated output.
+### Upgrading to the V2 default
+
+The package synchronizes the managed `handoff_default.cmpl` to V2, backing up different same-name content first. It does not delete other user-owned templates or change existing selections.
+
+If you previously selected another Handoff Template, choose `handoff_default.cmpl` in `/sh settings` to use V2 globally. A project assignment can override that choice: select `<Default>` for the Handoff role in `/sh project-template` to use the default explicitly, or `<Autodiscover>` to inherit the nearest ancestor or global selection. A configured addendum directory can still shadow the managed default with a same-name file.
 
 Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh settings` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
 

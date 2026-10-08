@@ -2,25 +2,31 @@
 
 ## Unreleased
 
-### Added
-
-- Configurable maximum session chain length through `/sh settings`, default 25 including the master. At the limit, the next handoff starts an independent master with the same continuation context, keeping `/resume` readable. Persisted native lineage determines the count across resume and reload.
-
 ### Changed
 
-- Consolidated the public command surface under `/sh`: `/sh help`, `/sh cancel`, `/sh recover`, `/sh settings` and `/sh project-template`. Settings replaces the former config subcommand; persisted configuration paths and format are unchanged.
-- Configuration edits now validate, persist, and apply immediately after each confirmed setting change. Escape closes the dialog without undoing saved changes; the overall Save/Cancel workflow is removed.
-- Replaced `handoff_default.cmpl` with the unchanged reviewed V2 dossier, recording the actual working mode, commissioned work, continuing permissions, active skills and targeted retrieval. It resumes without a previous-session recap; these are model instructions, not lossless-transfer guarantees.
-- The package now ships only `call_default.cmpl` and `handoff_default.cmpl`. The Call default is unchanged; custom templates, existing selections and managed backups remain supported.
+- **V2 is the new default Handoff Template.** The unchanged reviewed template replaces the previous default as `handoff_default.cmpl`. It records the actual working mode, commissioned work, continuing permissions, current state, active skills and evidence limits. The replacement handles deferred prompts first, then resumes the dialogue or performs authorized work without a previous-session recap. These are model instructions, not a lossless-transfer guarantee.
+- The package ships exactly two templates: the unchanged `call_default.cmpl` and the V2 `handoff_default.cmpl`.
+- All public commands now use `/sh` with subcommands: `help`, `cancel`, `recover`, `settings` and `project-template`. `/sh settings` replaces `/sh config`; the status widget now points to `/sh cancel`.
+- Every confirmed settings change is validated, saved and applied immediately. Escape discards only an unconfirmed input or closes the dialog without undoing saved changes. There is no overall Save/Cancel step.
+
+### Added
+
+- Configurable maximum session chain length in `/sh settings`, default 25 including the master. At the limit, the next handoff starts an independent master with the same continuation context. Native persisted lineage keeps the count accurate across resume and reload; old sessions remain untouched.
 
 ### Removed
 
+- Fast, Balanced and local development template variants from the product.
 - Hyphenated `/sh-*` commands and the `/sh config` subcommand, without compatibility aliases.
-- Fast, Balanced and local development template variants from the product. Loading the package does not delete other user-owned templates.
+
+### Upgrade notes
+
+- Stored settings retain their existing paths and format. Custom managed and addendum templates, project assignments, fallback resolution and managed backups remain supported.
+- Loading the package updates the managed default with a backup when needed, but does not delete other user-owned templates or rewrite existing selections. To adopt V2 when another template is selected, choose `handoff_default.cmpl` in `/sh settings` and check any project override or same-name addendum template.
 
 ### Validation
 
-- Confirmed native master rollover in Real-Pi on 2026-09-30, resuming an existing 10-session chain with an isolated test limit of 10. The replacement header had no parent reference and the new session waited as instructed. The global default remained 25. See [validation scope and evidence](docs/session-chain-validation.md).
+- Deterministic tests cover the shipped default pair, V2 text instructions, the new command surface, immediate settings persistence and native chain-limit inputs. They are not end-to-end Real-Pi validation of every template behavior.
+- Native master rollover was confirmed in Real-Pi on 2026-09-30 with an isolated limit of 10 at the end of an existing 10-session chain. The replacement had no parent reference and waited as instructed; the global default stayed 25. See [validation scope and evidence](docs/session-chain-validation.md).
 
 ## 1.2.4 — 2026-09-12
 
