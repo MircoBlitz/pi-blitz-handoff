@@ -45,7 +45,9 @@ async function persistedConfig(agentDirectory: string, changes: Partial<HandoffC
 
 function scriptedContext(steps: DialogStep[]) {
   const notifications: Notification[] = [];
+  // Native RPC dialog test double; terminal component coverage is separate.
   const context = {
+    mode: "rpc",
     hasUI: true,
     ui: {
       async select(title: string, options: string[]) {

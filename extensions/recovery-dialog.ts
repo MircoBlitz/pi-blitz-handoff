@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { deleteRecoveryFile, inspectRecoveryFile } from "./recovery-store.ts";
+import { documentDialog, selectDialog } from "./overlay-dialog.ts";
 
 const SAFE_RECOVERY_FILE_PATTERN = /^[A-Za-z0-9-]+\.md$/;
 const RECOVERY_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z-/;
@@ -12,9 +13,7 @@ const INSPECT_CONTENTS = "Inspect complete contents";
 const EXECUTE_CONTENTS = "Execute recovered prompts";
 const DISCARD_FILE = "Discard recovery file";
 const RETURN_TO_LIST = "Return to recovery file list";
-const RETURN_TO_ACTIONS = "Return to file actions";
-
-interface RecoveryDialogContext extends Pick<ExtensionCommandContext, "hasUI" | "ui"> {}
+interface RecoveryDialogContext extends Pick<ExtensionCommandContext, "mode" | "hasUI" | "ui"> {}
 
 type RecoveryDispatch = Pick<ExtensionAPI, "sendUserMessage">["sendUserMessage"];
 
@@ -70,7 +69,8 @@ export class RecoveryDialog {
         }
 
         const labels = [...files.map((file) => file.label), CANCEL_RECOVERY];
-        const choice = await ctx.ui.select("Recover deferred session handoff prompts", labels, {
+        const choice = await selectDialog(ctx, "Recover deferred session handoff prompts", labels, {
+          heading: `Recovery · ${files.length} file${files.length === 1 ? "" : "s"}`,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -100,10 +100,10 @@ export class RecoveryDialog {
     signal: AbortSignal,
   ): Promise<"list" | "cancel" | "executed"> {
     while (!signal.aborted) {
-      const choice = await ctx.ui.select(
+      const choice = await selectDialog(ctx,
         `Recovery file: ${fileName}`,
         [INSPECT_CONTENTS, EXECUTE_CONTENTS, DISCARD_FILE, RETURN_TO_LIST, CANCEL_RECOVERY],
-        { signal },
+        { signal, heading: "Recovery · file actions" },
       );
       if (signal.aborted) return "cancel";
       if (choice === undefined || choice === CANCEL_RECOVERY) {
@@ -141,10 +141,8 @@ export class RecoveryDialog {
       return "actions";
     }
 
-    const choice = await ctx.ui.select(
-      `Complete contents of ${fileName} (read-only):\n\n${content}`,
-      [RETURN_TO_ACTIONS, CANCEL_RECOVERY],
-      { signal },
+    const choice = await documentDialog(ctx,
+      `Complete contents of ${fileName} (read-only):`, content, { signal, heading: "Recovery · read-only contents" },
     );
     if (signal.aborted) return "cancel";
     if (choice === CANCEL_RECOVERY || choice === undefined) {

@@ -30,7 +30,9 @@ async function recoveryDirectory(t: test.TestContext): Promise<string> {
 
 function scriptedContext(steps: SelectStep[]) {
   const notifications: Notification[] = [];
+  // Native RPC dialog test double; terminal component coverage is separate.
   const context = {
+    mode: "rpc",
     hasUI: true,
     ui: {
       async select(title: string, options: string[]) {

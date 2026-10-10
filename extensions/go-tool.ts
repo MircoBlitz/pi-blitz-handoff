@@ -1,5 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
+import { selectDialog } from "./overlay-dialog.ts";
+
 import type {
   HandoffDeferralChoice,
   HandoffDeferralResult,
@@ -74,10 +76,10 @@ export function registerSessionHandoffGoTools(pi: ExtensionAPI, handlers: Handof
 
       let selected: string | undefined;
       try {
-        selected = await ctx.ui.select(
+        selected = await selectDialog(ctx,
           `Your LLM reports an active user interaction:\n${params.reason}`,
           ["Ready", "Wait", "Cancel"],
-          { signal },
+          { signal, heading: "Ready / Wait / Cancel" },
         );
       } catch (error) {
         handlers.resolveUserDeferral(params.key, "Cancel", ctx);

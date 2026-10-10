@@ -5,8 +5,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { handoffPaths, loadConfig, saveConfig, validateConfig, type HandoffConfig } from "./config.ts";
 import { isMissing, requireDirectory } from "./filesystem.ts";
 import { catalogueTemplates } from "./templates.ts";
+import { confirmDialog, inputDialog, selectDialog } from "./overlay-dialog.ts";
 
-type ConfigDialogContext = Pick<ExtensionCommandContext, "hasUI" | "ui">;
+type ConfigDialogContext = Pick<ExtensionCommandContext, "mode" | "hasUI" | "ui">;
 type SettingKey = keyof HandoffConfig;
 
 const SETTING_KEYS: readonly SettingKey[] = [
@@ -82,7 +83,8 @@ export class ConfigDialog {
 
       while (!controller.signal.aborted) {
         const options = settingOptions(config);
-        const choice = await ctx.ui.select("Configure pi-blitz-handoff", options, {
+        const choice = await selectDialog(ctx, "Configure pi-blitz-handoff", options, {
+          heading: "Settings · edits save immediately",
           signal: controller.signal,
         });
         if (controller.signal.aborted || choice === undefined) return;
@@ -136,10 +138,10 @@ async function editSetting(
   let candidate: HandoffConfig | undefined;
 
   if (key === "automaticSessionHandoff") {
-    const answer = await ctx.ui.select(
+    const answer = await selectDialog(ctx,
       "Should automatic session handoff be enabled?",
       ["Enabled", "Disabled"],
-      { signal },
+      { signal, heading: SETTING_LABELS[key] },
     );
     if (signal.aborted || answer === undefined) return draft;
     candidate = { ...draft, automaticSessionHandoff: answer === "Enabled" };
@@ -152,10 +154,10 @@ async function editSetting(
       .filter((filename) => filename.startsWith(prefix));
     options.push(ENTER_TEMPLATE_OPTION);
 
-    let answer = await ctx.ui.select(questionFor(key, draft), options, { signal });
+    let answer = await selectDialog(ctx, questionFor(key, draft), options, { signal, heading: SETTING_LABELS[key] });
     if (signal.aborted || answer === undefined) return draft;
     if (answer === ENTER_TEMPLATE_OPTION) {
-      answer = await ctx.ui.input("What .cmpl filename should be used? Enter a filename, not a path.", inputPlaceholder(draft[key]), { signal });
+      answer = await inputDialog(ctx, "What .cmpl filename should be used? Enter a filename, not a path.", inputPlaceholder(draft[key]), { signal, heading: SETTING_LABELS[key] });
       if (signal.aborted || answer === undefined) return draft;
     }
 
@@ -165,7 +167,7 @@ async function editSetting(
       return draft;
     }
   } else {
-    const answer = await ctx.ui.input(questionFor(key, draft), inputPlaceholder(draft[key]), { signal });
+    const answer = await inputDialog(ctx, questionFor(key, draft), inputPlaceholder(draft[key]), { signal, heading: SETTING_LABELS[key] });
     if (signal.aborted || answer === undefined) return draft;
 
     candidate = candidateForAnswer(draft, key, answer);
@@ -315,7 +317,7 @@ async function persistCandidate(
 
       let confirmed: boolean;
       try {
-        confirmed = await ctx.ui.confirm(
+        confirmed = await confirmDialog(ctx,
           "Create missing directory?",
           `Saving requires this directory. Create exactly this directory?\n${directory}`,
           { signal },

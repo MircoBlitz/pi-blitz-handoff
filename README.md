@@ -80,7 +80,8 @@ Pi reads the extension entry point from `package.json`. Review third-party exten
 
 | Command | Action |
 |---|---|
-| `/sh` | Request a handoff. |
+| `/sh` | Open the handoff menu. |
+| `/sh start` | Request a handoff directly. |
 | `/sh help` | Show commands and usage. |
 | `/sh cancel` | Cancel the active handoff before native cutover starts. |
 | `/sh recover` | Inspect, execute or discard leftover deferred prompts. |
@@ -90,6 +91,16 @@ Pi reads the extension entry point from `package.json`. Review third-party exten
 Only `/sh` is registered publicly. The former hyphenated commands and `/sh config` are no longer accepted.
 
 There is no public retry command, cleanup command, or public transition command.
+
+### Overlay dialogs
+
+In Pi's terminal UI, `/sh` opens a themed overlay above the conversation. Its first action is **Start handoff**, or **Cancel handoff** while a handoff is active. The remaining actions open Recovery, Settings, Project templates and Help. Opening the menu does not start a handoff; Escape closes it without action.
+
+All interactive handoff dialogs use the same overlay presentation, including setting inputs, directory confirmations, recovery-file inspection and **Ready / Wait / Cancel**. Clear headings, short descriptions and keyboard hints keep the controls discoverable. Recovery inspection is scrollable so the complete stored prompts remain accessible.
+
+Type `/sh ` to see all subcommands with short descriptions; keep typing to narrow the list. Direct commands remain available when you already know what you need.
+
+Overlays are terminal-only. RPC clients retain Pi's native selection, input and confirmation dialogs; they do not receive a simulated overlay. Dialog answers do not enter model context. The transfer protocol, template defaults and immediate settings persistence are unchanged.
 
 ### Model-callable tool
 
@@ -102,7 +113,7 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 
 ## How a handoff works
 
-1. **Request a transfer.** Use `/sh`, explicitly ask the model to start one, or enable automatic initiation. Explicit starts ignore context thresholds.
+1. **Request a transfer.** Choose **Start handoff** from `/sh`, use `/sh start`, explicitly ask the model to start one, or enable automatic initiation. Explicit starts ignore context thresholds.
 2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
 3. **Defer incoming prompts.** After GO, ordinary interactive and RPC prompts are captured unchanged and in order. They are kept in memory and atomically persisted to one recovery Markdown file; slash commands retain Pi’s native behavior.
 4. **Write the dossier.** At the next idle boundary with no pending messages, the source model receives the current Handoff Template and can use only `submit_session_handoff`. Writer control is turn-local, not a transferred task restriction. Each attempt resolves the template afresh. An attempt that settles without a valid submission retries according to the configured count and delay. Terminal errors stop the writer; the original tools are restored on success, cancellation, exhaustion or terminal failure.
