@@ -55,7 +55,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.4.0");
+  assert.equal(manifest.version, "1.3.1");
   assert.equal(
     manifest.description,
     "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
@@ -95,10 +95,10 @@ test("public documentation carries the current tagline and supported line", asyn
   ]);
 
   assert.match(readme, /^Steer your context\. Hand off what matters\.$/m);
-  assert.match(readme, /\*\*Release Note — 1\.4\.0\*\*/);
+  assert.match(readme, /\*\*Release Note — 1\.3\.1\*\*/);
   assert.doesNotMatch(readme, /\[!TIP\]/);
-  assert.match(security, /current 1\.4 code line/);
-  assert.doesNotMatch(security, /current 1\.[123] code line/);
+  assert.match(security, /current 1\.3 code line/);
+  assert.doesNotMatch(security, /current 1\.[124] code line/);
 });
 
 test("the package ships only the readiness-only Call default and unchanged reviewed V2 Handoff default", async () => {
