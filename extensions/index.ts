@@ -19,6 +19,7 @@ import {
 } from "./flow.ts";
 import { registerSessionHandoffGoTools } from "./go-tool.ts";
 import { ProjectTemplateDialog } from "./project-template-dialog.ts";
+import { documentDialog, selectDialog } from "./overlay-dialog.ts";
 import {
   loadProjectTemplateAssignments,
   resolveProjectTemplateAssignment,
@@ -83,13 +84,24 @@ const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
 const CANCELLATION_MESSAGE_TYPE = "pi-blitz-handoff-cancelled";
 const CANCELLATION_INSTRUCTION = "Session handoff cancelled. Disregard the previous handoff readiness or writer instruction and any submission ID. Resume normal conversation and task work. Do not submit a session handoff.";
 const HANDOFF_HELP = [
-  "Session handoff commands:",
-  "  /sh                   Start a session handoff",
-  "  /sh cancel            Cancel the active handoff",
-  "  /sh recover           Inspect or replay deferred prompts",
-  "  /sh settings          Configure handoff settings",
-  "  /sh project-template  Configure templates for the current directory",
-  "  /sh help              Show this help",
+  "## Commands",
+  "- `/sh` — Open the handoff menu",
+  "- `/sh start` — Start a session handoff",
+  "- `/sh cancel` — Cancel the active handoff before cutover",
+  "- `/sh recover` — Inspect, execute or discard retained prompts",
+  "- `/sh settings` — Configure global settings; each confirmed edit saves immediately",
+  "- `/sh project-template` — Assign templates to the current directory",
+  "- `/sh help` — Show this help",
+  "",
+  "## Dialog controls",
+  "Arrow keys select; Enter confirms; Escape returns or closes without confirming.",
+  "Page Up / Page Down scroll details. In content inspection, arrows and Home / End also scroll.",
+  "",
+  "## Readiness",
+  "Ready accepts GO. Wait keeps ordinary input normal until you tell your LLM to start. Cancel ends the handoff.",
+  "",
+  "Dialog answers stay outside model context. Closing Settings does not undo confirmed edits.",
+  "Recovery never executes automatically. Inspecting a file never changes it.",
 ].join("\n");
 
 export interface HandoffTemplateHealth {
@@ -162,6 +174,7 @@ export function activateHandoffExtension(
   let recoveryWrites: Promise<unknown> = Promise.resolve();
   let flow: HandoffFlow;
   let configDialog: ConfigDialog;
+  let navigationDialog: AbortController | undefined;
   const config = { ...initialConfig };
   const handoffTemplates = new Map<string, string>();
   const agentDirectory = dirname(paths.baseDirectory);
@@ -528,11 +541,41 @@ export function activateHandoffExtension(
   };
 
   const handleHandoffAction = async (action: string, ctx: ExtensionCommandContext): Promise<void> => {
-    if (action === "help" || action === "?") {
-      ctx.ui.notify(HANDOFF_HELP, "info");
+    if (action === "" || action === "help" || action === "?") {
+      if (!ctx.hasUI || (action !== "" && ctx.mode !== "tui")) {
+        ctx.ui.notify(HANDOFF_HELP, "info");
+        return;
+      }
+      if (navigationDialog !== undefined) {
+        ctx.ui.notify("The handoff menu or help is already open.", "info");
+        return;
+      }
+      const controller = new AbortController();
+      navigationDialog = controller;
+      let selected: string | undefined;
+      try {
+        if (action !== "") {
+          await documentDialog(ctx, "Session handoff · Help", HANDOFF_HELP, { signal: controller.signal, markdown: true });
+        } else {
+          const active = flow.phase !== "inactive" || writer?.isActive || transition.isProtected;
+          selected = await selectDialog(ctx,
+            formatPublicStatus(flow.phase, ctx.getContextUsage(), config,
+              getHandoffTerminalState(ctx.sessionManager.getSessionFile()), writer?.isActive ?? false),
+            [
+              { value: active ? "cancel" : "start", label: active ? "Cancel handoff" : "Start handoff", description: active ? "End the active transfer before cutover" : "Request a fresh linked session" },
+              { value: "recover", label: "Recovery", description: "Inspect or replay retained prompts" },
+              { value: "settings", label: "Settings", description: "Edit global settings; each edit saves immediately" },
+              { value: "project-template", label: "Project templates", description: "Assign templates to the current directory" },
+              { value: "help", label: "Help", description: "Commands and keyboard controls" },
+            ], { signal: controller.signal, heading: "Session handoff" });
+        }
+      } finally {
+        if (navigationDialog === controller) navigationDialog = undefined;
+      }
+      if (!controller.signal.aborted && selected !== undefined) await handleHandoffAction(selected, ctx);
       return;
     }
-    if (action === "") {
+    if (action === "start") {
       await requestStart(ctx, "command");
       return;
     }
@@ -595,11 +638,19 @@ export function activateHandoffExtension(
       );
       return;
     }
-    ctx.ui.notify("Usage: /sh, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel", "warning");
+    ctx.ui.notify("Usage: /sh, /sh start, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel", "warning");
   };
 
   pi.registerCommand("sh", {
-    description: "Start a session handoff (use /sh help for commands)",
+    description: "Open the session handoff menu (use /sh start to start directly)",
+    getArgumentCompletions: (prefix) => [
+      { value: "start", label: "start", description: "Start a session handoff" },
+      { value: "cancel", label: "cancel", description: "Cancel the active handoff" },
+      { value: "recover", label: "recover", description: "Inspect or replay deferred prompts" },
+      { value: "settings", label: "settings", description: "Configure global handoff settings" },
+      { value: "project-template", label: "project-template", description: "Configure templates for this directory" },
+      { value: "help", label: "help", description: "Show commands and usage" },
+    ].filter((item) => item.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       await handleHandoffAction(args.trim(), ctx);
     },
@@ -746,6 +797,7 @@ export function activateHandoffExtension(
     initializeWriterTools(ctx);
     for (const warning of pendingStartupTemplateWarnings) ctx.ui.notify(warning, "warning");
     pendingStartupTemplateWarnings = [];
+    navigationDialog?.abort();
     configDialog.discard();
     projectTemplateDialog.discard();
     recoveryDialog.discard();
@@ -756,6 +808,7 @@ export function activateHandoffExtension(
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    navigationDialog?.abort();
     configDialog.discard();
     projectTemplateDialog.discard();
     recoveryDialog.discard();

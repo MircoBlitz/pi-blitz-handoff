@@ -55,7 +55,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   const manifest = await readManifest();
 
   assert.equal(manifest.name, "pi-blitz-handoff");
-  assert.equal(manifest.version, "1.3.0");
+  assert.equal(manifest.version, "1.4.0");
   assert.equal(
     manifest.description,
     "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
@@ -95,11 +95,13 @@ test("public documentation carries the current tagline and supported line", asyn
   ]);
 
   assert.match(readme, /^Steer your context\. Hand off what matters\.$/m);
-  assert.match(security, /current 1\.2 code line/);
-  assert.doesNotMatch(security, /current 1\.1 code line/);
+  assert.match(readme, /\*\*Release Note — 1\.4\.0\*\*/);
+  assert.doesNotMatch(readme, /\[!TIP\]/);
+  assert.match(security, /current 1\.4 code line/);
+  assert.doesNotMatch(security, /current 1\.[123] code line/);
 });
 
-test("the package ships only the unchanged Call default and reviewed V2 Handoff default", async () => {
+test("the package ships only the readiness-only Call default and unchanged reviewed V2 Handoff default", async () => {
   const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
   assert.deepEqual(SHIPPED_TEMPLATE_FILENAMES, filenames);
   assert.deepEqual((await readdir(join(projectRoot, "templates"))).sort(), filenames);
@@ -110,7 +112,7 @@ test("the package ships only the unchanged Call default and reviewed V2 Handoff 
   ]);
   assert.equal(
     createHash("sha256").update(call).digest("hex"),
-    "02f4ea823262d5faf5f6ab0fea0e510fcf99887df14f55d3a5cae1562bfe2e08",
+    "513655a89bf70026e4a97fd22313f1ef79fb68c30ef609cbc9db6ecc2a87fabd",
   );
   assert.equal(
     createHash("sha256").update(handoff).digest("hex"),

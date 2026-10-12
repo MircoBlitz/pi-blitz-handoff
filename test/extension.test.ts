@@ -24,6 +24,7 @@ import {
 } from "../extensions/index.ts";
 import { setHandoffTerminalState } from "../extensions/status.ts";
 import { SUBMIT_SESSION_HANDOFF_TOOL } from "../extensions/submission-tool.ts";
+import { createDialogHarness } from "./extension-harness.ts";
 
 interface RuntimeState {
   idle: boolean;
@@ -130,6 +131,10 @@ function createRig(
   const toolExecutions = new Map<string, ToolExecute>();
   let selectHandler: SelectHandler = async () => undefined;
   let promptInputHandler: PromptInputHandler = async () => undefined;
+  const dialogs = createDialogHarness({
+    select: (title, options, opts) => selectHandler(title, options, opts),
+    input: (title, placeholder, opts) => promptInputHandler(title, placeholder, opts),
+  });
 
   const context = {
     mode: "tui",
@@ -148,6 +153,7 @@ function createRig(
       getEntries: () => state.entries,
     },
     ui: {
+      custom: dialogs.custom,
       select(title: string, options: string[], opts?: { signal?: AbortSignal }) {
         return selectHandler(title, options, opts);
       },
@@ -223,6 +229,7 @@ function createRig(
   return {
     state,
     notifications,
+    dialogs,
     statuses,
     widgetSetCalls,
     sentMessages,
@@ -258,7 +265,7 @@ test("TUI session startup reserves one widget that active and terminal updates r
   assert.equal(rig.hasWidgetComponent(), true);
   assert.equal(rig.statuses.at(-1), undefined);
 
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   assert.equal(rig.widgetSetCalls.length, 1);
   assert.equal(rig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh cancel");
 
@@ -293,17 +300,17 @@ test("defers writer tool initialization until the first session_start", async ()
   assert.equal(rig.notifications.some((notification) => notification.type === "error"), false);
 });
 
-test("/sh starts immediately only at an idle, no-pending boundary and duplicate start is visible", async () => {
+test("/sh start starts immediately only at an idle, no-pending boundary and duplicate start is visible", async () => {
   const rig = createRig();
   const command = rig.commands.get("sh");
   assert.ok(command);
 
-  await command("", rig.context);
+  await command("start", rig.context);
   assert.equal(rig.sentMessages.length, 1);
   assert.deepEqual(rig.sentMessages[0]?.options, { deliverAs: "followUp", triggerTurn: true });
   const identity = rig.flow.snapshot;
 
-  await command("", rig.context);
+  await command("start", rig.context);
   assert.equal(rig.sentMessages.length, 1);
   assert.deepEqual(rig.flow.snapshot, identity);
   assert.equal(rig.notifications.at(-1)?.message, "A session handoff is already active.");
@@ -312,11 +319,67 @@ test("/sh starts immediately only at an idle, no-pending boundary and duplicate 
 test("/sh help displays subcommands and usage", async () => {
   const rig = createRig();
   await rig.commands.get("sh")?.("help", rig.context);
-  assert.equal(rig.notifications.at(-1)?.type, "info");
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh recover/);
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh settings/);
-  assert.match(rig.notifications.at(-1)?.message ?? "", /\/sh project-template/);
-  assert.doesNotMatch(rig.notifications.at(-1)?.message ?? "", /\\n/);
+  const help = rig.dialogs.screens.flat().join("\n");
+  assert.match(help, /\/sh recover/);
+  assert.match(help, /\/sh settings/);
+  assert.match(help, /\/sh project-template/);
+  assert.equal(rig.sentMessages.length, 0);
+});
+
+test("/sh opens a native menu without starting; Escape is inert; Start and Cancel dispatch real actions", async () => {
+  const rig = createRig();
+  const command = rig.commands.get("sh");
+  assert.ok(command);
+  await command("", rig.context);
+  assert.equal(rig.flow.phase, "inactive");
+  assert.equal(rig.sentMessages.length, 0);
+  assert.equal(rig.sentUserMessages.length, 0);
+  assert.match(rig.dialogs.screens[0]?.join("\n") ?? "", /Start handoff/);
+  rig.setSelectHandler(async (_title, options) => {
+    assert.deepEqual(options, ["Start handoff", "Recovery", "Settings", "Project templates", "Help"]);
+    return "Start handoff";
+  });
+  await command("", rig.context);
+  assert.equal(rig.flow.phase, "waiting");
+  assert.equal(rig.sentMessages.length, 1);
+  rig.setSelectHandler(async (_title, options) => {
+    assert.equal(options[0], "Cancel handoff");
+    return undefined;
+  });
+  const identity = rig.flow.snapshot;
+  await command("", rig.context);
+  assert.deepEqual(rig.flow.snapshot, identity);
+  rig.setSelectHandler(async () => "Cancel handoff");
+  await command("", rig.context);
+  assert.equal(rig.flow.phase, "inactive");
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Resume normal conversation/);
+  assert.ok(rig.dialogs.options.every((opts) => (opts as { overlay?: boolean }).overlay === true));
+});
+
+test("menu Help dispatch stays in a genuine overlay without model messages", async () => {
+  const rig = createRig();
+  rig.setSelectHandler(async () => "Help");
+  await rig.commands.get("sh")?.("", rig.context);
+  assert.equal(rig.dialogs.options.length, 2);
+  assert.match(rig.dialogs.screens.flat().join("\n"), /Session handoff · Help/);
+  assert.equal(rig.sentMessages.length, 0);
+  assert.equal(rig.sentUserMessages.length, 0);
+});
+
+test("shutdown dismisses an open menu without dispatching its selected action", async () => {
+  const rig = createRig();
+  let opened: (() => void) | undefined;
+  const ready = new Promise<void>((resolve) => { opened = resolve; });
+  rig.setSelectHandler(async (_title, _options, opts) => {
+    opened?.();
+    return new Promise((resolve) => opts?.signal?.addEventListener("abort", () => resolve("Start handoff"), { once: true }));
+  });
+  const running = rig.commands.get("sh")?.("", rig.context);
+  await ready;
+  await rig.handlers.session_shutdown?.({ type: "session_shutdown", reason: "reload" }, rig.context);
+  await running;
+  assert.equal(rig.flow.phase, "inactive");
+  assert.equal(rig.sentMessages.length, 0);
 });
 
 test("blitz_handoff start records intent during a run while status remains factual", async () => {
@@ -338,7 +401,7 @@ test("blitz_handoff start records intent during a run while status remains factu
 
 test("persisted-session prerequisite is visible for command and tool starts", async () => {
   const commandRig = createRig({}, { sessionFile: undefined });
-  await commandRig.commands.get("sh")?.("", commandRig.context);
+  await commandRig.commands.get("sh")?.("start", commandRig.context);
   assert.equal(commandRig.sentMessages.length, 0);
   assert.equal(commandRig.notifications.at(-1)?.type, "error");
   assert.match(commandRig.notifications.at(-1)?.message ?? "", /persisted source session/);
@@ -607,7 +670,7 @@ test("project templates are resolved from the nearest ancestor for the next hand
   };
   const rig = createRig({}, {}, agentDirectory, toolRuntime);
 
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   assert.match(rig.sentMessages[0]?.message.content ?? "", /^PROJECT CALL\n/);
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
@@ -633,7 +696,7 @@ test("invalid project settings use real role defaults for explicit and automatic
     agentDirectory,
   );
 
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   assert.equal(rig.flow.phase, "waiting");
   assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /^DEFAULT CALL/);
   assert.match(
@@ -657,7 +720,7 @@ test("project-settings fallback aborts when a role default cannot resolve", asyn
   await writeFile(paths.projectTemplatesFile, "{invalid-json");
   const rig = createRig({}, {}, agentDirectory);
 
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
 
   assert.equal(rig.flow.phase, "inactive");
   assert.equal(rig.sentMessages.length, 0);
@@ -755,7 +818,7 @@ test("finished status clears when the next agent run starts, on ordinary input, 
   const startRig = createRig({}, { sessionFile: startSession });
   setHandoffTerminalState(startSession, "finished");
   await startRig.handlers.session_start?.({ type: "session_start", reason: "startup" }, startRig.context);
-  await startRig.commands.get("sh")?.("", startRig.context);
+  await startRig.commands.get("sh")?.("start", startRig.context);
   assert.equal(startRig.statuses.at(-1), "Waiting for Session Handoff · Input available · /sh cancel");
 });
 
@@ -900,7 +963,7 @@ test("explicit command and tool starts ignore automatic thresholds and exhausted
     { percent: 1, entries: [...exhaustedEntries] },
   );
   await command.handlers.session_start?.({ type: "session_start", reason: "reload" }, command.context);
-  await command.commands.get("sh")?.("", command.context);
+  await command.commands.get("sh")?.("start", command.context);
   assert.equal(command.flow.snapshot?.source, "command");
   assert.equal(command.sentMessages.length, 1);
 
@@ -924,7 +987,7 @@ test("explicit command and tool starts ignore automatic thresholds and exhausted
 test("steering and follow-up input pass unchanged before GO without changing correlation", async () => {
   for (const streamingBehavior of ["steer", "followUp"] as const) {
     const rig = createRig();
-    await rig.commands.get("sh")?.("", rig.context);
+    await rig.commands.get("sh")?.("start", rig.context);
     const key = rig.flow.snapshot?.readinessKey;
     const event: InputEvent = {
       type: "input",
@@ -953,7 +1016,7 @@ test("user deferral Wait uses extension selection, keeps input normal, and later
     assert.match(rig.statuses.at(-1) ?? "", /User Input Required/);
     return "Wait";
   });
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
   await rig.getToolExecute("session_handoff_go_with_user_deferral")(
@@ -973,7 +1036,7 @@ test("user deferral Wait uses extension selection, keeps input normal, and later
 test("user deferral Cancel queues the same model reset instruction", async () => {
   const rig = createRig();
   rig.setSelectHandler(async () => "Cancel");
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
 
@@ -996,7 +1059,7 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   const recoveryDirectory = join(root, "recovery");
   await mkdir(recoveryDirectory);
   const rig = createRig({ recoveryDirectory }, { sessionFile: "/sessions/My source.jsonl" });
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
@@ -1050,7 +1113,7 @@ test("post-GO persistence failure is visible and still handles the captured prom
   const notDirectory = join(root, "not-a-directory");
   await writeFile(notDirectory, "occupied");
   const rig = createRig({ recoveryDirectory: notDirectory });
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
@@ -1070,7 +1133,7 @@ test("post-GO persistence failure is visible and still handles the captured prom
 
 test("only a current keyed GO tool call advances and writer dispatch waits for settled", async () => {
   const rig = createRig();
-  await rig.commands.get("sh")?.("", rig.context);
+  await rig.commands.get("sh")?.("start", rig.context);
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   const execute = rig.getToolExecute("session_handoff_go");

@@ -12,6 +12,7 @@ import type {
 
 import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/config.ts";
 import { activateHandoffExtension } from "../extensions/index.ts";
+import { createDialogHarness } from "./extension-harness.ts";
 
 interface Notification {
   message: string;
@@ -68,6 +69,7 @@ async function activateIntegrationRig(
   const parentSessions: Array<string | undefined> = [];
   let activeTools = ["read", "bash"];
   let selectAnswers: string[] = [];
+  const dialogs = createDialogHarness({ select: async () => selectAnswers.shift() });
 
   const context = {
     mode: "tui",
@@ -83,6 +85,7 @@ async function activateIntegrationRig(
     },
     abort() {},
     ui: {
+      custom: dialogs.custom,
       async select() {
         return selectAnswers.shift();
       },
@@ -191,7 +194,7 @@ async function activateIntegrationRig(
 async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): Promise<string> {
   const command = rig.commands.get("sh");
   assert.ok(command);
-  await command.handler("", rig.context);
+  await command.handler("start", rig.context);
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.tools.get("session_handoff_go")?.execute("go", { key: go }, undefined, undefined, rig.context);
@@ -265,7 +268,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
 test("integrated starts reject an unpersisted source and writer exhaustion fails visibly with tools restored", async (t) => {
   const rejected = await activateIntegrationRig(t);
   rejected.state.sessionFile = undefined;
-  await rejected.commands.get("sh")?.handler("", rejected.context);
+  await rejected.commands.get("sh")?.handler("start", rejected.context);
   assert.equal(rejected.flow.phase, "inactive");
   assert.equal(rejected.customMessages.length, 0);
   assert.match(rejected.notifications.at(-1)?.message ?? "", /persisted source session/);

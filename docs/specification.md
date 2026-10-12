@@ -2,7 +2,7 @@
 
 > **Current approved product authority.**
 >
-> This specification incorporates the explicitly approved keyed-readiness redesign. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
+> This specification incorporates the explicitly approved keyed-readiness redesign and unified overlay-dialog feature. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
@@ -26,14 +26,15 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 
 ### Commands
 
-- `/sh` — request a handoff.
+- `/sh` — open the handoff menu.
+- `/sh start` — request a handoff directly.
 - `/sh help` — show handoff commands and usage.
 - `/sh cancel` — cancel the active handoff.
 - `/sh recover` — inspect and act on leftover deferred-prompt files.
-- `/sh settings` — configure global extension settings through an in-chat question-and-answer flow.
+- `/sh settings` — configure global extension settings through the extension-owned dialog.
 - `/sh project-template` — configure or remove the project-template assignment for the current Pi working directory.
 
-Only `/sh` is registered publicly; help, cancel, recover, settings and project-template are its subcommands. The former hyphenated commands and `/sh config` are not accepted as compatibility aliases. There is no public transition command, `/sh retry`, `/sh cleanup`, or `/shconfig`. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
+Only `/sh` is registered publicly; start, help, cancel, recover, settings and project-template are its subcommands. Native argument completion presents all six subcommands with short descriptions after `/sh ` and filters them while typing. The former hyphenated commands and `/sh config` are not accepted as compatibility aliases. There is no public transition command, `/sh retry`, `/sh cleanup`, or `/shconfig`. The implementation may register one private extension command as the smallest documented bridge from tool- or event-initiated work into the `ExtensionCommandContext` required by `ctx.newSession()`. That bridge is not an initiation path, is not advertised to the user, and accepts only the currently correlated transition request.
 
 ### Model-callable tool
 
@@ -48,13 +49,21 @@ The model calls `start` when the user explicitly requests a handoff. Discussion,
 
 Exactly three initiation paths exist:
 
-1. `/sh`;
+1. `/sh start` or **Start handoff** in the `/sh` menu;
 2. `blitz_handoff start`;
 3. optional automatic initiation.
 
 At most one handoff may be active. A second start request is rejected visibly and does not replace active IDs or state.
 
-Explicit `/sh` and explicit `blitz_handoff start` are never blocked by a context threshold. Only automatic initiation uses the configured automatic threshold.
+Explicit `/sh start`, the menu's **Start handoff** action and explicit `blitz_handoff start` are never blocked by a context threshold. Only automatic initiation uses the configured automatic threshold.
+
+### Unified overlay dialogs
+
+In Pi's terminal UI, the main menu, global settings, project-template selection, recovery (including complete prompt inspection), help and **Ready / Wait / Cancel** use genuine native `ctx.ui.custom()` overlays. They share a compact, polished presentation: theme-aware borders and semantic colors, clear headings and descriptions, factual status where relevant, and visible keyboard hints. Use Pi's native components for selection, text input and scrolling; do not implement a second terminal renderer. Layout must remain usable at narrow terminal sizes, during resize and after theme changes.
+
+The first menu action is **Start handoff** when no handoff is active and **Cancel handoff** when a handoff is active. Remaining actions are recovery, settings, project templates and help. Opening or dismissing the main menu has no start/cancel side effect; selecting its primary action invokes the same real implementation as the corresponding direct subcommand. Escape closes the main menu without action. All direct subcommands remain available.
+
+This is a presentation overhaul, not a lifecycle or storage redesign. Existing readiness correlation, cancellation boundaries, automatic initiation, deferred-prompt handling, template resolution, immediate per-edit persistence and recovery execution/deletion contracts remain unchanged. Dialog input never enters model context. Existing non-TUI/RPC support deliberately retains Pi's native select/input/confirm dialogs where custom terminal overlays are unsupported; those interactions are not presented as overlays. No simulated overlay, alternate runtime or compatibility alias is introduced.
 
 ## 4. Configuration and managed data
 
@@ -100,7 +109,7 @@ Warning thresholds satisfy:
 1 <= contextWarningPercent < criticalWarningPercent <= 100
 ```
 
-Automatic handoff is disabled when `automaticSessionHandoff` is false or `automaticSessionHandoffPercent` is `0`. When enabled with a nonzero threshold, the threshold is from `1` through `100`. A zero automatic threshold never gates explicit `/sh` or `blitz_handoff start`.
+Automatic handoff is disabled when `automaticSessionHandoff` is false or `automaticSessionHandoffPercent` is `0`. When enabled with a nonzero threshold, the threshold is from `1` through `100`. A zero automatic threshold never gates `/sh start`, the menu's **Start handoff** action or explicit `blitz_handoff start`.
 
 `maxSessionChainLength` is a positive integer, default `25`, counting the master as session one. At or above the limit, the next handoff creates an independent master by omitting `parentSession`, transferring the unchanged complete handoff and deferred prompts. This bounds chain depth for readability in `/resume`, not work duration. Old sessions remain untouched. Length is read from native persisted parent-session headers and survives resume and reload; a new master starts at one. Configuration changes apply immediately. Unreadable required lineage causes a visible cutover failure rather than an invented count.
 
@@ -108,19 +117,19 @@ Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a p
 
 `recoveryDirectory` and an optional `templateDirectory` are absolute directory paths. `callTemplate` and `handoffTemplate` are `.cmpl` filenames, not paths. A directory setting must resolve to a directory; when it does not exist, the config dialog asks whether `save` may create it. Deliberate directory symlinks are valid.
 
-### In-chat configuration
+### Configuration dialog
 
-`/sh settings` starts an extension-owned chat dialog. It shows the available settings and their current persisted values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
+`/sh settings` starts an extension-owned overlay dialog in the terminal UI. It shows the available settings and their current persisted values. The user chooses one setting, answers the value question, and returns to the setting list. This may repeat in any order. Template settings normally present the available readable, nonempty role-specific templates as a selection: Call Templates use the `call_` prefix and dossier templates use the `handoff_` prefix. An explicit manual-entry option remains available for another `.cmpl` filename.
 
 Each confirmed edit is validated against the complete resulting configuration and atomically persisted immediately. The running extension applies the persisted configuration immediately; it does not require `/reload`. Invalid input, rejected directory creation, or persistence failure leaves the previous value active and shows a concrete message with a useful correction hint. A missing configured directory is created only after the user confirms its exact path.
 
-There is no overall draft, Save action, or Cancel action. Escape discards only an unconfirmed setting input; Escape from the setting list closes the dialog without rolling back prior edits. Configuration cannot overlap an active handoff or recovery dialog, and a handoff cannot start while configuration is open. Dialog questions and answers do not enter model context. `/reload` or session replacement closes the dialog without affecting changes already persisted. A TUI overlay is not part of v1.0.
+There is no overall draft, Save action, or Cancel action. Escape discards only an unconfirmed setting input; Escape from the setting list closes the dialog without rolling back prior edits. Configuration cannot overlap an active handoff or recovery dialog, and a handoff cannot start while configuration is open. Dialog questions and answers do not enter model context. `/reload` or session replacement closes the dialog without affecting changes already persisted.
 
 ## 5. Managed templates and catalogue
 
 The package ships exactly two templates:
 
-- `call_default.cmpl` defines the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters.
+- `call_default.cmpl` defines a readiness-only phase and the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters. It prohibits writing a handoff or creating a continuation file during readiness and instructs the model to wait after GO for the explicit writer instruction with the Handoff Template and submission ID.
 - `handoff_default.cmpl` contains the V2 continuation dossier: explicit working mode, commissioned work, continuing grants and conditions, current state, binding decisions, active skills, evidence limits and targeted retrieval.
 
 The package has no Fast, Balanced or development template variants. Custom managed and addendum templates remain supported; loading the package does not delete other user-owned templates or rewrite existing selections.
@@ -188,7 +197,7 @@ An automatic request is different: it is detected after a completed turn and its
 
 The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends only the exact correlated tool protocol and non-configurable interaction constraints; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
+The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. Readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file, and to wait after GO for the extension's explicit writer instruction containing the Handoff Template and submission ID. These are model instructions, not a deterministic filesystem write block. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
 Two correlated tools exist:
 
@@ -369,7 +378,8 @@ Automated tests cover the actual deterministic contracts:
 - direct native replacement, parent-session lineage inputs, configurable chain limits including the master, parentless cutover with unchanged prompts, and persisted-lineage counting across resume/reload;
 - cancellation and stale-callback invalidation;
 - per-file recovery inspection, execution, discard, and delete-after-acceptance;
-- public commands, public tool, and factual status.
+- public commands, native argument completion, menu start/cancel dispatch, public tool, and factual status;
+- genuine overlay rendering and keyboard behavior, narrow widths, scrolling, resize/theme invalidation, input focus, dismissal, and dialog lifecycle without model-context leakage.
 
 Tests use focused adapters and pure helpers where needed. They do not implement a second fake Pi runtime.
 
@@ -387,9 +397,7 @@ A real current-Pi validation is a separate final gate and requires fresh user ap
 
 ## 15. Non-goals
 
-v1.0 excludes:
-
-- a TUI or overlay configuration editor;
+The product excludes:
 - a public transition command or a parallel replacement mechanism beyond the one private bridge required by Pi's command-only session API;
 - periodic readiness polling;
 - deterministic free-form user-text parsing or a working-style detection engine;
@@ -409,6 +417,6 @@ v1.0 excludes:
 
 ## 16. Review status and authority
 
-This document is the current product authority, including the approved keyed-readiness refinement.
+This document is the current product authority, including the approved keyed-readiness refinement and unified overlay-dialog feature.
 
 Git history, previous plan text, and previous implementation code are not product authority and must not be used as implementation context. Workers may report a concrete gap but must not edit or reinterpret this specification. The orchestrator may approve a small implementation detail when it is clearly implied by the approved concept and does not materially change public behavior, UX, authorization, security, data lifecycle, or scope. Material changes, uncertainty, and genuine product decisions go to the user. Contradictory proposals are rejected rather than incorporated.

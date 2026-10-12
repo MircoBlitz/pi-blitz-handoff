@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { handoffPaths, loadConfig } from "./config.ts";
+import { selectDialog } from "./overlay-dialog.ts";
 import {
   loadProjectTemplateAssignments,
   removeProjectTemplateAssignment,
@@ -18,7 +19,7 @@ import {
 const AUTODISCOVER_OPTION = "<Autodiscover>";
 const DEFAULT_OPTION = "<Default>";
 
-type ProjectTemplateDialogContext = Pick<ExtensionCommandContext, "cwd" | "hasUI" | "ui">;
+type ProjectTemplateDialogContext = Pick<ExtensionCommandContext, "mode" | "cwd" | "hasUI" | "ui">;
 type TemplateRole = "callTemplate" | "handoffTemplate";
 
 export class ProjectTemplateDialog {
@@ -57,18 +58,18 @@ export class ProjectTemplateDialog {
         ? "Current exact assignment: none"
         : `Current exact assignment: Call ${displaySelection(initial.callTemplate)}, Handoff ${displaySelection(initial.handoffTemplate)}`;
 
-      const callChoice = await ctx.ui.select(
+      const callChoice = await selectDialog(ctx,
         `${current}\nWhich Call Template should ${directory} and its descendants use?`,
         roleOptions(filenames, "call_", CALL_DEFAULT_TEMPLATE),
-        { signal: controller.signal },
+        { signal: controller.signal, heading: "Project templates · Call" },
       );
       if (controller.signal.aborted || callChoice === undefined) return;
       await commitRole(ctx, paths.projectTemplatesFile, directory, "callTemplate", selectedFilename(callChoice, CALL_DEFAULT_TEMPLATE));
 
-      const handoffChoice = await ctx.ui.select(
-        `Which Handoff Template should ${directory} and its descendants use?`,
+      const handoffChoice = await selectDialog(ctx,
+        `Which Handoff Template should ${directory} and its descendants use?\nCurrent exact Handoff selection: ${displaySelection(initial?.handoffTemplate ?? null)}`,
         roleOptions(filenames, "handoff_", HANDOFF_DEFAULT_TEMPLATE),
-        { signal: controller.signal },
+        { signal: controller.signal, heading: "Project templates · Handoff" },
       );
       if (controller.signal.aborted || handoffChoice === undefined) return;
       await commitRole(ctx, paths.projectTemplatesFile, directory, "handoffTemplate", selectedFilename(handoffChoice, HANDOFF_DEFAULT_TEMPLATE));

@@ -11,7 +11,7 @@ import { activateHandoffExtension } from "../extensions/index.ts";
 
 interface RegisteredCommand {
   description?: string;
-  getArgumentCompletions?: unknown;
+  getArgumentCompletions?: (prefix: string) => Array<{ value: string; description?: string }>;
   handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 }
 
@@ -35,7 +35,7 @@ function captureRegistration() {
   let sessionStartHandler: ((event: unknown, ctx: unknown) => void | Promise<void>) | undefined;
 
   const context = {
-    mode: "tui",
+    mode: "rpc",
     hasUI: true,
     isIdle: () => true,
     hasPendingMessages: () => false,
@@ -113,15 +113,21 @@ test("handoff exposes only /sh publicly and documents its subcommands", async ()
     .filter(([, command]) => command.description !== undefined)
     .map(([name]) => name);
   assert.deepEqual(advertised, ["sh"]);
-  assert.match(rig.commands.get("sh")?.description ?? "", /Start a session handoff/);
-  assert.equal(rig.commands.get("sh")?.getArgumentCompletions, undefined);
+  assert.match(rig.commands.get("sh")?.description ?? "", /Open the session handoff menu/);
+  const complete = rig.commands.get("sh")?.getArgumentCompletions;
+  assert.ok(complete);
+  assert.deepEqual(complete("").map((item) => item.value), ["start", "cancel", "recover", "settings", "project-template", "help"]);
+  assert.ok(complete("").every((item) => item.description));
+  assert.deepEqual(complete("s").map((item) => item.value), ["start", "settings"]);
+  assert.deepEqual(complete("project-").map((item) => item.value), ["project-template"]);
+  assert.deepEqual(complete("unknown"), []);
   assert.equal(rig.commands.get("__pi_blitz_handoff_transition")?.description, undefined);
 
   const command = rig.commands.get("sh");
   assert.ok(command);
   await command.handler("help", rig.context);
   const help = rig.notifications.at(-1) ?? "";
-  for (const subcommand of ["help", "cancel", "recover", "settings", "project-template"]) {
+  for (const subcommand of ["start", "help", "cancel", "recover", "settings", "project-template"]) {
     assert.ok(help.includes(`/sh ${subcommand}`));
   }
   assert.doesNotMatch(help, /\/sh-|\/sh config/);
@@ -129,7 +135,7 @@ test("handoff exposes only /sh publicly and documents its subcommands", async ()
   for (const unsupported of ["config", "retry", "cleanup"]) {
     await command.handler(unsupported, rig.context);
     assert.equal(rig.notifications.at(-1),
-      "Usage: /sh, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel");
+      "Usage: /sh, /sh start, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel");
   }
   assert.deepEqual(rig.userMessages, []);
   assert.equal(rig.getNativeStarts(), 0);

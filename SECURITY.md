@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current 1.2 code line is the supported and tested package contract. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
+The current 1.4 code line is the supported and tested package contract. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
 
 ## Trust boundary
 
