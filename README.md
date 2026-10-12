@@ -8,10 +8,12 @@ Steer your context. Hand off what matters.
 
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
-> [!TIP]
-> **New default: V2 for better session handoffs**
+> [!NOTE]
+> **Release Note — 1.4.0**
 >
-> V2 replaces the previous Handoff Templates with a focused continuation dossier: the actual working mode, commissioned work, continuing permissions and the next concrete step. It is now shipped as `handoff_default.cmpl` alongside the Call default.
+> All handoff dialogs now use themed terminal overlays. `/sh` opens the menu with **Start handoff** or **Cancel handoff** as its first action; `/sh start` starts directly, and typing `/sh ` shows the available subcommands.
+>
+> The Call default now explicitly says: do not write a handoff yet. Send GO when ready, then wait for the writer instruction containing the Handoff Template and submission ID. This is model guidance, not a technical write block. The V2 Handoff default is unchanged.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
