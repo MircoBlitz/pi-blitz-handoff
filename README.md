@@ -11,7 +11,7 @@ This extension is designed for one purpose: to capture a session’s continuatio
 > [!TIP]
 > **New default: V2 for better session handoffs**
 >
-> V2 replaces the previous Handoff Templates with a focused continuation dossier: the actual working mode, commissioned work, continuing permissions and the next concrete step. It is now shipped as `handoff_default.cmpl` alongside the unchanged Call default.
+> V2 replaces the previous Handoff Templates with a focused continuation dossier: the actual working mode, commissioned work, continuing permissions and the next concrete step. It is now shipped as `handoff_default.cmpl` alongside the Call default.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
@@ -114,7 +114,7 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 ## How a handoff works
 
 1. **Request a transfer.** Choose **Start handoff** from `/sh`, use `/sh start`, explicitly ask the model to start one, or enable automatic initiation. Explicit starts ignore context thresholds.
-2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
+2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. This is readiness only: do not write a handoff or create a continuation file. After GO, wait for the extension's explicit writer instruction containing the Handoff Template and submission ID; only then write the handoff. This is model guidance, not a filesystem write block. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
 3. **Defer incoming prompts.** After GO, ordinary interactive and RPC prompts are captured unchanged and in order. They are kept in memory and atomically persisted to one recovery Markdown file; slash commands retain Pi’s native behavior.
 4. **Write the dossier.** At the next idle boundary with no pending messages, the source model receives the current Handoff Template and can use only `submit_session_handoff`. Writer control is turn-local, not a transferred task restriction. Each attempt resolves the template afresh. An attempt that settles without a valid submission retries according to the configured count and delay. Terminal errors stop the writer; the original tools are restored on success, cancellation, exhaustion or terminal failure.
 5. **Start the replacement.** Deterministic code appends any deferred prompts and sends the complete Markdown as the fresh session’s first user turn. Native `parentSession` linkage normally preserves lineage. At the configured chain limit, the next session starts as an independent master with the same handoff instead.

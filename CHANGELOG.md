@@ -12,6 +12,7 @@
 
 - `/sh` opens the handoff menu instead of starting immediately. The first action is **Start handoff**, or **Cancel handoff** while a handoff is active; Escape closes without action.
 - Dialog presentation is consistent across the extension. Existing direct subcommands, RPC dialogs, immediate settings persistence and handoff lifecycle remain unchanged.
+- The default Call Template now explicitly separates readiness from handoff writing: no handoff or continuation file during readiness; after GO, wait for the writer instruction with the Handoff Template and submission ID. This is model guidance, not a technical write block. The V2 Handoff Template remains unchanged.
 
 ## 1.3.0 — 2026-10-09
 

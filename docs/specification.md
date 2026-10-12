@@ -129,7 +129,7 @@ There is no overall draft, Save action, or Cancel action. Escape discards only a
 
 The package ships exactly two templates:
 
-- `call_default.cmpl` defines the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters.
+- `call_default.cmpl` defines a readiness-only phase and the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters. It prohibits writing a handoff or creating a continuation file during readiness and instructs the model to wait after GO for the explicit writer instruction with the Handoff Template and submission ID.
 - `handoff_default.cmpl` contains the V2 continuation dossier: explicit working mode, commissioned work, continuing grants and conditions, current state, binding decisions, active skills, evidence limits and targeted retrieval.
 
 The package has no Fast, Balanced or development template variants. Custom managed and addendum templates remain supported; loading the package does not delete other user-owned templates or rewrite existing selections.
@@ -197,7 +197,7 @@ An automatic request is different: it is detected after a completed turn and its
 
 The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends only the exact correlated tool protocol and non-configurable interaction constraints; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
+The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. Readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file, and to wait after GO for the extension's explicit writer instruction containing the Handoff Template and submission ID. These are model instructions, not a deterministic filesystem write block. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
 Two correlated tools exist:
 
