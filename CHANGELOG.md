@@ -14,6 +14,10 @@
 - The extension checks nonempty regular-file metadata and appends its own deferred prompts without reading or parsing the dossier. The receiver is instructed to apply normal startup/basic skills, read the whole file past tool truncation and clean up only after complete ingestion. Failed/incomplete ingestion leaves the file unchanged; cleanup errors must be reported.
 - The two defaults now describe optional preparation and file writing while retaining the V2 dossier structure. Writer tools are native `read`, `write`, `edit` and DONE, then restored exactly. Older exact configs receive the two new boolean defaults in memory without automatic migration; both settings apply immediately.
 
+### Fixed
+
+- An aborted early GET no longer suppresses a template that was never returned. After GO the writer resolves and sends its normal template while reusing any existing reservation, avoiding a same-name collision.
+
 ### Validation limits
 
 - Dossier correctness, complete ingestion and receiver cleanup remain model responsibilities, not extension-verified guarantees. Speed Mode has no guaranteed acceleration and adds accepted GO/DONE calls/turns, not an artificial wait.

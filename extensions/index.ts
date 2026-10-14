@@ -322,7 +322,10 @@ export function activateHandoffExtension(
       if (flow.snapshot?.id !== handoff.id || flow.phase !== "waiting") {
         throw new Error("Handoff template request is no longer current");
       }
-      return preparationPrompt(prepared, handoff.sourceSessionPath);
+      return {
+        text: preparationPrompt(prepared, handoff.sourceSessionPath),
+        onReturn() { prepared.templateReturned = true; },
+      };
     });
   }
 

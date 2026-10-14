@@ -40,6 +40,7 @@ export interface PreparedHandoff {
   submissionId: string;
   handoffFile: string;
   template: ResolvedTemplate;
+  templateReturned: boolean;
 }
 
 export interface HandoffWriterOptions {
@@ -116,7 +117,7 @@ export class HandoffWriter {
       const submissionId = this.createSubmissionId();
       const handoffFile = createHandoffFile(ctx.cwd, ctx.sessionManager.getSessionId());
       for (const failure of template.failures) this.options.onTemplateFailure?.(failure, 0, ctx);
-      return { submissionId, handoffFile, template };
+      return { submissionId, handoffFile, template, templateReturned: false };
     }).catch((error: unknown) => {
       if (this.preparation?.result === result) this.preparation = undefined;
       throw error;
@@ -248,18 +249,20 @@ export class HandoffWriter {
   private async resolveAndDispatch(active: ActiveWriter, attemptToken: object): Promise<void> {
     let template: ResolvedTemplate;
     try {
-      if (active.preparation !== undefined) {
-        const prepared = await active.preparation;
+      const prepared = active.preparation === undefined ? undefined : await active.preparation;
+      if (!this.isCurrentAttempt(active, attemptToken)) return;
+      if (prepared?.templateReturned) {
         template = prepared.template;
-        if (!this.isCurrentAttempt(active, attemptToken)) return;
-        active.handoffFile = prepared.handoffFile;
         active.submissionId = active.attempt === 1 ? prepared.submissionId : this.createSubmissionId();
       } else {
+        // A failed/aborted GET reserved a file but never returned its template.
+        // Reuse that reservation while taking the normal fresh-template writer path.
+        active.preparation = undefined;
         template = await this.options.resolveTemplate(active.templateFilename);
         if (!this.isCurrentAttempt(active, attemptToken)) return;
-        active.handoffFile ??= createHandoffFile(active.ctx.cwd, active.ctx.sessionManager.getSessionId());
         active.submissionId = this.createSubmissionId();
       }
+      active.handoffFile ??= prepared?.handoffFile ?? createHandoffFile(active.ctx.cwd, active.ctx.sessionManager.getSessionId());
     } catch (error) {
       if (!this.isCurrentAttempt(active, attemptToken)) return;
       this.terminate(active, "failed", `Could not prepare the handoff writer: ${errorMessage(error)}`);

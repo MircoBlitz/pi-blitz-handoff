@@ -278,6 +278,34 @@ test("Speed Mode can skip early retrieval and receive the normal template after 
   await rig.commands.get("sh")?.handler("cancel", rig.context);
 });
 
+test("an aborted GET does not suppress an undelivered template or collide with its reserved file after GO", async (t) => {
+  const rig = await activateIntegrationRig(t, { speedMode: true });
+  await rig.commands.get("sh")?.handler("start", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  const get = rig.tools.get("session_handoff_get_template");
+  assert.ok(key);
+  assert.ok(get);
+  const controller = new AbortController();
+  const retrieval = get.execute("aborted-get", { key }, controller.signal, undefined, rig.context);
+  controller.abort();
+  await assert.rejects(retrieval, { name: "AbortError" });
+  const directory = join(rig.context.cwd, ".pi", "session");
+  const files = await readdir(directory);
+  assert.equal(files.length, 1);
+  await writeFile(join(rig.paths.templateDirectory, "handoff_default.cmpl"), "UPDATED NORMAL WRITER TEMPLATE");
+  await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  // Native filesystem resolution is asynchronous; bounded readiness check, no real model.
+  for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  assert.match(rig.userMessages.at(-1)?.content ?? "", /UPDATED NORMAL WRITER TEMPLATE/);
+  assert.doesNotMatch(rig.userMessages.at(-1)?.content ?? "", /No template is resent/);
+  assert.equal(writerFile(rig), join(directory, files[0]!));
+  assert.deepEqual(await readdir(directory), files);
+  await rig.commands.get("sh")?.handler("cancel", rig.context);
+});
+
 test("disabled Speed Mode hides and rejects early retrieval", async (t) => {
   const rig = await activateIntegrationRig(t);
   assert.equal(rig.getActiveTools().includes("session_handoff_get_template"), false);

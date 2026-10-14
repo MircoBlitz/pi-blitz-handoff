@@ -144,7 +144,7 @@ The extension does not parse free-form replies. If neither permitted readiness t
 
 `speedMode` is off by default and can be toggled in `/sh settings` without reload. When enabled, all initiation sources receive additional readiness instructions and the optional `session_handoff_get_template({ key })` tool. Before GO it returns the selected template, absolute reserved file path and submission ID. Repeated retrieval shares one preparation. It does not accept GO or DONE, and disabled, stale or post-GO calls fail.
 
-Use early drafting only during real waiting and with existing source tools. It must not delay required work or run concurrently with GO. Skipping retrieval is valid: the normal writer receives the template after GO. There is no artificial waiting phase. GO starts prompt deferral; DONE confirms the finalized file, and only DONE plus the settled boundary permits replacement. The extra calls/turns are an accepted trade-off, not a guaranteed acceleration.
+Use early drafting only during real waiting and with existing source tools. It must not delay required work or run concurrently with GO. Skipping retrieval is valid: the normal writer receives the template after GO. An aborted GET also takes that normal path and reuses any reserved file; only a successfully returned GET suppresses later template delivery. There is no artificial waiting phase. GO starts prompt deferral; DONE confirms the finalized file, and only DONE plus the settled boundary permits replacement. The extra calls/turns are an accepted trade-off, not a guaranteed acceleration.
 
 ### Automatic initiation
 

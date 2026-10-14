@@ -166,6 +166,7 @@ test("early preparation is shared, cannot submit before GO, and finalizes withou
   const preparing = testRig.writer.prepare(handoff(), testRig.ctx);
   assert.equal(testRig.writer.prepare(handoff(), testRig.ctx), preparing);
   const prepared = await preparing;
+  prepared.templateReturned = true; // Successful GET test double.
   writeFileSync(prepared.handoffFile, "# Prepared draft"); // Scripted source-model test double.
   assert.throws(() => testRig.writer.submit({ id: prepared.submissionId }), /No current writer submission/);
   assert.equal(testRig.prompts.length, 0);
@@ -187,6 +188,7 @@ test("early preparation is shared, cannot submit before GO, and finalizes withou
 test("prepared retries keep the file and template snapshot but require a fresh DONE ID", async () => {
   const testRig = rig();
   const prepared = await testRig.writer.prepare(handoff(), testRig.ctx);
+  prepared.templateReturned = true; // Successful GET test double.
   testRig.writer.start(handoff(), testRig.ctx);
   await settlePromises();
   testRig.writer.handleSettled(testRig.ctx);

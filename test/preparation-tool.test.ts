@@ -6,9 +6,10 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { registerPreparationTool, speedModeReadiness } from "../extensions/preparation-tool.ts";
 
 // Registration and context test doubles; no model or Pi session is started.
-function register(prepare: (key: string) => Promise<string>): ToolDefinition {
+function register(prepare: (key: string) => Promise<string>, onReturn = () => {}): ToolDefinition {
   let tool: ToolDefinition | undefined;
-  registerPreparationTool({ registerTool(value: ToolDefinition) { tool = value; } } as ExtensionAPI, prepare);
+  registerPreparationTool({ registerTool(value: ToolDefinition) { tool = value; } } as ExtensionAPI,
+    async (key) => ({ text: await prepare(key), onReturn }));
   assert.ok(tool);
   return tool;
 }
@@ -16,7 +17,8 @@ function register(prepare: (key: string) => Promise<string>): ToolDefinition {
 const ctx = {} as ExtensionContext;
 
 test("GET is a continuing retrieval with an exact key-only schema", async () => {
-  const tool = register(async (key) => `prepared ${key}`);
+  let returned = 0;
+  const tool = register(async (key) => `prepared ${key}`, () => { returned += 1; });
   assert.equal(tool.name, "session_handoff_get_template");
   assert.deepEqual(tool.parameters, {
     type: "object",
@@ -27,6 +29,7 @@ test("GET is a continuing retrieval with an exact key-only schema", async () => 
   const result = await tool.execute("get", { key: "current" }, undefined, undefined, ctx);
   assert.deepEqual(result.content, [{ type: "text", text: "prepared current" }]);
   assert.equal(result.terminate, undefined);
+  assert.equal(returned, 1);
 });
 
 test("GET observes native abort before starting preparation", async () => {
@@ -40,8 +43,10 @@ test("GET observes native abort before starting preparation", async () => {
 
 test("GET observes native abort after awaited preparation without returning stale guidance", async () => {
   const controller = new AbortController();
-  const tool = register(async () => { controller.abort(); return "prepared"; });
+  let returned = 0;
+  const tool = register(async () => { controller.abort(); return "prepared"; }, () => { returned += 1; });
   await assert.rejects(tool.execute("get", { key: "current" }, controller.signal, undefined, ctx), { name: "AbortError" });
+  assert.equal(returned, 0);
 });
 
 test("Speed Mode guidance preserves the source policy and distinct optional GET, GO and DONE", () => {

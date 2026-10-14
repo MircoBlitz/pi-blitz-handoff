@@ -4,7 +4,7 @@ export const SESSION_HANDOFF_GET_TEMPLATE_TOOL = "session_handoff_get_template";
 
 export function registerPreparationTool(
   pi: ExtensionAPI,
-  prepare: (key: string, ctx: ExtensionContext) => Promise<string>,
+  prepare: (key: string, ctx: ExtensionContext) => Promise<{ text: string; onReturn(): void }>,
 ): void {
   pi.registerTool({
     name: SESSION_HANDOFF_GET_TEMPLATE_TOOL,
@@ -24,10 +24,11 @@ export function registerPreparationTool(
       ctx: ExtensionContext,
     ) {
       signal?.throwIfAborted();
-      const text = await prepare(params.key, ctx);
+      const prepared = await prepare(params.key, ctx);
       signal?.throwIfAborted();
+      prepared.onReturn();
       return {
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: prepared.text }],
         details: { key: params.key },
       };
     },
