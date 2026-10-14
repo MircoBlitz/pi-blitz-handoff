@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { registerPreparationTool, speedModeReadiness } from "../extensions/preparation-tool.ts";
 
@@ -14,7 +14,7 @@ function register(prepare: (key: string) => Promise<string>, onReturn = () => {}
   return tool;
 }
 
-const ctx = {} as ExtensionContext;
+const ctx = { tools: [] } as unknown as ExtensionToolContext; // No nested calls in this test double.
 
 test("GET is a continuing retrieval with an exact key-only schema", async () => {
   let returned = 0;

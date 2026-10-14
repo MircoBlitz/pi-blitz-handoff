@@ -63,9 +63,10 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
   assert.equal(manifest.engines?.node, ">=22.19.0");
-  assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
+  assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], "*");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-tui"], "*");
-  assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^0.84.2");
+  assert.equal(manifest.devDependencies?.["@earendil-works/pi-coding-agent"], "^1.2.0");
+  assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^1.2.0");
   assert.deepEqual(manifest.files, [
     "extensions",
     "docs",

@@ -207,7 +207,7 @@ async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.tools.get("session_handoff_go")?.execute("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
@@ -250,7 +250,7 @@ test("Speed Mode retrieves once before GO, separates DONE, and never resends the
 
   await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
   assert.deepEqual(rig.parentSessions, []);
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   await new Promise<void>((resolve) => setImmediate(resolve));
   const finalization = rig.userMessages.at(-1)?.content ?? "";
   assert.match(finalization, /No template is resent/);
@@ -260,7 +260,7 @@ test("Speed Mode retrieves once before GO, separates DONE, and never resends the
   assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "deferred after GO", source: "interactive" }, rig.context), { action: "handled" });
   await writeFile(path, "# Finalized current facts"); // Scripted source-model finalization.
   await done.execute("done", { id }, undefined, undefined, rig.context);
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   const [command, token] = (rig.userMessages.at(-1)?.content ?? "").slice(1).split(" ");
   assert.ok(command);
   assert.ok(token);
@@ -294,7 +294,7 @@ test("an aborted GET does not suppress an undelivered template or collide with i
   assert.equal(files.length, 1);
   await writeFile(join(rig.paths.templateDirectory, "handoff_default.cmpl"), "UPDATED NORMAL WRITER TEMPLATE");
   await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   // Native filesystem resolution is asynchronous; bounded readiness check, no real model.
   for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
@@ -340,7 +340,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
     undefined,
     rig.context,
   );
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.deepEqual(rig.getActiveTools(), ["read", "bash"]);
 
   const transitionRequest = rig.userMessages.at(-1)?.content;
@@ -378,7 +378,7 @@ test("integrated starts reject an unpersisted source and writer exhaustion fails
 
   const failed = await activateIntegrationRig(t, { writerAttempts: 1 });
   await reachWriter(failed);
-  await failed.handlers.get("agent_settled")?.({ type: "agent_settled" }, failed.context);
+  await failed.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, failed.context);
 
   assert.equal(failed.flow.phase, "inactive");
   assert.deepEqual(failed.getActiveTools(), ["read", "bash"]);

@@ -392,7 +392,7 @@ test("blitz_handoff start records intent during a run while status remains factu
   assert.equal(rig.sentMessages.length, 0);
 
   rig.state.idle = true;
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.sentMessages.length, 1);
 
   const status = await execute("call-2", { action: "status" }, undefined, undefined, rig.context);
@@ -545,7 +545,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
 
   const toolRuntime: ToolRuntimeOptions = { activeTools: ["read"], loading: false, setCalls: [] };
   const rig = createRig({}, { percent: 70 }, agentDirectory, toolRuntime);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
 
   const selections: Array<string | undefined> = [
@@ -591,7 +591,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
   assert.match(status.content[0]?.text ?? "", /Warning threshold: 55%; critical threshold: 85%/);
   assert.match(status.content[0]?.text ?? "", /Readiness reminder delay: 7 seconds/);
 
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
   await rig.handlers.turn_end?.({ type: "turn_end" }, rig.context);
   assert.equal(rig.flow.phase, "inactive");
@@ -603,7 +603,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 10 && rig.sentUserMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -714,7 +714,7 @@ test("project templates are resolved from the nearest ancestor for the next hand
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 100 && rig.sentUserMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
@@ -873,7 +873,7 @@ test("automatic initiation enters autonomous work at turn end and retries once a
   await below.handlers.turn_end?.({ type: "turn_end" }, below.context);
   assert.equal(below.flow.phase, "inactive");
   below.state.percent = 70;
-  await below.handlers.agent_settled?.({ type: "agent_settled" }, below.context);
+  await below.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, below.context);
   assert.equal(below.flow.phase, "inactive");
 
   const enabled = createRig(
@@ -1039,7 +1039,7 @@ test("steering and follow-up input pass unchanged before GO without changing cor
     assert.deepEqual(await rig.handlers.input?.(event, rig.context), { action: "continue" });
     assert.deepEqual(event, unchanged);
     assert.equal(rig.flow.snapshot?.readinessKey, key);
-    await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+    await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
     assert.equal(rig.sentMessages.length, 1);
   }
 });
@@ -1102,7 +1102,7 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.match(rig.statuses.at(-1) ?? "", /Inputs deferred \(0\)/);
 
   const first: InputEvent = {
@@ -1156,7 +1156,7 @@ test("post-GO persistence failure is visible and still handles the captured prom
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
 
   const result = await rig.handlers.input?.({
     type: "input",
@@ -1181,6 +1181,6 @@ test("only a current keyed GO tool call advances and writer dispatch waits for s
   await execute("current", { key: go }, undefined, undefined, rig.context);
   assert.equal(rig.flow.phase, "ready");
   assert.notEqual(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
 });

@@ -401,7 +401,7 @@ Automated tests cover the actual deterministic contracts:
 - public commands, native argument completion, menu start/cancel dispatch, public tool, and factual status;
 - genuine overlay rendering and keyboard behavior, narrow widths, scrolling, resize/theme invalidation, input focus, dismissal, and dialog lifecycle without model-context leakage.
 
-Tests use focused adapters and pure helpers where needed. They do not implement a second fake Pi runtime.
+Tests use focused adapters and pure helpers where needed. They do not implement a second fake Pi runtime. Development and deterministic validation track current Pi 1.x using updateable `^1.2.0` dependencies, with Pi-provided packages declared as native wildcard peers rather than bundled runtime copies. Test doubles follow current `AgentSettledEvent` (`aborted`) and `ExtensionToolContext` contracts. This dependency alignment does not change the approved runtime minimum or handoff lifecycle; it is not real-model/session validation.
 
 The local gate is:
 

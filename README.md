@@ -303,7 +303,9 @@ Clone the repository and install its development dependencies:
 npm install
 ```
 
-The deterministic test suite covers unit, integration, and package testing; it is not end-to-end Real-Pi testing.
+Development dependencies track current Pi 1.x (`^1.2.0`). Pi-provided host packages use wildcard peers, as recommended by Pi's native package contract; development copies are not bundled. The existing documented runtime minimum is unchanged.
+
+The deterministic test suite covers unit, integration, and package testing and currently passes against Pi 1.2.0; it is not end-to-end Real-Pi testing.
 
 ```text
 npm test
