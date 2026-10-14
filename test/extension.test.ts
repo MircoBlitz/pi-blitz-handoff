@@ -139,7 +139,7 @@ function createRig(
   const context = {
     mode: "tui",
     hasUI: true,
-    cwd: "/projects/app",
+    cwd: join(agentDirectory, "projects", "app"),
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({
@@ -149,6 +149,7 @@ function createRig(
     }),
     sessionManager: {
       getSessionFile: () => state.sessionFile,
+      getSessionId: () => "source",
       getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
       getEntries: () => state.entries,
     },
@@ -467,7 +468,7 @@ test("/sh settings stays in extension UI and reload or session replacement close
     });
     rig.setSelectHandler(async (title, options, opts) => {
       assert.equal(title, "Configure pi-blitz-handoff");
-      assert.equal(options.length, 12);
+      assert.equal(options.length, 14);
       observedSignal = opts?.signal;
       markPromptStarted?.();
       return new Promise<string | undefined>((resolve) => {
@@ -485,6 +486,44 @@ test("/sh settings stays in extension UI and reload or session replacement close
     assert.equal(rig.sentMessages.length, 0);
     assert.equal(rig.notifications.length, 0);
   }
+});
+
+test("persisted Speed Mode toggles refresh GET immediately without mutating tools for unrelated settings", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-speed-toggle-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await mkdir(paths.recoveryDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "call default");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "handoff default");
+  await saveConfig(agentDirectory, defaultConfig(agentDirectory));
+  // Native tool registry/activation test double, preserving unrelated source tools.
+  const runtime: ToolRuntimeOptions = { activeTools: ["read", "write", "bash"], loading: false, setCalls: [] };
+  const rig = createRig({}, {}, agentDirectory, runtime);
+  await rig.handlers.session_start?.({ type: "session_start", reason: "startup" }, rig.context);
+  assert.deepEqual(runtime.activeTools, ["read", "write", "bash"]);
+  runtime.setCalls.length = 0;
+
+  const answers: Array<string | undefined> = [
+    "Speed Mode (optional early preparation): disabled", "Enabled",
+    "Debugging (archive handoff files): disabled", "Enabled", undefined,
+  ];
+  rig.setSelectHandler(async () => answers.shift());
+  await rig.commands.get("sh")?.("settings", rig.context);
+  assert.deepEqual(runtime.setCalls, [["read", "write", "bash", "session_handoff_get_template"]]);
+  assert.equal((JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig).speedMode, true);
+  await rig.commands.get("sh")?.("start", rig.context);
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Speed Mode is enabled/);
+  await rig.commands.get("sh")?.("cancel", rig.context);
+
+  answers.push("Speed Mode (optional early preparation): enabled", "Disabled", undefined);
+  await rig.commands.get("sh")?.("settings", rig.context);
+  assert.deepEqual(runtime.activeTools, ["read", "write", "bash"]);
+  assert.equal(runtime.setCalls.length, 2);
+  await assert.rejects(rig.getToolExecute("session_handoff_get_template")("get", { key: "old" }, undefined, undefined, rig.context), /Speed Mode is disabled/);
+  await rig.commands.get("sh")?.("start", rig.context);
+  assert.doesNotMatch(rig.sentMessages.at(-1)?.message.content ?? "", /Speed Mode is enabled/);
+  await rig.commands.get("sh")?.("cancel", rig.context);
 });
 
 test("persisted configuration updates live status, thresholds, templates, writer, and recovery", async (t) => {
@@ -601,7 +640,7 @@ test("/sh project-template commits each role immediately and removes Autodiscove
 
   await rig.commands.get("sh")?.("project-template", rig.context);
   assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {
-    "/projects/app": { callTemplate: "call_default.cmpl", handoffTemplate: null },
+    [join(agentDirectory, "projects", "app")]: { callTemplate: "call_default.cmpl", handoffTemplate: null },
   });
   assert.match(rig.notifications.at(-1)?.message ?? "", /Project Call Template saved/);
 
@@ -638,9 +677,9 @@ test("/sh project-template reports no exact assignment and performs no write for
 
   await rig.commands.get("sh")?.("project-template", rig.context);
   await assert.rejects(readFile(paths.projectTemplatesFile, "utf8"), { code: "ENOENT" });
-  assert.match(
-    rig.notifications.at(-1)?.message ?? "",
-    /No exact project template assignment exists for \/projects\/app; nothing was changed\./,
+  assert.equal(
+    rig.notifications.at(-1)?.message,
+    `No exact project template assignment exists for ${rig.context.cwd}; nothing was changed.`,
   );
 });
 
@@ -654,11 +693,11 @@ test("project templates are resolved from the nearest ancestor for the next hand
   await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
   await writeFile(join(paths.templateDirectory, "handoff_project.cmpl"), "PROJECT HANDOFF");
   await writeFile(paths.projectTemplatesFile, JSON.stringify({
-    "/projects": {
+    [join(agentDirectory, "projects")]: {
       callTemplate: "call_project.cmpl",
       handoffTemplate: null,
     },
-    "/projects/app": {
+    [join(agentDirectory, "projects", "app")]: {
       callTemplate: null,
       handoffTemplate: "handoff_project.cmpl",
     },

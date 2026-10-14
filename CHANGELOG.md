@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional `speedMode` (default `false`) and pre-GO `session_handoff_get_template({ key })` retrieval for drafting during genuine waiting. Prepared handoffs retain one template snapshot, file and first submission ID; finalization does not resend the template. Skipping retrieval keeps the normal after-GO writer path.
+- `debugging` (default `false`): receiver instructions delete the exact file after complete ingestion, or archive it under the same name in `.pi/session/oldlog_donotread/` when enabled. No archive reading/scanning without an explicit user request.
+
+### Changed
+
+- The source writes its dossier with native file tools to `.pi/session/handoff_YYMMDDHHMMSS_SESSID.md` under the current Pi working directory, using local time and its native session ID. Exclusive reservation rejects collisions. The replacement's first prompt references the absolute path, not the full dossier.
+- GO confirms only the safe boundary and starts prompt deferral. Separate DONE via `submit_session_handoff({ id })` confirms file finalization; only DONE plus the native settled boundary permits replacement. The submission tool no longer accepts content or a path.
+- The extension checks nonempty regular-file metadata and appends its own deferred prompts without reading or parsing the dossier. The receiver is instructed to apply normal startup/basic skills, read the whole file past tool truncation and clean up only after complete ingestion. Failed/incomplete ingestion leaves the file unchanged; cleanup errors must be reported.
+- The two defaults now describe optional preparation and file writing while retaining the V2 dossier structure. Writer tools are native `read`, `write`, `edit` and DONE, then restored exactly. Older exact configs receive the two new boolean defaults in memory without automatic migration; both settings apply immediately.
+
+### Validation limits
+
+- Dossier correctness, complete ingestion and receiver cleanup remain model responsibilities, not extension-verified guarantees. Speed Mode has no guaranteed acceleration and adds accepted GO/DONE calls/turns, not an artificial wait.
+- Deterministic local tests cover the new transport and protocol. No real-model/Pi-session end-to-end validation has been performed for this feature; earlier Real-Pi evidence covers only the earlier contracts. No version bump or publication is included.
+
 ## 1.3.1 — 2026-10-12
 
 ### Added

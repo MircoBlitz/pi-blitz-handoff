@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  assembleHandoffMarkdown,
+  formatDeferredPromptSection,
   DeferredPromptWindow,
   formatDeferredPrompts,
 } from "../extensions/deferred.ts";
@@ -40,12 +40,10 @@ test("deferred prompt formatting uses deterministic numbered markers without rew
   assert.equal(formatDeferredPrompts([]), "");
 });
 
-test("handoff assembly preserves the writer title and adds instructions only when prompts exist", () => {
-  const dossier = "Task-specific writer title\n\nBody";
-  assert.equal(assembleHandoffMarkdown(dossier, []), dossier);
+test("deferred section adds instructions only when prompts exist", () => {
+  assert.equal(formatDeferredPromptSection([]), "");
 
-  const assembled = assembleHandoffMarkdown(dossier, ["first", " second "]);
-  assert.equal(assembled.split("\n")[0], "Task-specific writer title");
+  const assembled = formatDeferredPromptSection(["first", " second "]);
   assert.match(assembled, /## Deferred Prompts/);
   assert.match(assembled, /separate sequential user inputs after this dossier/);
   assert.match(assembled, /Later entries may update or supersede earlier entries/);

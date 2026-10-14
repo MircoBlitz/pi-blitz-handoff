@@ -12,6 +12,7 @@ import type {
 
 import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/config.ts";
 import { activateHandoffExtension } from "../extensions/index.ts";
+import { handoffStartPrompt } from "../extensions/handoff-file.ts";
 import { createDialogHarness } from "./extension-harness.ts";
 
 interface Notification {
@@ -80,6 +81,7 @@ async function activateIntegrationRig(
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
     sessionManager: {
       getSessionFile: () => state.sessionFile,
+      getSessionId: () => "source",
       getEntries: () => [],
       getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
     },
@@ -191,6 +193,13 @@ async function activateIntegrationRig(
   };
 }
 
+function writerFile(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): string {
+  const prompt = rig.userMessages.find(({ content }) => content.includes("Write the complete handoff Markdown to this exact file:"))?.content ?? "";
+  const path = /^Write the complete handoff Markdown to this exact file: (.+)$/m.exec(prompt)?.[1];
+  assert.ok(path);
+  return JSON.parse(path) as string;
+}
+
 async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): Promise<string> {
   const command = rig.commands.get("sh");
   assert.ok(command);
@@ -207,8 +216,73 @@ async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig
   assert.ok(writerPrompt);
   const submissionId = /^Use this exact submission ID: (.+)$/m.exec(writerPrompt)?.[1];
   assert.ok(submissionId);
+  // Scripted model test double: writes the dossier; no real LLM is exercised here.
+  await writeFile(writerFile(rig), "# Candidate continuation\n\nVerified dossier.");
   return submissionId;
 }
+
+test("Speed Mode retrieves once before GO, separates DONE, and never resends the prepared template", async (t) => {
+  const rig = await activateIntegrationRig(t, { speedMode: true, debugging: true });
+  const get = rig.tools.get("session_handoff_get_template");
+  const done = rig.tools.get("submit_session_handoff");
+  assert.ok(get);
+  assert.ok(done);
+  assert.ok(rig.getActiveTools().includes("session_handoff_get_template"));
+  await rig.commands.get("sh")?.handler("start", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+  assert.match(rig.customMessages.at(-1) ?? "", /Speed Mode is enabled/);
+  await assert.rejects(get.execute("stale", { key: "stale" }, undefined, undefined, rig.context), /pre-GO readiness key/);
+
+  const prepared = await get.execute("get", { key }, undefined, undefined, rig.context) as { content: Array<{ text: string }> };
+  const text = prepared.content[0]?.text ?? "";
+  assert.match(text, /INTEGRATION HANDOFF TEMPLATE/);
+  const id = /^Use this exact submission ID after GO: (.+)$/m.exec(text)?.[1];
+  const encodedPath = /^Write the complete handoff Markdown to this exact file: (.+)$/m.exec(text)?.[1];
+  assert.ok(id);
+  assert.ok(encodedPath);
+  const path = JSON.parse(encodedPath) as string;
+  await writeFile(path, "# Early draft"); // Scripted source-model preparation.
+  assert.equal(rig.flow.phase, "waiting");
+  assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "still ordinary", source: "interactive" }, rig.context), { action: "continue" });
+  await assert.rejects(done.execute("too-early", { id }, undefined, undefined, rig.context), /No current writer submission/);
+  assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
+
+  await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
+  assert.deepEqual(rig.parentSessions, []);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const finalization = rig.userMessages.at(-1)?.content ?? "";
+  assert.match(finalization, /No template is resent/);
+  assert.doesNotMatch(finalization, /INTEGRATION HANDOFF TEMPLATE|BEGIN COMPLETE HANDOFF TEMPLATE/);
+  assert.equal(writerFile(rig), path);
+  await assert.rejects(get.execute("late-get", { key }, undefined, undefined, rig.context), /pre-GO readiness key/);
+  assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "deferred after GO", source: "interactive" }, rig.context), { action: "handled" });
+  await writeFile(path, "# Finalized current facts"); // Scripted source-model finalization.
+  await done.execute("done", { id }, undefined, undefined, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  const [command, token] = (rig.userMessages.at(-1)?.content ?? "").slice(1).split(" ");
+  assert.ok(command);
+  assert.ok(token);
+  await rig.commands.get(command)?.handler(token, rig.context);
+  assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(path, true)]);
+  assert.ok((await readFile(path, "utf8")).endsWith("deferred after GO"));
+  assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
+});
+
+test("Speed Mode can skip early retrieval and receive the normal template after GO", async (t) => {
+  const rig = await activateIntegrationRig(t, { speedMode: true });
+  await reachWriter(rig);
+  assert.match(rig.userMessages.at(-1)?.content ?? "", /INTEGRATION HANDOFF TEMPLATE/);
+  await rig.commands.get("sh")?.handler("cancel", rig.context);
+});
+
+test("disabled Speed Mode hides and rejects early retrieval", async (t) => {
+  const rig = await activateIntegrationRig(t);
+  assert.equal(rig.getActiveTools().includes("session_handoff_get_template"), false);
+  await assert.rejects(rig.tools.get("session_handoff_get_template")?.execute("get", { key: "anything" }, undefined, undefined, rig.context) ?? Promise.resolve(), /Speed Mode is disabled/);
+});
 
 test("integrated command-to-replacement success preserves lineage, deferred prompts, tools, and cleanup", async (t) => {
   const rig = await activateIntegrationRig(t, {
@@ -216,7 +290,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
     automaticSessionHandoffPercent: 100,
   });
   const submissionId = await reachWriter(rig);
-  assert.deepEqual(rig.getActiveTools(), ["submit_session_handoff"]);
+  assert.deepEqual(rig.getActiveTools(), ["read", "write", "edit", "submit_session_handoff"]);
   assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 1);
 
   const deferred = "  continue with this\nthen verify  ";
@@ -233,7 +307,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   assert.ok(submission);
   await submission.execute(
     "writer-call",
-    { id: submissionId, content: "# Candidate continuation\n\nVerified dossier." },
+    { id: submissionId },
     undefined,
     undefined,
     rig.context,
@@ -249,12 +323,13 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   await rig.commands.get(commandName)?.handler(token, rig.context);
 
   assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
-  assert.deepEqual(rig.replacementPrompts, [[
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(writerFile(rig), false)]);
+  assert.deepEqual(await readFile(writerFile(rig), "utf8"), [
     "# Candidate continuation\n\nVerified dossier.",
     "## Deferred Prompts",
     "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
     `--- Deferred Prompt 1 of 1 ---\n${deferred}`,
-  ].join("\n\n")]);
+  ].join("\n\n"));
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
   assert.equal(rig.flow.phase, "inactive");
   assert.match(
@@ -305,7 +380,7 @@ test("integrated cancellation retains deferred recovery, whose explicit executio
   await assert.rejects(
     submission.execute(
       "late-writer-call",
-      { id: submissionId, content: "# Late dossier" },
+      { id: submissionId },
       undefined,
       undefined,
       rig.context,

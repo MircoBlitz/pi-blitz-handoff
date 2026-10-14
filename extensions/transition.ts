@@ -9,7 +9,8 @@ import type {
   SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 
-import { assembleHandoffMarkdown, type DeferredPromptSnapshot } from "./deferred.ts";
+import type { DeferredPromptSnapshot } from "./deferred.ts";
+import { finalizeHandoffFile, handoffStartPrompt } from "./handoff-file.ts";
 import { deleteRecoveryFile, recoveryFileName } from "./recovery-store.ts";
 
 const PRIVATE_TRANSITION_COMMAND = "__pi_blitz_handoff_transition";
@@ -24,7 +25,8 @@ export type NativeTransitionPhase = "inactive" | "pending" | "replacing";
 export interface NativeTransitionRequest {
   handoffId: string;
   sourceSessionPath: string;
-  dossier: string;
+  handoffFile: string;
+  debugging: boolean;
   startedAt?: number;
   handoffStartedAt?: number;
 }
@@ -142,7 +144,6 @@ export class NativeHandoffTransition {
 
     const deferred = this.options.getDeferredSnapshot(active.handoffId);
     const prompts = deferred?.prompts ?? [];
-    const markdown = assembleHandoffMarkdown(active.dossier, prompts);
     const recoveryFile = deferred !== undefined && prompts.length > 0
       ? recoveryFileName(deferred.handoffTimestamp, deferred.sourceSessionPath)
       : undefined;
@@ -153,6 +154,8 @@ export class NativeHandoffTransition {
     let replacementContext: ReplacementContext | undefined;
 
     try {
+      finalizeHandoffFile(active.handoffFile, prompts);
+      const prompt = handoffStartPrompt(active.handoffFile, active.debugging);
       active.phase = "replacing";
       active.allowOwnSwitch = true;
       const result = await ctx.newSession({
@@ -160,7 +163,7 @@ export class NativeHandoffTransition {
         withSession: async (freshCtx) => {
           replacementContext = freshCtx;
           this.options.onReplacementStarted?.(active, freshCtx);
-          await freshCtx.sendUserMessage(markdown);
+          await freshCtx.sendUserMessage(prompt);
         },
       });
 

@@ -58,7 +58,7 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.3.1");
   assert.equal(
     manifest.description,
-    "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
+    "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   );
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
@@ -101,7 +101,7 @@ test("public documentation carries the current tagline and supported line", asyn
   assert.doesNotMatch(security, /current 1\.[124] code line/);
 });
 
-test("the package ships only the readiness-only Call default and unchanged reviewed V2 Handoff default", async () => {
+test("the package ships only the Speed Mode-aware Call default and file-writing V2 Handoff default", async () => {
   const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
   assert.deepEqual(SHIPPED_TEMPLATE_FILENAMES, filenames);
   assert.deepEqual((await readdir(join(projectRoot, "templates"))).sort(), filenames);
@@ -112,11 +112,11 @@ test("the package ships only the readiness-only Call default and unchanged revie
   ]);
   assert.equal(
     createHash("sha256").update(call).digest("hex"),
-    "513655a89bf70026e4a97fd22313f1ef79fb68c30ef609cbc9db6ecc2a87fabd",
+    "da2b0c9567b747339da76874d997a097a424dd3d74ec749dec8f182ded527907",
   );
   assert.equal(
     createHash("sha256").update(handoff).digest("hex"),
-    "70eb0966d79ce166397b09e467cd49058cd4e2e0c38476aefef998603992f080",
+    "cd8bcb3bd72594fb1fc0ff223c1bc01669abe0a78f68224508b6e11929994e66",
   );
 });
 

@@ -1,7 +1,7 @@
 {
   "name": "pi-blitz-handoff",
   "version": "1.3.1",
-  "description": "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
+  "description": "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   "type": "module",
   "license": "MIT",
   "author": "Mirco Blitz",

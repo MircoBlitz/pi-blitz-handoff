@@ -31,6 +31,8 @@ test("defaults exactly match the specified values and managed paths", async (t) 
     contextWarningPercent: 60,
     criticalWarningPercent: 90,
     automaticSessionHandoff: false,
+    debugging: false,
+    speedMode: false,
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
     maxSessionChainLength: 25,
@@ -74,6 +76,8 @@ test("validation enforces all numeric and boolean boundaries", async (t) => {
     { writerRetryDelaySeconds: 0 },
     { writerRetryDelaySeconds: 301 },
     { automaticSessionHandoff: 1 as unknown as boolean },
+    { debugging: "true" as unknown as boolean },
+    { speedMode: "true" as unknown as boolean },
   ];
   for (const changes of invalidChanges) {
     assert.throws(() => validateConfig(configured(agentDirectory, changes)));
@@ -156,6 +160,34 @@ test("existing configs gain the chain default in memory without rewriting, inclu
     assert.deepEqual(await loadConfig(agentDirectory), defaultConfig(agentDirectory));
     assert.equal(await readFile(paths.configFile, "utf8"), persisted);
   }
+});
+
+test("existing configs gain debugging=false only in memory, and true persists normally", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  const old = { ...defaultConfig(agentDirectory) } as Record<string, unknown>;
+  delete old.debugging;
+  const persisted = `${JSON.stringify(old, null, 2)}\n`;
+  await writeFile(paths.configFile, persisted);
+  assert.deepEqual(await loadConfig(agentDirectory), { ...old, debugging: false });
+  assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+  await mkdir(paths.recoveryDirectory);
+  await saveConfig(agentDirectory, { ...defaultConfig(agentDirectory), debugging: true });
+  assert.equal((await loadConfig(agentDirectory)).debugging, true);
+});
+
+test("older configs gain both feature switches in memory without rewriting", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  const old = { ...defaultConfig(agentDirectory) } as Record<string, unknown>;
+  delete old.debugging;
+  delete old.speedMode;
+  const persisted = `${JSON.stringify(old)}\n`;
+  await writeFile(paths.configFile, persisted);
+  assert.deepEqual(await loadConfig(agentDirectory), { ...old, debugging: false, speedMode: false });
+  assert.equal(await readFile(paths.configFile, "utf8"), persisted);
 });
 
 test("invalid persisted configuration is rejected rather than merged with defaults", async (t) => {

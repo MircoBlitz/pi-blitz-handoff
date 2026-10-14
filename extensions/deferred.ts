@@ -34,10 +34,9 @@ export function formatDeferredPrompts(prompts: readonly string[]): string {
     .join("\n");
 }
 
-export function assembleHandoffMarkdown(dossier: string, prompts: readonly string[]): string {
-  if (prompts.length === 0) return dossier;
+export function formatDeferredPromptSection(prompts: readonly string[]): string {
+  if (prompts.length === 0) return "";
   return [
-    dossier,
     "## Deferred Prompts",
     "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
     formatDeferredPrompts(prompts),

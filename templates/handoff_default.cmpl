@@ -2,7 +2,7 @@
 
 Write a compact, self-contained continuation dossier for a fresh Pi session, in the user's conversation language. Start with a concise, task-specific Markdown title, followed immediately by the fixed working-mode field. Use the dossier structure below; replace instructional brackets with actual source facts.
 
-Call `submit_session_handoff` exactly once when the dossier is sufficient. Do not explain your reasoning or perform source-task work. This extension-owned writer control applies only to the writer turn; never transfer it as a user instruction or continuation constraint.
+Write the complete dossier to the exact handoff file supplied in the writer prompt. Call `submit_session_handoff` exactly once with only the supplied submission ID after that file is complete; do not pass the dossier content or a path to the tool. Do not explain your reasoning or perform source-task work. This extension-owned writer control applies only to the writer turn; never transfer it as a user instruction or continuation constraint.
 
 ## Writing rules
 

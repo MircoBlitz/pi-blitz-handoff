@@ -95,6 +95,44 @@ async function pathExists(path: string): Promise<boolean> {
   return stat(path).then(() => true, () => false);
 }
 
+test("debugging is one boolean setting with immediate persistence in both directions", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  await persistedConfig(agentDirectory);
+  const applied: boolean[] = [];
+  const rig = scriptedContext([
+    chooseSetting("Debugging (archive handoff files): disabled"),
+    { method: "select", answer: "Enabled", check(title, options) {
+      assert.match(title, /oldlog_donotread/);
+      assert.deepEqual(options, ["Enabled", "Disabled"]);
+    } },
+    chooseSetting("Debugging (archive handoff files): enabled"),
+    { method: "select", answer: "Disabled" },
+    { method: "select", answer: undefined },
+  ]);
+  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.debugging); }).run(rig.context);
+  rig.assertFinished();
+  assert.deepEqual(applied, [true, false]);
+  assert.equal((await loadConfig(agentDirectory)).debugging, false);
+});
+
+test("Speed Mode is a boolean setting with immediate persistence", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  await persistedConfig(agentDirectory);
+  const applied: boolean[] = [];
+  const rig = scriptedContext([
+    chooseSetting("Speed Mode (optional early preparation): disabled"),
+    { method: "select", answer: "Enabled", check(title, options) {
+      assert.match(title, /early template retrieval/);
+      assert.deepEqual(options, ["Enabled", "Disabled"]);
+    } },
+    { method: "select", answer: undefined },
+  ]);
+  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.speedMode); }).run(rig.context);
+  rig.assertFinished();
+  assert.deepEqual(applied, [true]);
+  assert.equal((await loadConfig(agentDirectory)).speedMode, true);
+});
+
 test("chain limit rejects zero and fractions, persists immediately and applies live", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
   await persistedConfig(agentDirectory);
@@ -123,7 +161,7 @@ test("setting list persists every confirmed edit immediately and Escape closes n
   const applied: HandoffConfig[] = [];
   const rig = scriptedContext([
     chooseSetting("Writer attempts: 3", (options) => {
-      assert.equal(options.length, 12);
+      assert.equal(options.length, 14);
       assert.equal(options.some((option) => option.startsWith("Save configuration")), false);
       assert.equal(options.some((option) => option.startsWith("Cancel configuration")), false);
     }),
