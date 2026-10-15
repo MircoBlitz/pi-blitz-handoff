@@ -353,7 +353,7 @@ export class HandoffWriter {
 
 export function preparationPrompt(prepared: PreparedHandoff, sourceSessionPath: string): string {
   return [
-    "Speed Mode preparation only: GO has not been accepted. Continue required source work and reach its genuine boundary; do not let drafting delay that work. Use real waiting time to draft if useful.",
+    "Prepare while waiting: GO has not been accepted. Continue required source work and reach its genuine boundary; do not let drafting delay that work. Use real waiting time to draft if useful.",
     `Use this exact submission ID after GO: ${prepared.submissionId}`,
     `The persisted source-session transcript path is exactly: ${sourceSessionPath}`,
     `Write the complete handoff Markdown to this exact file: ${JSON.stringify(prepared.handoffFile)}`,

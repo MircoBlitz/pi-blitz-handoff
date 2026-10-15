@@ -102,7 +102,7 @@ test("public documentation carries the current tagline and supported line", asyn
   assert.doesNotMatch(security, /current 1\.[124] code line/);
 });
 
-test("the package ships only the Speed Mode-aware Call default and file-writing V2 Handoff default", async () => {
+test("the package ships only the Prepare while waiting-aware Call default and file-writing V2 Handoff default", async () => {
   const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
   assert.deepEqual(SHIPPED_TEMPLATE_FILENAMES, filenames);
   assert.deepEqual((await readdir(join(projectRoot, "templates"))).sort(), filenames);
@@ -113,7 +113,7 @@ test("the package ships only the Speed Mode-aware Call default and file-writing 
   ]);
   assert.equal(
     createHash("sha256").update(call).digest("hex"),
-    "da2b0c9567b747339da76874d997a097a424dd3d74ec749dec8f182ded527907",
+    "4b3034fc20d937cd67c03ef53631b12fd7630488c844175dfe14feee0ae65f97",
   );
   assert.equal(
     createHash("sha256").update(handoff).digest("hex"),

@@ -26,7 +26,7 @@ export interface NativeTransitionRequest {
   handoffId: string;
   sourceSessionPath: string;
   handoffFile: string;
-  debugging: boolean;
+  deleteHandoffAfterReading: boolean;
   startedAt?: number;
   handoffStartedAt?: number;
 }
@@ -155,7 +155,7 @@ export class NativeHandoffTransition {
 
     try {
       finalizeHandoffFile(active.handoffFile, prompts);
-      const prompt = handoffStartPrompt(active.handoffFile, active.debugging);
+      const prompt = handoffStartPrompt(active.handoffFile, active.deleteHandoffAfterReading);
       active.phase = "replacing";
       active.allowOwnSwitch = true;
       const result = await ctx.newSession({

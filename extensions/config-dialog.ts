@@ -14,8 +14,8 @@ const SETTING_KEYS: readonly SettingKey[] = [
   "contextWarningPercent",
   "criticalWarningPercent",
   "automaticSessionHandoff",
-  "debugging",
-  "speedMode",
+  "deleteHandoffAfterReading",
+  "prepareWhileWaiting",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
   "maxSessionChainLength",
@@ -31,8 +31,8 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   contextWarningPercent: "Context warning percentage",
   criticalWarningPercent: "Critical warning percentage",
   automaticSessionHandoff: "Automatic session handoff",
-  debugging: "Debugging (archive handoff files)",
-  speedMode: "Speed Mode (optional early preparation)",
+  deleteHandoffAfterReading: "Delete handoff after reading",
+  prepareWhileWaiting: "Prepare while waiting",
   automaticSessionHandoffPercent: "Automatic session handoff percentage",
   readinessRetrySeconds: "Readiness reminder seconds",
   maxSessionChainLength: "Maximum session chain length",
@@ -141,12 +141,12 @@ async function editSetting(
 ): Promise<HandoffConfig> {
   let candidate: HandoffConfig | undefined;
 
-  if (key === "automaticSessionHandoff" || key === "debugging" || key === "speedMode") {
+  if (key === "automaticSessionHandoff" || key === "deleteHandoffAfterReading" || key === "prepareWhileWaiting") {
     const answer = await selectDialog(ctx,
-      key === "debugging"
-        ? "Should consumed handoff files be archived in .pi/session/oldlog_donotread/ instead of deleted?"
-        : key === "speedMode"
-          ? "Should Speed Mode offer early template retrieval and drafting before GO?"
+      key === "deleteHandoffAfterReading"
+        ? "Should the receiving session delete the handoff file after reading it completely? Disabled leaves the file unchanged."
+        : key === "prepareWhileWaiting"
+          ? "Should early template retrieval and drafting be offered while waiting before GO?"
           : "Should automatic session handoff be enabled?",
       ["Enabled", "Disabled"],
       { signal, heading: SETTING_LABELS[key] },
@@ -193,7 +193,7 @@ async function editSetting(
   }
 }
 
-function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "debugging" | "speedMode">, draft: HandoffConfig): string {
+function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "deleteHandoffAfterReading" | "prepareWhileWaiting">, draft: HandoffConfig): string {
   switch (key) {
     case "contextWarningPercent":
       return `What context percentage should show a warning? Enter a number from 1 to less than ${draft.criticalWarningPercent}.`;
@@ -239,8 +239,8 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
         : undefined;
     }
     case "automaticSessionHandoff":
-    case "debugging":
-    case "speedMode":
+    case "deleteHandoffAfterReading":
+    case "prepareWhileWaiting":
       return undefined;
     case "automaticSessionHandoffPercent": {
       const value = finiteNumber(answer);
@@ -287,8 +287,8 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
     case "criticalWarningPercent":
       return `Enter a finite number above ${draft.contextWarningPercent} through 100.`;
     case "automaticSessionHandoff":
-    case "debugging":
-    case "speedMode":
+    case "deleteHandoffAfterReading":
+    case "prepareWhileWaiting":
       return "Choose Enabled or Disabled.";
     case "automaticSessionHandoffPercent":
       return "Enter a finite number from 0 through 100.";

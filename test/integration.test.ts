@@ -221,8 +221,8 @@ async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig
   return submissionId;
 }
 
-test("Speed Mode retrieves once before GO, separates DONE, and never resends the prepared template", async (t) => {
-  const rig = await activateIntegrationRig(t, { speedMode: true, debugging: true });
+test("Prepare while waiting retrieves once before GO, separates DONE, and never resends the prepared template", async (t) => {
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true, deleteHandoffAfterReading: false });
   const get = rig.tools.get("session_handoff_get_template");
   const done = rig.tools.get("submit_session_handoff");
   assert.ok(get);
@@ -231,7 +231,7 @@ test("Speed Mode retrieves once before GO, separates DONE, and never resends the
   await rig.commands.get("sh")?.handler("start", rig.context);
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
-  assert.match(rig.customMessages.at(-1) ?? "", /Speed Mode is enabled/);
+  assert.match(rig.customMessages.at(-1) ?? "", /Prepare while waiting is enabled/);
   await assert.rejects(get.execute("stale", { key: "stale" }, undefined, undefined, rig.context), /pre-GO readiness key/);
 
   const prepared = await get.execute("get", { key }, undefined, undefined, rig.context) as { content: Array<{ text: string }> };
@@ -242,6 +242,7 @@ test("Speed Mode retrieves once before GO, separates DONE, and never resends the
   assert.ok(id);
   assert.ok(encodedPath);
   const path = JSON.parse(encodedPath) as string;
+  assert.equal(path, join(rig.context.cwd, ".pi", "handoff_source.md"));
   await writeFile(path, "# Early draft"); // Scripted source-model preparation.
   assert.equal(rig.flow.phase, "waiting");
   assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "still ordinary", source: "interactive" }, rig.context), { action: "continue" });
@@ -266,20 +267,20 @@ test("Speed Mode retrieves once before GO, separates DONE, and never resends the
   assert.ok(token);
   await rig.commands.get(command)?.handler(token, rig.context);
   assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
-  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(path, true)]);
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(path, false)]);
   assert.ok((await readFile(path, "utf8")).endsWith("deferred after GO"));
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
 });
 
-test("Speed Mode can skip early retrieval and receive the normal template after GO", async (t) => {
-  const rig = await activateIntegrationRig(t, { speedMode: true });
+test("Prepare while waiting can skip early retrieval and receive the normal template after GO", async (t) => {
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true });
   await reachWriter(rig);
   assert.match(rig.userMessages.at(-1)?.content ?? "", /INTEGRATION HANDOFF TEMPLATE/);
   await rig.commands.get("sh")?.handler("cancel", rig.context);
 });
 
 test("an aborted GET does not suppress an undelivered template or collide with its reserved file after GO", async (t) => {
-  const rig = await activateIntegrationRig(t, { speedMode: true });
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true });
   await rig.commands.get("sh")?.handler("start", rig.context);
   const key = rig.flow.snapshot?.readinessKey;
   const get = rig.tools.get("session_handoff_get_template");
@@ -289,9 +290,9 @@ test("an aborted GET does not suppress an undelivered template or collide with i
   const retrieval = get.execute("aborted-get", { key }, controller.signal, undefined, rig.context);
   controller.abort();
   await assert.rejects(retrieval, { name: "AbortError" });
-  const directory = join(rig.context.cwd, ".pi", "session");
+  const directory = join(rig.context.cwd, ".pi");
   const files = await readdir(directory);
-  assert.equal(files.length, 1);
+  assert.deepEqual(files, ["handoff_source.md"]);
   await writeFile(join(rig.paths.templateDirectory, "handoff_default.cmpl"), "UPDATED NORMAL WRITER TEMPLATE");
   await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
   await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
@@ -306,10 +307,10 @@ test("an aborted GET does not suppress an undelivered template or collide with i
   await rig.commands.get("sh")?.handler("cancel", rig.context);
 });
 
-test("disabled Speed Mode hides and rejects early retrieval", async (t) => {
+test("disabled Prepare while waiting hides and rejects early retrieval", async (t) => {
   const rig = await activateIntegrationRig(t);
   assert.equal(rig.getActiveTools().includes("session_handoff_get_template"), false);
-  await assert.rejects(rig.tools.get("session_handoff_get_template")?.execute("get", { key: "anything" }, undefined, undefined, rig.context) ?? Promise.resolve(), /Speed Mode is disabled/);
+  await assert.rejects(rig.tools.get("session_handoff_get_template")?.execute("get", { key: "anything" }, undefined, undefined, rig.context) ?? Promise.resolve(), /Prepare while waiting is disabled/);
 });
 
 test("integrated command-to-replacement success preserves lineage, deferred prompts, tools, and cleanup", async (t) => {
@@ -351,7 +352,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   await rig.commands.get(commandName)?.handler(token, rig.context);
 
   assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
-  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(writerFile(rig), false)]);
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(writerFile(rig), true)]);
   assert.deepEqual(await readFile(writerFile(rig), "utf8"), [
     "# Candidate continuation\n\nVerified dossier.",
     "## Deferred Prompts",

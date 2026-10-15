@@ -28,14 +28,14 @@ test("explicit readiness preserves correlation without adding work-boundary poli
   assert.doesNotMatch(prompt, /required model-owned work/);
 });
 
-test("the default Call permits optional Speed Mode preparation and separates GO from DONE in prompts and reminders", async () => {
+test("the default Call permits optional preparation while waiting and separates GO from DONE in prompts and reminders", async () => {
   const call = await readFile(new URL("../templates/call_default.cmpl", import.meta.url), "utf8");
   assert.doesNotMatch(call, /^Prepare this session/);
   for (const allowUserDeferral of [true, false]) {
     for (const assemble of [readinessPrompt, readinessReminder]) {
       const prompt = assemble(call, "go-current", allowUserDeferral);
       assert.ok(prompt.includes("This is the readiness phase only."));
-      assert.ok(prompt.includes("Do not write a handoff yet or create a continuation file unless the extension explicitly enables Speed Mode preparation."));
+      assert.ok(prompt.includes("Do not write a handoff yet or create a continuation file unless the extension explicitly enables Prepare while waiting."));
       assert.ok(prompt.includes("After sending GO through the instructed readiness tool, wait for the extension's explicit writer/finalization instruction with the submission ID."));
       assert.ok(prompt.includes("Without early preparation, that instruction supplies the Handoff Template."));
       assert.ok(prompt.includes("use the previously retrieved template and finalize your draft without another template delivery."));

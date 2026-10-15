@@ -239,7 +239,7 @@ test("live writer configuration controls subsequent attempt count and retry dela
 });
 
 test("writer prompt contains scoped writer control, the complete template, exact ID, and source transcript", () => {
-  const prompt = writerPrompt("line one\nline two", "submission-exact", "/sessions/source exact.jsonl", "/project/.pi/session/handoff_file.md");
+  const prompt = writerPrompt("line one\nline two", "submission-exact", "/sessions/source exact.jsonl", "/project/.pi/handoff_source.md");
 
   assert.match(prompt, /^This is an extension-owned writer turn\./);
   assert.match(prompt, /Perform no source-task work during this turn/);

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
-import { registerPreparationTool, speedModeReadiness } from "../extensions/preparation-tool.ts";
+import { registerPreparationTool, prepareWhileWaitingReadiness } from "../extensions/preparation-tool.ts";
 
 // Registration and context test doubles; no model or Pi session is started.
 function register(prepare: (key: string) => Promise<string>, onReturn = () => {}): ToolDefinition {
@@ -49,8 +49,8 @@ test("GET observes native abort after awaited preparation without returning stal
   assert.equal(returned, 0);
 });
 
-test("Speed Mode guidance preserves the source policy and distinct optional GET, GO and DONE", () => {
-  const prompt = speedModeReadiness("CUSTOM READINESS");
+test("Prepare while waiting guidance preserves the source policy and distinct optional GET, GO and DONE", () => {
+  const prompt = prepareWhileWaitingReadiness("CUSTOM READINESS");
   assert.match(prompt, /^CUSTOM READINESS\n/);
   assert.match(prompt, /Preparation is optional; do not delay required in-flight work/);
   assert.match(prompt, /do not delay required in-flight work or call GET and GO concurrently/);

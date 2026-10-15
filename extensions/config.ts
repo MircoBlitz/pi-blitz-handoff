@@ -7,8 +7,8 @@ export interface HandoffConfig {
   contextWarningPercent: number;
   criticalWarningPercent: number;
   automaticSessionHandoff: boolean;
-  debugging: boolean;
-  speedMode: boolean;
+  deleteHandoffAfterReading: boolean;
+  prepareWhileWaiting: boolean;
   automaticSessionHandoffPercent: number;
   readinessRetrySeconds: number;
   maxSessionChainLength: number;
@@ -32,8 +32,8 @@ const CONFIG_KEYS = [
   "contextWarningPercent",
   "criticalWarningPercent",
   "automaticSessionHandoff",
-  "debugging",
-  "speedMode",
+  "deleteHandoffAfterReading",
+  "prepareWhileWaiting",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
   "maxSessionChainLength",
@@ -62,8 +62,8 @@ export function defaultConfig(agentDirectory: string): HandoffConfig {
     contextWarningPercent: 60,
     criticalWarningPercent: 90,
     automaticSessionHandoff: false,
-    debugging: false,
-    speedMode: false,
+    deleteHandoffAfterReading: true,
+    prepareWhileWaiting: false,
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
     maxSessionChainLength: 25,
@@ -95,8 +95,8 @@ export function validateConfig(value: unknown): HandoffConfig {
   }
 
   const automaticSessionHandoff = booleanSetting(record, "automaticSessionHandoff");
-  const debugging = booleanSetting(record, "debugging");
-  const speedMode = booleanSetting(record, "speedMode");
+  const deleteHandoffAfterReading = booleanSetting(record, "deleteHandoffAfterReading");
+  const prepareWhileWaiting = booleanSetting(record, "prepareWhileWaiting");
   const automaticSessionHandoffPercent = numberSetting(record, "automaticSessionHandoffPercent");
   if (automaticSessionHandoffPercent < 0 || automaticSessionHandoffPercent > 100) {
     throw new Error("automaticSessionHandoffPercent must be from 0 through 100");
@@ -120,8 +120,8 @@ export function validateConfig(value: unknown): HandoffConfig {
     contextWarningPercent,
     criticalWarningPercent,
     automaticSessionHandoff,
-    debugging,
-    speedMode,
+    deleteHandoffAfterReading,
+    prepareWhileWaiting,
     automaticSessionHandoffPercent,
     readinessRetrySeconds,
     maxSessionChainLength,
@@ -180,12 +180,12 @@ export async function saveConfig(
 function upgradePersistedConfig(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  const optionalKeys = new Set(["callTemplate", "maxSessionChainLength", "debugging", "speedMode"]);
+  const optionalKeys = new Set(["callTemplate", "maxSessionChainLength", "deleteHandoffAfterReading", "prepareWhileWaiting"]);
   const requiredKeys = CONFIG_KEYS.filter((key) => !optionalKeys.has(key));
   if (requiredKeys.some((key) => !(key in record)) || Object.keys(record).some((key) => !CONFIG_KEYS.includes(key as typeof CONFIG_KEYS[number]))) {
     return value;
   }
-  return { callTemplate: "call_default.cmpl", maxSessionChainLength: 25, debugging: false, speedMode: false, ...record };
+  return { callTemplate: "call_default.cmpl", maxSessionChainLength: 25, deleteHandoffAfterReading: true, prepareWhileWaiting: false, ...record };
 }
 
 function templateSetting(record: Record<string, unknown>, name: "callTemplate" | "handoffTemplate"): string {

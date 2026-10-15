@@ -488,8 +488,8 @@ test("/sh settings stays in extension UI and reload or session replacement close
   }
 });
 
-test("persisted Speed Mode toggles refresh GET immediately without mutating tools for unrelated settings", async (t) => {
-  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-speed-toggle-"));
+test("persisted Prepare while waiting toggles refresh GET immediately without mutating tools for unrelated settings", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-prepare-toggle-"));
   t.after(() => rm(agentDirectory, { recursive: true, force: true }));
   const paths = handoffPaths(agentDirectory);
   await mkdir(paths.templateDirectory, { recursive: true });
@@ -505,24 +505,26 @@ test("persisted Speed Mode toggles refresh GET immediately without mutating tool
   runtime.setCalls.length = 0;
 
   const answers: Array<string | undefined> = [
-    "Speed Mode (optional early preparation): disabled", "Enabled",
-    "Debugging (archive handoff files): disabled", "Enabled", undefined,
+    "Prepare while waiting: disabled", "Enabled",
+    "Delete handoff after reading: enabled", "Disabled", undefined,
   ];
   rig.setSelectHandler(async () => answers.shift());
   await rig.commands.get("sh")?.("settings", rig.context);
   assert.deepEqual(runtime.setCalls, [["read", "write", "bash", "session_handoff_get_template"]]);
-  assert.equal((JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig).speedMode, true);
+  const persisted = JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig;
+  assert.equal(persisted.prepareWhileWaiting, true);
+  assert.equal(persisted.deleteHandoffAfterReading, false);
   await rig.commands.get("sh")?.("start", rig.context);
-  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Speed Mode is enabled/);
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Prepare while waiting is enabled/);
   await rig.commands.get("sh")?.("cancel", rig.context);
 
-  answers.push("Speed Mode (optional early preparation): enabled", "Disabled", undefined);
+  answers.push("Prepare while waiting: enabled", "Disabled", undefined);
   await rig.commands.get("sh")?.("settings", rig.context);
   assert.deepEqual(runtime.activeTools, ["read", "write", "bash"]);
   assert.equal(runtime.setCalls.length, 2);
-  await assert.rejects(rig.getToolExecute("session_handoff_get_template")("get", { key: "old" }, undefined, undefined, rig.context), /Speed Mode is disabled/);
+  await assert.rejects(rig.getToolExecute("session_handoff_get_template")("get", { key: "old" }, undefined, undefined, rig.context), /Prepare while waiting is disabled/);
   await rig.commands.get("sh")?.("start", rig.context);
-  assert.doesNotMatch(rig.sentMessages.at(-1)?.message.content ?? "", /Speed Mode is enabled/);
+  assert.doesNotMatch(rig.sentMessages.at(-1)?.message.content ?? "", /Prepare while waiting is enabled/);
   await rig.commands.get("sh")?.("cancel", rig.context);
 });
 

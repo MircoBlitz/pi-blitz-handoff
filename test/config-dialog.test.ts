@@ -95,42 +95,43 @@ async function pathExists(path: string): Promise<boolean> {
   return stat(path).then(() => true, () => false);
 }
 
-test("debugging is one boolean setting with immediate persistence in both directions", async (t) => {
+test("deleteHandoffAfterReading is one boolean setting with immediate persistence in both directions", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
   await persistedConfig(agentDirectory);
   const applied: boolean[] = [];
   const rig = scriptedContext([
-    chooseSetting("Debugging (archive handoff files): disabled"),
-    { method: "select", answer: "Enabled", check(title, options) {
-      assert.match(title, /oldlog_donotread/);
+    chooseSetting("Delete handoff after reading: enabled"),
+    { method: "select", answer: "Disabled", check(title, options) {
+      assert.match(title, /delete the handoff file after reading it completely/);
+      assert.match(title, /Disabled leaves the file unchanged/);
       assert.deepEqual(options, ["Enabled", "Disabled"]);
     } },
-    chooseSetting("Debugging (archive handoff files): enabled"),
-    { method: "select", answer: "Disabled" },
+    chooseSetting("Delete handoff after reading: disabled"),
+    { method: "select", answer: "Enabled" },
     { method: "select", answer: undefined },
   ]);
-  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.debugging); }).run(rig.context);
+  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.deleteHandoffAfterReading); }).run(rig.context);
   rig.assertFinished();
-  assert.deepEqual(applied, [true, false]);
-  assert.equal((await loadConfig(agentDirectory)).debugging, false);
+  assert.deepEqual(applied, [false, true]);
+  assert.equal((await loadConfig(agentDirectory)).deleteHandoffAfterReading, true);
 });
 
-test("Speed Mode is a boolean setting with immediate persistence", async (t) => {
+test("Prepare while waiting is a boolean setting with immediate persistence", async (t) => {
   const agentDirectory = await temporaryDirectory(t);
   await persistedConfig(agentDirectory);
   const applied: boolean[] = [];
   const rig = scriptedContext([
-    chooseSetting("Speed Mode (optional early preparation): disabled"),
+    chooseSetting("Prepare while waiting: disabled"),
     { method: "select", answer: "Enabled", check(title, options) {
       assert.match(title, /early template retrieval/);
       assert.deepEqual(options, ["Enabled", "Disabled"]);
     } },
     { method: "select", answer: undefined },
   ]);
-  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.speedMode); }).run(rig.context);
+  await new ConfigDialog(agentDirectory, (config) => { applied.push(config.prepareWhileWaiting); }).run(rig.context);
   rig.assertFinished();
   assert.deepEqual(applied, [true]);
-  assert.equal((await loadConfig(agentDirectory)).speedMode, true);
+  assert.equal((await loadConfig(agentDirectory)).prepareWhileWaiting, true);
 });
 
 test("chain limit rejects zero and fractions, persists immediately and applies live", async (t) => {

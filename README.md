@@ -9,11 +9,11 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!NOTE]
-> **Unreleased feature — file-based handoff and optional Speed Mode**
+> **Unreleased feature — file-based handoff and optional Prepare while waiting**
 >
-> GO confirms only the safe work boundary; DONE is a separate submission after file finalization. Optional `speedMode: true` permits early template retrieval and drafting during genuine waiting, without resending the template after GO. It is disabled by default and promises no speed gain.
+> GO confirms only the safe work boundary; DONE is a separate submission after file finalization. Optional `prepareWhileWaiting: true` permits early template retrieval and drafting during genuine waiting, without resending the template after GO. It is disabled by default and promises no speed gain.
 >
-> The source model writes the dossier to `.pi/session/handoff_YYMMDDHHMMSS_SESSID.md`. The submission tool receives only the attempt ID; the fresh session starts with a short file reference. `debugging: false` (default) instructs the receiver to delete the file after complete ingestion; `true` instructs it to archive the file in `.pi/session/oldlog_donotread/`. Ingestion and cleanup are model instructions, not extension-enforced guarantees.
+> The source model writes the dossier to `.pi/handoff_SESSID.md`, using the native source-session ID without a timestamp. The submission tool receives only the attempt ID; the fresh session starts with a short file reference. **Delete handoff after reading** (`deleteHandoffAfterReading: true`, the default) instructs the receiver to delete the file after complete ingestion. When disabled, the file stays unchanged at the same path. Ingestion and cleanup are model instructions, not extension-enforced guarantees.
 
 > [!NOTE]
 > **Release Note — 1.3.1**
@@ -60,7 +60,7 @@ The same replacement session then validates the working state and dispatches the
 - `@earendil-works/pi-coding-agent` 0.84.2 or later
 - Pi's interactive chat surface
 - A persisted source session
-- Pi's native `write` tool, and a writable `.pi/session/` directory under the current Pi working directory
+- Pi's native `write` tool, and a writable `.pi/` directory under the current Pi working directory
 
 `--no-session` and other in-memory sessions cannot start a handoff because there is no source transcript path or native parent lineage.
 
@@ -126,11 +126,11 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 ## How a handoff works
 
 1. **Request a transfer.** Choose **Start handoff** from `/sh`, use `/sh start`, explicitly ask the model to start one, or enable automatic initiation. Explicit starts ignore context thresholds.
-2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. By default this is readiness only. With Speed Mode enabled, optional early retrieval and drafting can use genuine waiting time without delaying required work. GO means only that the boundary is safe, not that the file is complete; it never switches sessions. After GO, wait for the writer/finalization instruction. This is model guidance, not a filesystem write block. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
+2. **Reach a safe boundary.** The Call Template tells the model to finish required work already in flight, not future tasks. By default this is readiness only. With Prepare while waiting enabled, optional early retrieval and drafting can use genuine waiting time without delaying required work. GO means only that the boundary is safe, not that the file is complete; it never switches sessions. After GO, wait for the writer/finalization instruction. This is model guidance, not a filesystem write block. Manual and model-requested readiness waits until Pi is idle with no pending messages. The model signals readiness through a tool with the current correlation key.
 3. **Defer incoming prompts.** After GO, ordinary interactive and RPC prompts are captured unchanged and in order. They are kept in memory and atomically persisted to one recovery Markdown file; slash commands retain Pi’s native behavior.
 4. **Write the dossier to a file.** At the next idle boundary with no pending messages, the source receives the attempt ID and absolute handoff-file path. Without preparation it also receives the current Handoff Template; with preparation it receives only a short finalization instruction and uses the previously retrieved template. Pi's native `read`, `write` and `edit` tools are enabled alongside `submit_session_handoff`. The source writes the complete Markdown to the file, using incremental edits if needed, then submits **DONE** separately through `submit_session_handoff({ id })`. Before DONE it must update relevant facts, results, permissions and the exact next action; the model owns that semantic review. Writer control is turn-local, not a transferred task restriction. Unprepared retries resolve the template afresh and replace partial file content; prepared retries retain the template snapshot and draft path without resending the template, but require a fresh DONE ID. Count and delay are configurable; the original tools are restored on success, cancellation, exhaustion or terminal failure.
 5. **Start the replacement with a file reference.** Only after DONE and the existing settled boundary, the extension checks that the file is a nonempty regular file, without reading its dossier, and appends any deferred prompts in their original order. It sends a short first user turn containing the absolute path, startup instructions and the configured cleanup instruction. Native `parentSession` linkage normally preserves lineage. At the configured chain limit, the next session starts as an independent master with the same file reference instead.
-6. **Ingest and clean up.** The receiver follows normal startup instructions and required basic skills, reads the entire file (continuing past truncated reads), then deletes it or archives it according to `debugging`. It leaves the file unchanged if reading fails or is incomplete. Separately, after successful native replacement and prompt delivery, the extension deletes the deferred-prompt recovery file. Cleanup failures must be reported; successful transport does not prove model ingestion or cleanup.
+6. **Ingest and clean up.** The receiver follows normal startup instructions and required basic skills, reads the entire file (continuing past truncated reads), then deletes it or leaves it unchanged according to `deleteHandoffAfterReading`. It leaves the file unchanged if reading fails or is incomplete. Separately, after successful native replacement and prompt delivery, the extension deletes the deferred-prompt recovery file. Cleanup failures must be reported; successful transport does not prove model ingestion or cleanup.
 
 ### Readiness and user deferral
 
@@ -142,9 +142,9 @@ Discussion, questions, criticism, testing, or a mention of handoffs are not star
 
 The extension does not parse free-form replies. If neither permitted readiness tool is called, one reminder after `readinessRetrySeconds` reapplies the same Call Template and source-specific tool protocol. There is no periodic polling and no reminder after **Wait**.
 
-### Optional Speed Mode
+### Optional Prepare while waiting
 
-`speedMode` is off by default and can be toggled in `/sh settings` without reload. When enabled, all initiation sources receive additional readiness instructions and the optional `session_handoff_get_template({ key })` tool. Before GO it returns the selected template, absolute reserved file path and submission ID. Repeated retrieval shares one preparation. It does not accept GO or DONE, and disabled, stale or post-GO calls fail.
+`prepareWhileWaiting` is off by default and can be toggled in `/sh settings` without reload. When enabled, all initiation sources receive additional readiness instructions and the optional `session_handoff_get_template({ key })` tool. Before GO it returns the selected template, absolute reserved file path and submission ID. Repeated retrieval shares one preparation. It does not accept GO or DONE, and disabled, stale or post-GO calls fail.
 
 Use early drafting only during real waiting and with existing source tools. It must not delay required work or run concurrently with GO. Skipping retrieval is valid: the normal writer receives the template after GO. An aborted GET also takes that normal path and reuses any reserved file; only a successfully returned GET suppresses later template delivery. There is no artificial waiting phase. GO starts prompt deferral; DONE confirms the finalized file, and only DONE plus the settled boundary permits replacement. The extra calls/turns are an accepted trade-off, not a guaranteed acceleration.
 
@@ -201,8 +201,8 @@ Persisted configuration updates the currently loaded extension directly.
 | `contextWarningPercent` | `60` | Finite number, at least 1 and below the critical threshold |
 | `criticalWarningPercent` | `90` | Finite number, above the warning threshold and at most 100 |
 | `automaticSessionHandoff` | `false` | Boolean |
-| `speedMode` | `false` | Boolean; optional pre-GO template retrieval and drafting, separate GO/DONE unchanged |
-| `debugging` | `false` | Boolean; `false` instructs deletion after complete ingestion, `true` instructs archival in `.pi/session/oldlog_donotread/` |
+| `prepareWhileWaiting` | `false` | Boolean; optional pre-GO template retrieval and drafting, separate GO/DONE unchanged |
+| `deleteHandoffAfterReading` | `true` | Boolean; delete after complete ingestion when enabled, otherwise keep the exact file unchanged at the same path |
 | `automaticSessionHandoffPercent` | `70` | Finite number from 0 through 100; 0 disables automatic initiation; first automatic-attempt threshold |
 | `readinessRetrySeconds` | `60` | Integer from 1 through 300; delay before the single silent re-evaluation turn |
 | `maxSessionChainLength` | `25` | Positive integer; includes the master; the next handoff at the limit starts an independent master |
@@ -243,14 +243,14 @@ Missing managed directories are created during load. The package installs its tw
 Optional early preparation or the normal writer reserves an owner-only file under the current Pi working directory:
 
 ```text
-.pi/session/handoff_YYMMDDHHMMSS_SESSID.md
+.pi/handoff_SESSID.md
 ```
 
-The timestamp uses local time, including minutes and seconds; `SESSID` is the native source-session ID. An existing same-name file is never overwritten by file reservation: a collision fails visibly. Retries within one writer reuse its reserved path. Unprepared attempts replace partial content; prepared attempts retain and update the draft.
+`SESSID` is the native source-session ID. The file sits directly under `.pi`, without a timestamp. An existing same-name file is never overwritten by reservation; a collision fails visibly. A leftover file therefore blocks another handoff from that same source session until explicitly removed. Retries within one writer reuse its reserved path. Unprepared attempts replace partial content; prepared attempts retain and update the draft.
 
-`debugging` is a single boolean setting in `/sh settings` or `config.json`. After complete successful ingestion, `false` (default) tells the receiver to delete the exact file; `true` tells it to create `.pi/session/oldlog_donotread/` if needed and move the file there under the same filename. The receiver is told not to scan or read that archive without an explicit user request. The directory name is a reminder, not an access-control boundary. The extension does not read the dossier or perform receiver cleanup, and does not claim to verify ingestion. Cancelled, interrupted or failed handoffs can leave empty or partial files at the supplied path for manual inspection.
+**Delete handoff after reading** (`deleteHandoffAfterReading`) is a boolean setting in `/sh settings` or `config.json`, enabled by default. After complete successful ingestion, it tells the receiver to delete the exact file. When disabled, the file stays unchanged at its current path; there is no archive move. The extension does not read the dossier, perform receiver cleanup or verify ingestion. Cancelled, interrupted or failed handoffs can leave empty or partial files at the supplied path for manual inspection.
 
-These files contain plaintext conversation context and should remain outside version control and publication. Exclude `.pi/session/` using your project's local Git exclude or ignore policy; the extension does not change that policy automatically. Archiving increases local retention. The new transport avoids placing the entire dossier in the submission tool or initial prompt, but file writing and reading still depend on the model, native tools and their output limits.
+These files contain plaintext conversation context and should remain outside version control and publication. Exclude `.pi/handoff_*.md` using your project's local Git exclude or ignore policy; the extension does not change that policy automatically. Disabling deletion increases local retention. The file transport avoids placing the entire dossier in the submission tool or initial prompt, but file writing and reading still depend on the model, native tools and their output limits.
 
 ### Shipped defaults
 
@@ -269,7 +269,7 @@ If you previously selected another Handoff Template, choose `handoff_default.cmp
 
 **Clean up unchanged legacy templates manually.** If you have not customized them, delete obsolete `default.cmpl`, `call_fast.cmpl`, `handoff_fast.cmpl`, `call_balanced.cmpl`, `handoff_balanced.cmpl`, `call_next.cmpl` and `handoff_next.cmpl` from your local managed template directory. An unchanged `handoff_v2.cmpl` can also be deleted: V2 is now shipped as `handoff_default.cmpl`. First switch any global or project selections that still reference these files to the current defaults. Keep customized templates and both current defaults (`call_default.cmpl` and `handoff_default.cmpl`). This is a manual cleanup recommendation, not automatic deletion by the extension; retained legacy `.cmpl` files can still appear in template selection.
 
-Existing exact configurations lacking `debugging` or `speedMode` load with `false` for those fields in memory. Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh settings` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
+Existing exact configurations lacking `deleteHandoffAfterReading` load with `true` in memory; those lacking `prepareWhileWaiting` load with `false`. The replaced unreleased keys `debugging` and `speedMode` are not accepted aliases. Existing exact configurations lacking `maxSessionChainLength` load with `25` in memory; configurations predating `callTemplate` also gain `call_default.cmpl`. They are not rewritten automatically. The limit is configurable through `/sh settings` and applies immediately. Chain length comes from Pi's persisted parent-session headers, so `/resume` and `/reload` do not reset it. A new independent master starts at one. If a required ancestor cannot be read, cutover fails visibly rather than guessing a length.
 
 ### Project template assignments
 
@@ -293,7 +293,7 @@ A candidate must be a readable, nonempty `.cmpl` file. Both configured roles are
 
 ## Data and security
 
-Handoff dossiers may contain sensitive project and conversation context. Handoff files (and debugging archives) are plaintext under `.pi/session/`; deferred-prompt recovery files are plaintext in the configured recovery directory and contain prompt text unchanged, plus extension-owned boundaries. `project-templates.json` stores absolute directory paths and template filenames. New managed directories and files use restrictive creation modes, but the extension is not a sandbox and does not provide secret detection, encryption, inode tracking, or a general filesystem-adversary policy.
+Handoff dossiers may contain sensitive project and conversation context. Handoff files are plaintext at `.pi/handoff_<Session-ID>.md`; deferred-prompt recovery files are plaintext in the configured recovery directory and contain prompt text unchanged, plus extension-owned boundaries. `project-templates.json` stores absolute directory paths and template filenames. New managed directories and files use restrictive creation modes, but the extension is not a sandbox and does not provide secret detection, encryption, inode tracking, or a general filesystem-adversary policy.
 
 See [SECURITY.md](SECURITY.md) for the security and data-handling model.
 
@@ -317,7 +317,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-The unreleased file-based/Speed Mode candidate has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
+The unreleased file-based handoff candidate with optional preparation while waiting has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
 
 The candidate is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
 

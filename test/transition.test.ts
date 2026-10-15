@@ -28,7 +28,7 @@ interface Notification {
 
 interface TransitionRigOptions {
   deferred?: string[];
-  debugging?: boolean;
+  deleteHandoffAfterReading?: boolean;
   maxSessionChainLength?: number;
   newSessionCancelled?: boolean;
   newSessionError?: Error;
@@ -46,12 +46,12 @@ function request(): NativeTransitionRequest {
     handoffId: "handoff-1",
     sourceSessionPath: "/sessions/exact-source.jsonl",
     handoffFile,
-    debugging: false,
+    deleteHandoffAfterReading: true,
   };
 }
 
 function rig(options: TransitionRigOptions = {}) {
-  const handoff = { ...request(), debugging: options.debugging ?? false };
+  const handoff = { ...request(), deleteHandoffAfterReading: options.deleteHandoffAfterReading ?? true };
   let deferred = options.deferred;
   const notifications: Notification[] = [];
   const replacementNotifications: Notification[] = [];
@@ -217,7 +217,7 @@ test("a chain cut starts a parentless master while preserving dossier and deferr
   options.maxSessionChainLength = 1;
   assert.equal(await testRig.transition.execute(token ?? "", testRig.context), true);
   assert.deepEqual(testRig.parents, [undefined]);
-  assert.equal(testRig.prompts[0], handoffStartPrompt(testRig.request.handoffFile, false));
+  assert.equal(testRig.prompts[0], handoffStartPrompt(testRig.request.handoffFile, true));
   assert.ok(readFileSync(testRig.request.handoffFile, "utf8").endsWith("next instruction"));
   assert.equal(testRig.cleanup.length, 1);
   assert.deepEqual(testRig.finished, ["handoff-1"]);
@@ -230,7 +230,7 @@ test("native replacement sends a file reference, not dossier content, and leaves
 
   assert.equal(await testRig.transition.execute(token, testRig.context), true);
   assert.deepEqual(testRig.parents, ["/sessions/exact-source.jsonl"]);
-  assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, false)]);
+  assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, true)]);
   assert.doesNotMatch(testRig.prompts[0] ?? "", /Task-specific title|# Dossier body/);
   assert.equal(readFileSync(testRig.request.handoffFile, "utf8"), "Task-specific title\n\n# Dossier body");
   assert.doesNotMatch(testRig.prompts[0] ?? "", /Deferred Prompts/);
@@ -342,7 +342,7 @@ test("successful first-prompt delivery does not finish or clean up until outer r
     const token = testRig.transition.prepare(testRig.request);
 
     assert.equal(await testRig.transition.execute(token ?? "", testRig.context), false);
-    assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, false)]);
+    assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, true)]);
     assert.ok(readFileSync(testRig.request.handoffFile, "utf8").endsWith("recover me"));
     assert.deepEqual(testRig.cleanup, []);
     assert.deepEqual(testRig.finished, []);

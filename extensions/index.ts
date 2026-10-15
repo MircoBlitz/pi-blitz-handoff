@@ -27,7 +27,7 @@ import {
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
-import { registerPreparationTool, SESSION_HANDOFF_GET_TEMPLATE_TOOL, speedModeReadiness } from "./preparation-tool.ts";
+import { registerPreparationTool, SESSION_HANDOFF_GET_TEMPLATE_TOOL, prepareWhileWaitingReadiness } from "./preparation-tool.ts";
 import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
 import {
   clearHandoffTerminalState,
@@ -241,7 +241,7 @@ export function activateHandoffExtension(
           ),
         onTemplateFailure(failure, attempt, ctx) {
           ctx.ui.notify(
-            `${attempt === 0 ? "Speed Mode preparation" : `Writer attempt ${attempt}`} could not use template ${failure.path}: ${failure.reason}`,
+            `${attempt === 0 ? "Prepare while waiting" : `Writer attempt ${attempt}`} could not use template ${failure.path}: ${failure.reason}`,
             "warning",
           );
         },
@@ -263,7 +263,7 @@ export function activateHandoffExtension(
             handoffId: result.handoff.id,
             sourceSessionPath: result.handoff.sourceSessionPath,
             handoffFile: result.handoffFile,
-            debugging: config.debugging,
+            deleteHandoffAfterReading: config.deleteHandoffAfterReading,
             startedAt,
             handoffStartedAt: getHandoffStartedAt(STATUS_KEY),
           });
@@ -313,7 +313,7 @@ export function activateHandoffExtension(
   if (writer !== undefined) {
     registerSubmissionTool(pi, (submission) => writer.submit(submission));
     registerPreparationTool(pi, async (key, ctx) => {
-      if (!config.speedMode) throw new Error("Speed Mode is disabled");
+      if (!config.prepareWhileWaiting) throw new Error("Prepare while waiting is disabled");
       const handoff = flow.snapshot;
       if (handoff?.phase !== "waiting" || handoff.readinessKey !== key) {
         throw new Error("Template retrieval requires the current pre-GO readiness key");
@@ -335,7 +335,7 @@ export function activateHandoffExtension(
       const tools = writerRuntime.getActiveTools().filter((name) =>
         name !== SUBMIT_SESSION_HANDOFF_TOOL && name !== SESSION_HANDOFF_GET_TEMPLATE_TOOL,
       );
-      if (config.speedMode) tools.push(SESSION_HANDOFF_GET_TEMPLATE_TOOL);
+      if (config.prepareWhileWaiting) tools.push(SESSION_HANDOFF_GET_TEMPLATE_TOOL);
       writerRuntime.setActiveTools(tools);
     } catch (error) {
       ctx.ui.notify(
@@ -360,7 +360,7 @@ export function activateHandoffExtension(
     readinessRetrySeconds: config.readinessRetrySeconds,
     callTemplate,
     onReadinessPrompt(prompt, handoff) {
-      if (config.speedMode) prompt = speedModeReadiness(prompt);
+      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -374,7 +374,7 @@ export function activateHandoffExtension(
       );
     },
     onReadinessReminder(prompt, handoff) {
-      if (config.speedMode) prompt = speedModeReadiness(prompt);
+      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -412,11 +412,11 @@ export function activateHandoffExtension(
       persisted.templateDirectory !== config.templateDirectory ||
       persisted.callTemplate !== config.callTemplate ||
       persisted.handoffTemplate !== config.handoffTemplate;
-    const speedModeChanged = persisted.speedMode !== config.speedMode;
+    const prepareWhileWaitingChanged = persisted.prepareWhileWaiting !== config.prepareWhileWaiting;
     Object.assign(config, persisted);
     flow.setReadinessRetrySeconds(config.readinessRetrySeconds);
     writer?.configure(config.writerAttempts, config.writerRetryDelaySeconds);
-    if (speedModeChanged) initializeWriterTools(ctx);
+    if (prepareWhileWaitingChanged) initializeWriterTools(ctx);
     recoveryDialog.setRecoveryDirectory(config.recoveryDirectory);
     transition.setRecoveryDirectory(config.recoveryDirectory);
 
