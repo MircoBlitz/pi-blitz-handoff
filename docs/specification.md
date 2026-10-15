@@ -274,20 +274,22 @@ The dossier distinguishes completed and verified work, completed but unverified 
 
 The V2 default Handoff Template places `Working mode` immediately after the meaningful title, using the actual pre-writer continuation mode, `userfacing` or `autonom`. Neither automatic initiation nor the writer turn establishes autonomous work or grants permission.
 
-Its continuation sections are:
+The dossier then separates `Historical context` from `Positive context` in the same handoff file. Historical context is one short reference-only paragraph: topic/task label — actual session ID — known entry point. A transcript starting line is included only when actually established; otherwise another known entry point is used or the entry point is marked unknown. The writer uses known references rather than scanning ancestor sessions to build an inventory. No separate history file or historical narrative is produced. The paragraph explicitly instructs the receiver to load referenced session history only for a concrete unresolved fact or discrepancy that positive context or a known governing/detail source cannot answer; otherwise it stays unloaded.
 
-1. `Work and assignment` — confirmed goal, brief source-session completion labels with the exact supplied transcript reference, future already commissioned work and one precise open step.
+Positive context means everything still relevant to continuation, including constraints, active skills and uncertainty, regardless of age. Current consequences of completed work remain under state or evidence; the past itself is compressed into the historical index. Its subsections are:
+
+1. `Work and assignment` — confirmed goal, future already commissioned work and one precise open step.
 2. `Permissions and boundaries` — continuing grants with provenance and remaining coverage, authorized access/elevation, material conditions and separate gates. Completed individual actions are not reactivated; undertaking-wide grants are not consumed merely by finishing one step.
 3. `Current work state` — relevant file/system state, dirty or unintegrated work, actual running work and currently effective blockers.
 4. `Binding instructions` — decisions, genuine governing sources and active skills as name, purpose and scope. No cumulative read inventory, skill-path field or blanket reload list; selected frozen authority stays bound through its actual plan/source reference.
 5. `Evidence and uncertainty` — observed facts, checked state/result/limits and unresolved or unread frontiers. Later edits do not inherit an earlier PASS.
-6. `Targeted retrieval` — genuine detail sources, what they contain and the concrete occasion for reading them, without duplicating inline facts.
+6. `Targeted retrieval` — current-work detail sources, what they contain and the concrete occasion for reading them. Historical session references belong solely in `Historical context`.
 
-The continuation core stays inline: current permissions and their material conditions, decisive known facts and the actual work state cannot be replaced by references. Unambiguous known governing sources may carry detail. Each fact has one primary place; no length quota replaces completeness. Empty or inapplicable optional fields are omitted. Discussion and ideas are not future commissioned work.
+The continuation core stays inline in positive context: current permissions and their material conditions, decisive known facts and the actual work state cannot be replaced by references. Unambiguous known governing sources may carry detail. Each fact has one primary place; no length quota replaces completeness. Empty or inapplicable optional fields are omitted. Discussion and ideas are not future commissioned work.
 
 The recorded open step incorporates the receiving-session instruction once. Apply Deferred Prompts as separate sequential inputs before the recorded action; later prompts may supersede it. Restore only authorities and active skills required by applicable instructions and their contracts. Do not start with a previous-session recap. In `userfacing` mode resume the current dialogue, answer or question. In `autonom` mode actually perform the authorized next work in the first response. Ask only a concrete blocking question when a real missing decision, permission or blocker prevents continuation; do not re-request a still-valid grant.
 
-The source-session transcript is a targeted fallback only for a concrete discrepancy not answerable from the dossier or known governing/detail sources. Do not prescribe routine transcript reading or ancestor scans. These are semantic writer/receiver instructions, not deterministic output or restoration guarantees.
+The historical index and positive-context split are semantic writer/receiver instructions, not deterministic output, retrieval or restoration guarantees. The extension does not parse or verify topic coverage, session references, entry points or historical compression.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -328,7 +330,7 @@ The selected Handoff Template determines continuation behavior. The V2 default h
 
 After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
-The source transcript remains available through the exact source path recorded in the handoff, and through native parent-session lineage unless this handoff starts an independent master at the chain limit. Native file-tool calls and results follow Pi's normal source and receiver session persistence; the submission tool log contains the ID, not a dossier payload.
+Persisted source transcripts remain available for targeted retrieval by the session IDs in the historical index. Native parent-session lineage additionally links the source unless this handoff starts an independent master at the chain limit. Native file-tool calls and results follow Pi's normal source and receiver session persistence; the submission tool log contains the ID, not a dossier payload.
 
 ## 11. Cancellation and lifecycle
 

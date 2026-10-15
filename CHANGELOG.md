@@ -9,6 +9,7 @@
 
 ### Changed
 
+- The Handoff default now separates a reference-only historical paragraph (topic/task, session ID and known entry point) from positive continuation context. History is loaded only for a concrete unresolved need; current constraints, active skills and consequential results stay inline. Starting lines must be established, not invented. Both parts remain in one handoff file; this is model guidance, not verified compression or retrieval behavior.
 - The source writes its dossier with native file tools to `.pi/session/handoff_YYMMDDHHMMSS_SESSID.md` under the current Pi working directory, using local time and its native session ID. Exclusive reservation rejects collisions. The replacement's first prompt references the absolute path, not the full dossier.
 - GO confirms only the safe boundary and starts prompt deferral. Separate DONE via `submit_session_handoff({ id })` confirms file finalization; only DONE plus the native settled boundary permits replacement. The submission tool no longer accepts content or a path.
 - The extension checks nonempty regular-file metadata and appends its own deferred prompts without reading or parsing the dossier. The receiver is instructed to apply normal startup/basic skills, read the whole file past tool truncation and clean up only after complete ingestion. Failed/incomplete ingestion leaves the file unchanged; cleanup errors must be reported.

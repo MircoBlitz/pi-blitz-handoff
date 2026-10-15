@@ -36,6 +36,8 @@ V2 has worked better in practice than the previous templates. It focuses the dos
 - keep the continuation core inline and reference known detail sources only for concrete retrieval needs; and
 - apply deferred prompts first, then resume the dialogue or perform authorized autonomous work without a previous-session recap.
 
+The unreleased default separates history from the context needed to continue. One short historical paragraph contains only topic/task labels, session IDs and known entry points, with starting lines only when established. It tells the receiver to load that history only for a concrete unresolved need. Everything still relevant follows as positive context, including constraints, active skills, evidence limits and current consequences of completed work. Both parts stay in the same handoff file.
+
 The transfer protocol is deterministic; the dossier and continuation are model-generated. V2 is an improved default, not a guarantee of lossless transfer. Results still depend on the model and available source context.
 
 ## Successful autonomous handoff
@@ -255,7 +257,7 @@ These files contain plaintext conversation context and should remain outside ver
 | Template | Purpose |
 |---|---|
 | `call_default.cmpl` | Finish only required work already in flight, then transfer at a genuinely safe boundary. Prefer direct GO unless a concrete active user interaction still matters. |
-| `handoff_default.cmpl` | The V2 dossier: explicit mode, commissioned work, permissions, current state, binding instructions, evidence limits and targeted retrieval. |
+| `handoff_default.cmpl` | The V2 dossier: a reference-only historical paragraph followed by current continuation context, including mode, work, permissions, active skills and evidence limits. |
 
 There are no packaged Fast, Balanced or development variants. Custom managed and addendum templates remain available.
 
