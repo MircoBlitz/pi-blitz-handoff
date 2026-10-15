@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current 1.3 code line is the supported package contract; the file-based handoff and optional Speed Mode features are unreleased. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
+This policy covers the 1.4 code line, currently prepared as the unpublished 1.4.0 release candidate. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
 
 ## Trust boundary
 
@@ -21,15 +21,15 @@ A handoff can process:
 - ordinary interactive or RPC prompt text received after the accepted readiness boundary;
 - context-usage and handoff-status information.
 
-The writer prompt and resulting dossier are sent through the configured model in the source session. The source model writes the dossier through Pi's native file tools to `.pi/session/handoff_YYMMDDHHMMSS_SESSID.md` under the current Pi working directory. The private submission tool receives only the attempt ID. The extension appends its deferred prompts without reading the dossier and sends a short absolute file reference and ingestion/cleanup instructions as the replacement's first user turn. The receiver's subsequent file reads send the dossier through the configured replacement model. Pi's normal session-persistence behavior applies to native file-tool calls and results in both sessions.
+The writer prompt and resulting dossier are sent through the configured model in the source session. The source model writes the dossier through Pi's native file tools to `.pi/handoff_<Session-ID>.md` under the current Pi working directory. The private submission tool receives only the attempt ID. The extension appends its deferred prompts without reading the dossier and sends a short absolute file reference and ingestion/cleanup instructions as the replacement's first user turn. The receiver's subsequent file reads send the dossier through the configured replacement model. Pi's normal session-persistence behavior applies to native file-tool calls and results in both sessions.
 
-`speedMode: true` permits optional pre-GO retrieval and drafting with the source's existing tools. It changes neither authorization nor the safe boundary. GO starts prompt deferral, not cutover; DONE is accepted only during post-GO writing, then the native settled boundary permits transition. The source model must update prepared drafts before DONE; factual completeness is not checked by code. Cancelled preparation can leave a reserved or partial file, just like an interrupted normal writer.
+`prepareWhileWaiting: true` permits optional pre-GO retrieval and drafting with the source's existing tools. It changes neither authorization nor the safe boundary. GO starts prompt deferral, not cutover; DONE is accepted only during post-GO writing, then the native settled boundary permits transition. The source model must update prepared drafts before DONE; factual completeness is not checked by code. Cancelled preparation can leave a reserved or partial file, just like an interrupted normal writer.
 
 Deferred prompts are preserved unchanged and in arrival order. When any exist, the extension writes one plaintext Markdown recovery file for the handoff window. It does not inspect prompt contents for secrets, redact them, or encrypt them. Do not place secrets in prompts or handoff context unless the configured model, local session storage, and recovery storage are appropriate for those secrets.
 
 ## Filesystem behavior
 
-Global managed data defaults to `<getAgentDir()>/pi-blitz-handoff/`. Project-local transport files live under `.pi/session/` in the current Pi working directory. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Global configuration, project-template assignments, and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
+Global managed data defaults to `<getAgentDir()>/pi-blitz-handoff/`. Project-local transport files live directly at `.pi/handoff_<Session-ID>.md` in the current Pi working directory, without a timestamp. New private directories and files are created with restrictive modes (`0700` directories and `0600` files). Global configuration, project-template assignments, and recovery replacement use ordinary atomic rename-based writes. Cleanup is exact and nonrecursive.
 
 These controls reduce accidental local exposure; they are not a general filesystem security framework. In particular:
 
@@ -37,11 +37,11 @@ These controls reduce accidental local exposure; they are not a general filesyst
 - there is no inode or descriptor identity tracking;
 - there is no `O_NOFOLLOW` policy;
 - existing directory permissions are not tightened;
-- handoff, archive, recovery and template content is not encrypted;
+- handoff, recovery and template content is not encrypted;
 - the writer's native file tools are real tools, not a path sandbox; restricting source-task work and writes to the supplied handoff path is model guidance;
 - managed-default backups are retained until the user removes them.
 
-`debugging: false` (default) instructs the receiver to delete the handoff file only after successful complete ingestion. `debugging: true` instructs it to move the file under the same name to `.pi/session/oldlog_donotread/`, increasing local plaintext retention. The receiver is instructed not to read or scan that archive without an explicit user request; the directory name is not access control. Read failures must leave the file unchanged, and cleanup failures must be reported. Neither ingestion nor deletion/archival is verified or performed by the extension. Exclude `.pi/session/` from version control and publication according to your local project policy; the extension does not edit Git ignores automatically. Interrupted or cancelled writers may leave empty or partial handoff files for manual inspection.
+**Delete handoff after reading** (`deleteHandoffAfterReading: true`, the default) instructs the receiver to delete the exact handoff file only after successful complete ingestion. When disabled, the file stays unchanged at the same path, increasing local plaintext retention. There is no archive move. Read failures must leave the file unchanged, and cleanup failures must be reported. Neither ingestion nor deletion is verified or performed by the extension. Exclude `.pi/handoff_*.md` from version control and publication according to your local project policy; the extension does not edit Git ignores automatically. Interrupted or cancelled writers may leave empty or partial handoff files for manual inspection.
 
 Choose recovery and addendum-template directories whose ownership and permissions fit the sensitivity of the session data. Review leftover recovery files with `/sh recover`; execution is never automatic.
 
