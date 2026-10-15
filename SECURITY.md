@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-This policy covers the 1.4 code line, currently prepared as the unpublished 1.4.0 release candidate. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
+This policy covers the current 1.4 code line. It requires Node.js 22.19.0 or later and Pi (`@earendil-works/pi-coding-agent`) 0.84.2 or later. Older package, Node, and Pi versions have not been evaluated against this contract.
 
 ## Trust boundary
 
@@ -59,4 +59,4 @@ No public issue tracker or disclosure address is asserted by this package metada
 
 ## Validation boundary
 
-Automated unit, integration, and package tests verify deterministic local behavior. They do not constitute a sandbox audit, adversarial model evaluation, or end-to-end validation in a real interactive Pi session. Real interactive/model/session validation has not yet been performed for this candidate.
+Automated unit, integration, and package tests verify deterministic local behavior. They do not constitute a sandbox audit, adversarial model evaluation, or end-to-end validation in a real interactive Pi session. Real interactive/model/session validation has not yet been performed for the 1.4 file-transport contract.

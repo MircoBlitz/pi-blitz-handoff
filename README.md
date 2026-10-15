@@ -9,7 +9,7 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!NOTE]
-> **Release candidate — 1.4.0**
+> **Release Note — 1.4.0**
 >
 > GO confirms only the safe work boundary; DONE is a separate submission after file finalization. Optional `prepareWhileWaiting: true` permits early template retrieval and drafting during genuine waiting, without resending the template after GO. It is disabled by default and promises no speed gain.
 >
@@ -310,8 +310,8 @@ git diff --check
 npm pack --dry-run
 ```
 
-The 1.4.0 release candidate has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
+Version 1.4.0 has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
 
-The candidate is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
+The code is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
 
 On 2026-09-30, a Real-Pi handoff at the end of an existing 10-session chain, using an isolated test limit of 10, created an independent master with no native parent reference. The replacement continued with its re-entry summary and waited as instructed. The default 25-session boundary is covered by deterministic tests, not that Real-Pi run. See [session-chain validation](docs/session-chain-validation.md) for evidence and scope.

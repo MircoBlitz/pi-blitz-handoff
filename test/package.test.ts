@@ -96,10 +96,9 @@ test("public documentation carries the current tagline and supported line", asyn
   ]);
 
   assert.match(readme, /^Steer your context\. Hand off what matters\.$/m);
-  assert.match(readme, /\*\*Release candidate — 1\.4\.0\*\*/);
+  assert.match(readme, /\*\*Release Note — 1\.4\.0\*\*/);
   assert.doesNotMatch(readme, /\[!TIP\]/);
-  assert.match(security, /1\.4 code line/);
-  assert.match(security, /unpublished 1\.4\.0 release candidate/);
+  assert.match(security, /current 1\.4 code line/);
   assert.doesNotMatch(security, /current 1\.[123] code line/);
 });
 

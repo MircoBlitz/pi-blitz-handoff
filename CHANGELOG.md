@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — Unreleased
+## 1.4.0 — 2026-10-16
 
 ### Added
 
@@ -23,7 +23,7 @@
 ### Validation limits
 
 - Dossier correctness, complete ingestion and receiver cleanup remain model responsibilities, not extension-verified guarantees. Prepare while waiting has no guaranteed acceleration and adds accepted GO/DONE calls/turns, not an artificial wait.
-- Deterministic local tests cover the new transport and protocol. No real-model/Pi-session end-to-end validation has been performed for this feature; earlier Real-Pi evidence covers only the earlier contracts. Version 1.4.0 is prepared for publication; no publication has taken place.
+- Deterministic local tests cover the new transport and protocol. No real-model/Pi-session end-to-end validation has been performed for this feature; earlier Real-Pi evidence covers only the earlier contracts.
 
 ## 1.3.1 — 2026-10-12
 

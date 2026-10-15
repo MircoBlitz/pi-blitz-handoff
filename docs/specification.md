@@ -2,7 +2,7 @@
 
 > **Current approved product authority.**
 >
-> This specification incorporates the explicitly approved keyed-readiness redesign, unified overlay dialogs, and unreleased file-based handoff with optional Prepare while waiting and separate GO/DONE signals. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
+> This specification incorporates the explicitly approved keyed-readiness redesign, unified overlay dialogs, and file-based handoff with optional Prepare while waiting and separate GO/DONE signals. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
