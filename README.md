@@ -9,18 +9,11 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!NOTE]
-> **Unreleased feature — file-based handoff and optional Prepare while waiting**
+> **Release candidate — 1.4.0**
 >
 > GO confirms only the safe work boundary; DONE is a separate submission after file finalization. Optional `prepareWhileWaiting: true` permits early template retrieval and drafting during genuine waiting, without resending the template after GO. It is disabled by default and promises no speed gain.
 >
 > The source model writes the dossier to `.pi/handoff_SESSID.md`, using the native source-session ID without a timestamp. The submission tool receives only the attempt ID; the fresh session starts with a short file reference. **Delete handoff after reading** (`deleteHandoffAfterReading: true`, the default) instructs the receiver to delete the file after complete ingestion. When disabled, the file stays unchanged at the same path. Ingestion and cleanup are model instructions, not extension-enforced guarantees.
-
-> [!NOTE]
-> **Release Note — 1.3.1**
->
-> All handoff dialogs now use themed terminal overlays. `/sh` opens the menu with **Start handoff** or **Cancel handoff** as its first action; `/sh start` starts directly, and typing `/sh ` shows the available subcommands.
->
-> In released 1.3.1, the Call default explicitly says: do not write a handoff yet. Send GO when ready, then wait for the writer instruction containing the Handoff Template and submission ID. This is model guidance, not a technical write block. The V2 Handoff default is unchanged.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
@@ -36,7 +29,7 @@ V2 has worked better in practice than the previous templates. It focuses the dos
 - keep the continuation core inline and reference known detail sources only for concrete retrieval needs; and
 - apply deferred prompts first, then resume the dialogue or perform authorized autonomous work without a previous-session recap.
 
-The unreleased default separates history from the context needed to continue. One short historical paragraph contains only topic/task labels, session IDs and known entry points, with starting lines only when established. It tells the receiver to load that history only for a concrete unresolved need. Everything still relevant follows as positive context, including constraints, active skills, evidence limits and current consequences of completed work. Both parts stay in the same handoff file.
+The default separates history from the context needed to continue. One short historical paragraph contains only topic/task labels, session IDs and known entry points, with starting lines only when established. It tells the receiver to load that history only for a concrete unresolved need. Everything still relevant follows as positive context, including constraints, active skills, evidence limits and current consequences of completed work. Both parts stay in the same handoff file.
 
 The transfer protocol is deterministic; the dossier and continuation are model-generated. V2 is an improved default, not a guarantee of lossless transfer. Results still depend on the model and available source context.
 
@@ -317,7 +310,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-The unreleased file-based handoff candidate with optional preparation while waiting has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
+The 1.4.0 release candidate has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
 
 The candidate is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
 
