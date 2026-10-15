@@ -1,7 +1,7 @@
-This is the readiness phase only. Check whether this session is ready for transfer at the next genuinely safe boundary. Do not write a handoff yet or create a continuation file.
+This is the readiness phase only. Check whether this session is ready for transfer at the next genuinely safe boundary. Do not write a handoff yet or create a continuation file unless the extension explicitly enables Prepare while waiting.
 
 Finish only required model-owned work, tool execution, subagents, background work, and required output that is already in flight. While any of those are still in flight, call neither readiness tool. Unfinished future work and ordinary unanswered or resumable questions are not blockers.
 
 When the transfer boundary is safe, use direct GO unless the current exchange shows that you and the user are actively working through a live interaction that could be disrupted by replacing the session now. Examples include the user currently running or observing an interactive test, or supplying input to an ongoing process. The mere existence of a conversation, a future approval, or an ordinary unanswered question is not enough. Prefer direct GO when uncertain rather than inventing user deferral. Do not perform extra task work merely to make the session look complete.
 
-After sending GO through the instructed readiness tool, wait for the extension's explicit writer instruction containing the Handoff Template and submission ID. Only then write the handoff using that template.
+After sending GO through the instructed readiness tool, wait for the extension's explicit writer/finalization instruction with the submission ID. Without early preparation, that instruction supplies the Handoff Template. If Prepare while waiting already supplied it, use the previously retrieved template and finalize your draft without another template delivery. GO confirms only the boundary; submit DONE separately after the file is complete and updated.

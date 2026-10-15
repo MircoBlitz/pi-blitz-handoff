@@ -10,18 +10,13 @@ import {
   type SessionHandoffSubmission,
 } from "../extensions/submission-tool.ts";
 
-test("submission validation checks only exact correlation, nonempty content, and NUL absence", () => {
-  assert.equal(validateSubmission({ id: "current", content: "# Handoff" }, "current"), undefined);
-  assert.equal(validateSubmission({ id: "current", content: "   \n" }, "current"), undefined);
-  assert.equal(validateSubmission({ id: "current", content: "not markdown" }, "current"), undefined);
-  assert.equal(validateSubmission({ id: "current", content: "x".repeat(100_000) }, "current"), undefined);
-
-  assert.match(validateSubmission({ id: "stale", content: "content" }, "current") ?? "", /does not match/);
-  assert.match(validateSubmission({ id: "current", content: "" }, "current") ?? "", /must not be empty/);
-  assert.match(validateSubmission({ id: "current", content: "before\0after" }, "current") ?? "", /NUL/);
+test("DONE submission validates only exact attempt correlation", () => {
+  assert.equal(validateSubmission({ id: "current" }, "current"), undefined);
+  assert.match(validateSubmission({ id: "stale" }, "current") ?? "", /does not match/);
 });
 
-test("registered submission tool exposes exactly id and content and terminates after acceptance", async () => {
+test("submission tool accepts only an ID, no content or path, and terminates after acceptance", async () => {
+  // Test double: captures the public Pi registration without executing a model.
   let definition: {
     name: string;
     parameters: {
@@ -43,14 +38,13 @@ test("registered submission tool exposes exactly id and content and terminates a
   } as unknown as ExtensionAPI;
 
   registerSubmissionTool(pi, (submission) => accepted.push(submission));
-
   assert.equal(definition?.name, SUBMIT_SESSION_HANDOFF_TOOL);
-  assert.deepEqual(Object.keys(definition?.parameters.properties ?? {}).sort(), ["content", "id"]);
-  assert.deepEqual(definition?.parameters.required, ["id", "content"]);
+  assert.deepEqual(Object.keys(definition?.parameters.properties ?? {}), ["id"]);
+  assert.deepEqual(definition?.parameters.required, ["id"]);
   assert.equal(definition?.parameters.additionalProperties, false);
 
-  const result = await definition?.execute("call-1", { id: "id-1", content: "# Exact dossier" });
-  assert.deepEqual(accepted, [{ id: "id-1", content: "# Exact dossier" }]);
+  const result = await definition?.execute("call-1", { id: "id-1" });
+  assert.deepEqual(accepted, [{ id: "id-1" }]);
   assert.equal(result?.terminate, true);
   assert.deepEqual(result?.details, { id: "id-1" });
 });

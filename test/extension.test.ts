@@ -139,7 +139,7 @@ function createRig(
   const context = {
     mode: "tui",
     hasUI: true,
-    cwd: "/projects/app",
+    cwd: join(agentDirectory, "projects", "app"),
     isIdle: () => state.idle,
     hasPendingMessages: () => state.pending,
     getContextUsage: () => ({
@@ -149,6 +149,7 @@ function createRig(
     }),
     sessionManager: {
       getSessionFile: () => state.sessionFile,
+      getSessionId: () => "source",
       getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
       getEntries: () => state.entries,
     },
@@ -391,7 +392,7 @@ test("blitz_handoff start records intent during a run while status remains factu
   assert.equal(rig.sentMessages.length, 0);
 
   rig.state.idle = true;
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.sentMessages.length, 1);
 
   const status = await execute("call-2", { action: "status" }, undefined, undefined, rig.context);
@@ -467,7 +468,7 @@ test("/sh settings stays in extension UI and reload or session replacement close
     });
     rig.setSelectHandler(async (title, options, opts) => {
       assert.equal(title, "Configure pi-blitz-handoff");
-      assert.equal(options.length, 12);
+      assert.equal(options.length, 14);
       observedSignal = opts?.signal;
       markPromptStarted?.();
       return new Promise<string | undefined>((resolve) => {
@@ -485,6 +486,46 @@ test("/sh settings stays in extension UI and reload or session replacement close
     assert.equal(rig.sentMessages.length, 0);
     assert.equal(rig.notifications.length, 0);
   }
+});
+
+test("persisted Prepare while waiting toggles refresh GET immediately without mutating tools for unrelated settings", async (t) => {
+  const agentDirectory = await mkdtemp(join(tmpdir(), "pi-blitz-handoff-prepare-toggle-"));
+  t.after(() => rm(agentDirectory, { recursive: true, force: true }));
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.templateDirectory, { recursive: true });
+  await mkdir(paths.recoveryDirectory, { recursive: true });
+  await writeFile(join(paths.templateDirectory, "call_default.cmpl"), "call default");
+  await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "handoff default");
+  await saveConfig(agentDirectory, defaultConfig(agentDirectory));
+  // Native tool registry/activation test double, preserving unrelated source tools.
+  const runtime: ToolRuntimeOptions = { activeTools: ["read", "write", "bash"], loading: false, setCalls: [] };
+  const rig = createRig({}, {}, agentDirectory, runtime);
+  await rig.handlers.session_start?.({ type: "session_start", reason: "startup" }, rig.context);
+  assert.deepEqual(runtime.activeTools, ["read", "write", "bash"]);
+  runtime.setCalls.length = 0;
+
+  const answers: Array<string | undefined> = [
+    "Prepare while waiting: disabled", "Enabled",
+    "Delete handoff after reading: enabled", "Disabled", undefined,
+  ];
+  rig.setSelectHandler(async () => answers.shift());
+  await rig.commands.get("sh")?.("settings", rig.context);
+  assert.deepEqual(runtime.setCalls, [["read", "write", "bash", "session_handoff_get_template"]]);
+  const persisted = JSON.parse(await readFile(paths.configFile, "utf8")) as HandoffConfig;
+  assert.equal(persisted.prepareWhileWaiting, true);
+  assert.equal(persisted.deleteHandoffAfterReading, false);
+  await rig.commands.get("sh")?.("start", rig.context);
+  assert.match(rig.sentMessages.at(-1)?.message.content ?? "", /Prepare while waiting is enabled/);
+  await rig.commands.get("sh")?.("cancel", rig.context);
+
+  answers.push("Prepare while waiting: enabled", "Disabled", undefined);
+  await rig.commands.get("sh")?.("settings", rig.context);
+  assert.deepEqual(runtime.activeTools, ["read", "write", "bash"]);
+  assert.equal(runtime.setCalls.length, 2);
+  await assert.rejects(rig.getToolExecute("session_handoff_get_template")("get", { key: "old" }, undefined, undefined, rig.context), /Prepare while waiting is disabled/);
+  await rig.commands.get("sh")?.("start", rig.context);
+  assert.doesNotMatch(rig.sentMessages.at(-1)?.message.content ?? "", /Prepare while waiting is enabled/);
+  await rig.commands.get("sh")?.("cancel", rig.context);
 });
 
 test("persisted configuration updates live status, thresholds, templates, writer, and recovery", async (t) => {
@@ -506,7 +547,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
 
   const toolRuntime: ToolRuntimeOptions = { activeTools: ["read"], loading: false, setCalls: [] };
   const rig = createRig({}, { percent: 70 }, agentDirectory, toolRuntime);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
 
   const selections: Array<string | undefined> = [
@@ -552,7 +593,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
   assert.match(status.content[0]?.text ?? "", /Warning threshold: 55%; critical threshold: 85%/);
   assert.match(status.content[0]?.text ?? "", /Readiness reminder delay: 7 seconds/);
 
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.filter(({ message }) => message.startsWith("Context usage is ")).length, 1);
   await rig.handlers.turn_end?.({ type: "turn_end" }, rig.context);
   assert.equal(rig.flow.phase, "inactive");
@@ -564,7 +605,7 @@ test("persisted configuration updates live status, thresholds, templates, writer
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 10 && rig.sentUserMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -601,7 +642,7 @@ test("/sh project-template commits each role immediately and removes Autodiscove
 
   await rig.commands.get("sh")?.("project-template", rig.context);
   assert.deepEqual(JSON.parse(await readFile(paths.projectTemplatesFile, "utf8")), {
-    "/projects/app": { callTemplate: "call_default.cmpl", handoffTemplate: null },
+    [join(agentDirectory, "projects", "app")]: { callTemplate: "call_default.cmpl", handoffTemplate: null },
   });
   assert.match(rig.notifications.at(-1)?.message ?? "", /Project Call Template saved/);
 
@@ -638,9 +679,9 @@ test("/sh project-template reports no exact assignment and performs no write for
 
   await rig.commands.get("sh")?.("project-template", rig.context);
   await assert.rejects(readFile(paths.projectTemplatesFile, "utf8"), { code: "ENOENT" });
-  assert.match(
-    rig.notifications.at(-1)?.message ?? "",
-    /No exact project template assignment exists for \/projects\/app; nothing was changed\./,
+  assert.equal(
+    rig.notifications.at(-1)?.message,
+    `No exact project template assignment exists for ${rig.context.cwd}; nothing was changed.`,
   );
 });
 
@@ -654,11 +695,11 @@ test("project templates are resolved from the nearest ancestor for the next hand
   await writeFile(join(paths.templateDirectory, "handoff_default.cmpl"), "default handoff");
   await writeFile(join(paths.templateDirectory, "handoff_project.cmpl"), "PROJECT HANDOFF");
   await writeFile(paths.projectTemplatesFile, JSON.stringify({
-    "/projects": {
+    [join(agentDirectory, "projects")]: {
       callTemplate: "call_project.cmpl",
       handoffTemplate: null,
     },
-    "/projects/app": {
+    [join(agentDirectory, "projects", "app")]: {
       callTemplate: null,
       handoffTemplate: "handoff_project.cmpl",
     },
@@ -675,7 +716,7 @@ test("project templates are resolved from the nearest ancestor for the next hand
   const key = rig.flow.snapshot?.readinessKey;
   assert.ok(key);
   await rig.getToolExecute("session_handoff_go")("go", { key }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 100 && rig.sentUserMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
@@ -834,7 +875,7 @@ test("automatic initiation enters autonomous work at turn end and retries once a
   await below.handlers.turn_end?.({ type: "turn_end" }, below.context);
   assert.equal(below.flow.phase, "inactive");
   below.state.percent = 70;
-  await below.handlers.agent_settled?.({ type: "agent_settled" }, below.context);
+  await below.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, below.context);
   assert.equal(below.flow.phase, "inactive");
 
   const enabled = createRig(
@@ -1000,7 +1041,7 @@ test("steering and follow-up input pass unchanged before GO without changing cor
     assert.deepEqual(await rig.handlers.input?.(event, rig.context), { action: "continue" });
     assert.deepEqual(event, unchanged);
     assert.equal(rig.flow.snapshot?.readinessKey, key);
-    await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+    await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
     assert.equal(rig.sentMessages.length, 1);
   }
 });
@@ -1063,7 +1104,7 @@ test("post-GO interactive and RPC prompts are handled, preserved, and persisted 
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.match(rig.statuses.at(-1) ?? "", /Inputs deferred \(0\)/);
 
   const first: InputEvent = {
@@ -1117,7 +1158,7 @@ test("post-GO persistence failure is visible and still handles the captured prom
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.getToolExecute("session_handoff_go")("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
 
   const result = await rig.handlers.input?.({
     type: "input",
@@ -1142,6 +1183,6 @@ test("only a current keyed GO tool call advances and writer dispatch waits for s
   await execute("current", { key: go }, undefined, undefined, rig.context);
   assert.equal(rig.flow.phase, "ready");
   assert.notEqual(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
-  await rig.handlers.agent_settled?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.agent_settled?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.equal(rig.notifications.at(-1)?.message, "Session handoff readiness confirmed.");
 });

@@ -12,6 +12,7 @@ import type {
 
 import { defaultConfig, handoffPaths, type HandoffConfig } from "../extensions/config.ts";
 import { activateHandoffExtension } from "../extensions/index.ts";
+import { handoffStartPrompt } from "../extensions/handoff-file.ts";
 import { createDialogHarness } from "./extension-harness.ts";
 
 interface Notification {
@@ -80,6 +81,7 @@ async function activateIntegrationRig(
     getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
     sessionManager: {
       getSessionFile: () => state.sessionFile,
+      getSessionId: () => "source",
       getEntries: () => [],
       getHeader: () => ({ type: "session", id: "source", cwd: "/project", timestamp: "2026-09-30" }),
     },
@@ -191,6 +193,13 @@ async function activateIntegrationRig(
   };
 }
 
+function writerFile(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): string {
+  const prompt = rig.userMessages.find(({ content }) => content.includes("Write the complete handoff Markdown to this exact file:"))?.content ?? "";
+  const path = /^Write the complete handoff Markdown to this exact file: (.+)$/m.exec(prompt)?.[1];
+  assert.ok(path);
+  return JSON.parse(path) as string;
+}
+
 async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig>>): Promise<string> {
   const command = rig.commands.get("sh");
   assert.ok(command);
@@ -198,7 +207,7 @@ async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig
   const go = rig.flow.snapshot?.readinessKey;
   assert.ok(go);
   await rig.tools.get("session_handoff_go")?.execute("go", { key: go }, undefined, undefined, rig.context);
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
@@ -207,8 +216,102 @@ async function reachWriter(rig: Awaited<ReturnType<typeof activateIntegrationRig
   assert.ok(writerPrompt);
   const submissionId = /^Use this exact submission ID: (.+)$/m.exec(writerPrompt)?.[1];
   assert.ok(submissionId);
+  // Scripted model test double: writes the dossier; no real LLM is exercised here.
+  await writeFile(writerFile(rig), "# Candidate continuation\n\nVerified dossier.");
   return submissionId;
 }
+
+test("Prepare while waiting retrieves once before GO, separates DONE, and never resends the prepared template", async (t) => {
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true, deleteHandoffAfterReading: false });
+  const get = rig.tools.get("session_handoff_get_template");
+  const done = rig.tools.get("submit_session_handoff");
+  assert.ok(get);
+  assert.ok(done);
+  assert.ok(rig.getActiveTools().includes("session_handoff_get_template"));
+  await rig.commands.get("sh")?.handler("start", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  assert.ok(key);
+  assert.match(rig.customMessages.at(-1) ?? "", /Prepare while waiting is enabled/);
+  await assert.rejects(get.execute("stale", { key: "stale" }, undefined, undefined, rig.context), /pre-GO readiness key/);
+
+  const prepared = await get.execute("get", { key }, undefined, undefined, rig.context) as { content: Array<{ text: string }> };
+  const text = prepared.content[0]?.text ?? "";
+  assert.match(text, /INTEGRATION HANDOFF TEMPLATE/);
+  const id = /^Use this exact submission ID after GO: (.+)$/m.exec(text)?.[1];
+  const encodedPath = /^Write the complete handoff Markdown to this exact file: (.+)$/m.exec(text)?.[1];
+  assert.ok(id);
+  assert.ok(encodedPath);
+  const path = JSON.parse(encodedPath) as string;
+  assert.equal(path, join(rig.context.cwd, ".pi", "handoff_source.md"));
+  await writeFile(path, "# Early draft"); // Scripted source-model preparation.
+  assert.equal(rig.flow.phase, "waiting");
+  assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "still ordinary", source: "interactive" }, rig.context), { action: "continue" });
+  await assert.rejects(done.execute("too-early", { id }, undefined, undefined, rig.context), /No current writer submission/);
+  assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
+
+  await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
+  assert.deepEqual(rig.parentSessions, []);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const finalization = rig.userMessages.at(-1)?.content ?? "";
+  assert.match(finalization, /No template is resent/);
+  assert.doesNotMatch(finalization, /INTEGRATION HANDOFF TEMPLATE|BEGIN COMPLETE HANDOFF TEMPLATE/);
+  assert.equal(writerFile(rig), path);
+  await assert.rejects(get.execute("late-get", { key }, undefined, undefined, rig.context), /pre-GO readiness key/);
+  assert.deepEqual(await rig.handlers.get("input")?.({ type: "input", text: "deferred after GO", source: "interactive" }, rig.context), { action: "handled" });
+  await writeFile(path, "# Finalized current facts"); // Scripted source-model finalization.
+  await done.execute("done", { id }, undefined, undefined, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
+  const [command, token] = (rig.userMessages.at(-1)?.content ?? "").slice(1).split(" ");
+  assert.ok(command);
+  assert.ok(token);
+  await rig.commands.get(command)?.handler(token, rig.context);
+  assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(path, false)]);
+  assert.ok((await readFile(path, "utf8")).endsWith("deferred after GO"));
+  assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
+});
+
+test("Prepare while waiting can skip early retrieval and receive the normal template after GO", async (t) => {
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true });
+  await reachWriter(rig);
+  assert.match(rig.userMessages.at(-1)?.content ?? "", /INTEGRATION HANDOFF TEMPLATE/);
+  await rig.commands.get("sh")?.handler("cancel", rig.context);
+});
+
+test("an aborted GET does not suppress an undelivered template or collide with its reserved file after GO", async (t) => {
+  const rig = await activateIntegrationRig(t, { prepareWhileWaiting: true });
+  await rig.commands.get("sh")?.handler("start", rig.context);
+  const key = rig.flow.snapshot?.readinessKey;
+  const get = rig.tools.get("session_handoff_get_template");
+  assert.ok(key);
+  assert.ok(get);
+  const controller = new AbortController();
+  const retrieval = get.execute("aborted-get", { key }, controller.signal, undefined, rig.context);
+  controller.abort();
+  await assert.rejects(retrieval, { name: "AbortError" });
+  const directory = join(rig.context.cwd, ".pi");
+  const files = await readdir(directory);
+  assert.deepEqual(files, ["handoff_source.md"]);
+  await writeFile(join(rig.paths.templateDirectory, "handoff_default.cmpl"), "UPDATED NORMAL WRITER TEMPLATE");
+  await rig.tools.get("session_handoff_go")?.execute("go", { key }, undefined, undefined, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
+  // Native filesystem resolution is asynchronous; bounded readiness check, no real model.
+  for (let attempt = 0; attempt < 100 && rig.userMessages.length === 0; attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  assert.match(rig.userMessages.at(-1)?.content ?? "", /UPDATED NORMAL WRITER TEMPLATE/);
+  assert.doesNotMatch(rig.userMessages.at(-1)?.content ?? "", /No template is resent/);
+  assert.equal(writerFile(rig), join(directory, files[0]!));
+  assert.deepEqual(await readdir(directory), files);
+  await rig.commands.get("sh")?.handler("cancel", rig.context);
+});
+
+test("disabled Prepare while waiting hides and rejects early retrieval", async (t) => {
+  const rig = await activateIntegrationRig(t);
+  assert.equal(rig.getActiveTools().includes("session_handoff_get_template"), false);
+  await assert.rejects(rig.tools.get("session_handoff_get_template")?.execute("get", { key: "anything" }, undefined, undefined, rig.context) ?? Promise.resolve(), /Prepare while waiting is disabled/);
+});
 
 test("integrated command-to-replacement success preserves lineage, deferred prompts, tools, and cleanup", async (t) => {
   const rig = await activateIntegrationRig(t, {
@@ -216,7 +319,7 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
     automaticSessionHandoffPercent: 100,
   });
   const submissionId = await reachWriter(rig);
-  assert.deepEqual(rig.getActiveTools(), ["submit_session_handoff"]);
+  assert.deepEqual(rig.getActiveTools(), ["read", "write", "edit", "submit_session_handoff"]);
   assert.equal(rig.widgetSetCalls.filter((content) => typeof content === "function").length, 1);
 
   const deferred = "  continue with this\nthen verify  ";
@@ -233,12 +336,12 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   assert.ok(submission);
   await submission.execute(
     "writer-call",
-    { id: submissionId, content: "# Candidate continuation\n\nVerified dossier." },
+    { id: submissionId },
     undefined,
     undefined,
     rig.context,
   );
-  await rig.handlers.get("agent_settled")?.({ type: "agent_settled" }, rig.context);
+  await rig.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, rig.context);
   assert.deepEqual(rig.getActiveTools(), ["read", "bash"]);
 
   const transitionRequest = rig.userMessages.at(-1)?.content;
@@ -249,12 +352,13 @@ test("integrated command-to-replacement success preserves lineage, deferred prom
   await rig.commands.get(commandName)?.handler(token, rig.context);
 
   assert.deepEqual(rig.parentSessions, ["/sessions/source.jsonl"]);
-  assert.deepEqual(rig.replacementPrompts, [[
+  assert.deepEqual(rig.replacementPrompts, [handoffStartPrompt(writerFile(rig), true)]);
+  assert.deepEqual(await readFile(writerFile(rig), "utf8"), [
     "# Candidate continuation\n\nVerified dossier.",
     "## Deferred Prompts",
     "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
     `--- Deferred Prompt 1 of 1 ---\n${deferred}`,
-  ].join("\n\n")]);
+  ].join("\n\n"));
   assert.deepEqual(await readdir(rig.paths.recoveryDirectory), []);
   assert.equal(rig.flow.phase, "inactive");
   assert.match(
@@ -275,7 +379,7 @@ test("integrated starts reject an unpersisted source and writer exhaustion fails
 
   const failed = await activateIntegrationRig(t, { writerAttempts: 1 });
   await reachWriter(failed);
-  await failed.handlers.get("agent_settled")?.({ type: "agent_settled" }, failed.context);
+  await failed.handlers.get("agent_settled")?.({ type: "agent_settled", aborted: false }, failed.context);
 
   assert.equal(failed.flow.phase, "inactive");
   assert.deepEqual(failed.getActiveTools(), ["read", "bash"]);
@@ -305,7 +409,7 @@ test("integrated cancellation retains deferred recovery, whose explicit executio
   await assert.rejects(
     submission.execute(
       "late-writer-call",
-      { id: submissionId, content: "# Late dossier" },
+      { id: submissionId },
       undefined,
       undefined,
       rig.context,

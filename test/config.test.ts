@@ -31,6 +31,8 @@ test("defaults exactly match the specified values and managed paths", async (t) 
     contextWarningPercent: 60,
     criticalWarningPercent: 90,
     automaticSessionHandoff: false,
+    deleteHandoffAfterReading: true,
+    prepareWhileWaiting: false,
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
     maxSessionChainLength: 25,
@@ -74,6 +76,8 @@ test("validation enforces all numeric and boolean boundaries", async (t) => {
     { writerRetryDelaySeconds: 0 },
     { writerRetryDelaySeconds: 301 },
     { automaticSessionHandoff: 1 as unknown as boolean },
+    { deleteHandoffAfterReading: "true" as unknown as boolean },
+    { prepareWhileWaiting: "true" as unknown as boolean },
   ];
   for (const changes of invalidChanges) {
     assert.throws(() => validateConfig(configured(agentDirectory, changes)));
@@ -155,6 +159,44 @@ test("existing configs gain the chain default in memory without rewriting, inclu
     await writeFile(paths.configFile, persisted);
     assert.deepEqual(await loadConfig(agentDirectory), defaultConfig(agentDirectory));
     assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+  }
+});
+
+test("existing configs gain deleteHandoffAfterReading=true only in memory, and false persists normally", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  const old = { ...defaultConfig(agentDirectory) } as Record<string, unknown>;
+  delete old.deleteHandoffAfterReading;
+  const persisted = `${JSON.stringify(old, null, 2)}\n`;
+  await writeFile(paths.configFile, persisted);
+  assert.deepEqual(await loadConfig(agentDirectory), { ...old, deleteHandoffAfterReading: true });
+  assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+  await mkdir(paths.recoveryDirectory);
+  await saveConfig(agentDirectory, { ...defaultConfig(agentDirectory), deleteHandoffAfterReading: false });
+  assert.equal((await loadConfig(agentDirectory)).deleteHandoffAfterReading, false);
+});
+
+test("older configs gain both feature switches in memory without rewriting", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  const old = { ...defaultConfig(agentDirectory) } as Record<string, unknown>;
+  delete old.deleteHandoffAfterReading;
+  delete old.prepareWhileWaiting;
+  const persisted = `${JSON.stringify(old)}\n`;
+  await writeFile(paths.configFile, persisted);
+  assert.deepEqual(await loadConfig(agentDirectory), { ...old, deleteHandoffAfterReading: true, prepareWhileWaiting: false });
+  assert.equal(await readFile(paths.configFile, "utf8"), persisted);
+});
+
+test("replaced unreleased setting names are rejected rather than retained as aliases", async (t) => {
+  const agentDirectory = await temporaryDirectory(t);
+  const paths = handoffPaths(agentDirectory);
+  await mkdir(paths.baseDirectory);
+  for (const key of ["debugging", "speedMode"]) {
+    await writeFile(paths.configFile, JSON.stringify({ ...defaultConfig(agentDirectory), [key]: false }));
+    await assert.rejects(loadConfig(agentDirectory), /exactly the supported settings/);
   }
 });
 

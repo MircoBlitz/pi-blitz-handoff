@@ -14,6 +14,8 @@ const SETTING_KEYS: readonly SettingKey[] = [
   "contextWarningPercent",
   "criticalWarningPercent",
   "automaticSessionHandoff",
+  "deleteHandoffAfterReading",
+  "prepareWhileWaiting",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
   "maxSessionChainLength",
@@ -29,6 +31,8 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   contextWarningPercent: "Context warning percentage",
   criticalWarningPercent: "Critical warning percentage",
   automaticSessionHandoff: "Automatic session handoff",
+  deleteHandoffAfterReading: "Delete handoff after reading",
+  prepareWhileWaiting: "Prepare while waiting",
   automaticSessionHandoffPercent: "Automatic session handoff percentage",
   readinessRetrySeconds: "Readiness reminder seconds",
   maxSessionChainLength: "Maximum session chain length",
@@ -137,14 +141,18 @@ async function editSetting(
 ): Promise<HandoffConfig> {
   let candidate: HandoffConfig | undefined;
 
-  if (key === "automaticSessionHandoff") {
+  if (key === "automaticSessionHandoff" || key === "deleteHandoffAfterReading" || key === "prepareWhileWaiting") {
     const answer = await selectDialog(ctx,
-      "Should automatic session handoff be enabled?",
+      key === "deleteHandoffAfterReading"
+        ? "Should the receiving session delete the handoff file after reading it completely? Disabled leaves the file unchanged."
+        : key === "prepareWhileWaiting"
+          ? "Should early template retrieval and drafting be offered while waiting before GO?"
+          : "Should automatic session handoff be enabled?",
       ["Enabled", "Disabled"],
       { signal, heading: SETTING_LABELS[key] },
     );
     if (signal.aborted || answer === undefined) return draft;
-    candidate = { ...draft, automaticSessionHandoff: answer === "Enabled" };
+    candidate = { ...draft, [key]: answer === "Enabled" };
   } else if (key === "callTemplate" || key === "handoffTemplate") {
     const paths = handoffPaths(agentDirectory);
     const prefix = key === "callTemplate" ? "call_" : "handoff_";
@@ -185,7 +193,7 @@ async function editSetting(
   }
 }
 
-function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff">, draft: HandoffConfig): string {
+function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "deleteHandoffAfterReading" | "prepareWhileWaiting">, draft: HandoffConfig): string {
   switch (key) {
     case "contextWarningPercent":
       return `What context percentage should show a warning? Enter a number from 1 to less than ${draft.criticalWarningPercent}.`;
@@ -231,6 +239,8 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
         : undefined;
     }
     case "automaticSessionHandoff":
+    case "deleteHandoffAfterReading":
+    case "prepareWhileWaiting":
       return undefined;
     case "automaticSessionHandoffPercent": {
       const value = finiteNumber(answer);
@@ -277,6 +287,8 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
     case "criticalWarningPercent":
       return `Enter a finite number above ${draft.contextWarningPercent} through 100.`;
     case "automaticSessionHandoff":
+    case "deleteHandoffAfterReading":
+    case "prepareWhileWaiting":
       return "Choose Enabled or Disabled.";
     case "automaticSessionHandoffPercent":
       return "Enter a finite number from 0 through 100.";

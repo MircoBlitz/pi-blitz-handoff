@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional **Prepare while waiting** (`prepareWhileWaiting`, default `false`) and pre-GO `session_handoff_get_template({ key })` retrieval for drafting during genuine waiting. Prepared handoffs retain one template snapshot, file and first submission ID; finalization does not resend the template. Skipping retrieval keeps the normal after-GO writer path.
+- **Delete handoff after reading** (`deleteHandoffAfterReading`, default `true`): the receiver is instructed to delete the exact file only after complete ingestion. When disabled, the file remains unchanged at the same path; there is no archive move.
+
+### Changed
+
+- The Handoff default now separates a reference-only historical paragraph (topic/task, session ID and known entry point) from positive continuation context. History is loaded only for a concrete unresolved need; current constraints, active skills and consequential results stay inline. Starting lines must be established, not invented. Both parts remain in one handoff file; this is model guidance, not verified compression or retrieval behavior.
+- The source writes its dossier with native file tools to `.pi/handoff_SESSID.md` using only the native source-session ID, without a timestamp or additional subdirectory. Exclusive reservation rejects collisions. The replacement's first prompt references the absolute path, not the full dossier.
+- GO confirms only the safe boundary and starts prompt deferral. Separate DONE via `submit_session_handoff({ id })` confirms file finalization; only DONE plus the native settled boundary permits replacement. The submission tool no longer accepts content or a path.
+- The extension checks nonempty regular-file metadata and appends its own deferred prompts without reading or parsing the dossier. The receiver is instructed to apply normal startup/basic skills, read the whole file past tool truncation and clean up only after complete ingestion. Failed/incomplete ingestion leaves the file unchanged; cleanup errors must be reported.
+- Development and deterministic validation now use Pi 1.2.0 with updateable `^1.2.0` ranges. Host-provided packages use native wildcard peers without bundling. Test doubles now carry `agent_settled.aborted` and use `ExtensionToolContext`; no production API workaround or lifecycle redesign was needed.
+- The two defaults now describe optional preparation and file writing while retaining the V2 dossier structure. Writer tools are native `read`, `write`, `edit` and DONE, then restored exactly. Older exact configs receive the two new boolean defaults in memory without automatic migration; both settings apply immediately.
+
+### Fixed
+
+- An aborted early GET no longer suppresses a template that was never returned. After GO the writer resolves and sends its normal template while reusing any existing reservation, avoiding a same-name collision.
+
+### Validation limits
+
+- Dossier correctness, complete ingestion and receiver cleanup remain model responsibilities, not extension-verified guarantees. Prepare while waiting has no guaranteed acceleration and adds accepted GO/DONE calls/turns, not an artificial wait.
+- Deterministic local tests cover the new transport and protocol. No real-model/Pi-session end-to-end validation has been performed for this feature; earlier Real-Pi evidence covers only the earlier contracts. No version bump or publication is included.
+
 ## 1.3.1 — 2026-10-12
 
 ### Added

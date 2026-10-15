@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { handoffStartPrompt } from "../extensions/handoff-file.ts";
+
+// Native-session test doubles; handoff transport uses real task-owned files.
+const roots: string[] = [];
+after(() => { for (const root of roots) rmSync(root, { recursive: true, force: true }); });
 
 import type {
   ExtensionAPI,
@@ -20,6 +28,7 @@ interface Notification {
 
 interface TransitionRigOptions {
   deferred?: string[];
+  deleteHandoffAfterReading?: boolean;
   maxSessionChainLength?: number;
   newSessionCancelled?: boolean;
   newSessionError?: Error;
@@ -29,14 +38,20 @@ interface TransitionRigOptions {
 }
 
 function request(): NativeTransitionRequest {
+  const root = mkdtempSync(join(tmpdir(), "pi-blitz-handoff-transition-"));
+  roots.push(root);
+  const handoffFile = join(root, "handoff.md");
+  writeFileSync(handoffFile, "Task-specific title\n\n# Dossier body");
   return {
     handoffId: "handoff-1",
     sourceSessionPath: "/sessions/exact-source.jsonl",
-    dossier: "Task-specific title\n\n# Dossier body",
+    handoffFile,
+    deleteHandoffAfterReading: true,
   };
 }
 
 function rig(options: TransitionRigOptions = {}) {
+  const handoff = { ...request(), deleteHandoffAfterReading: options.deleteHandoffAfterReading ?? true };
   let deferred = options.deferred;
   const notifications: Notification[] = [];
   const replacementNotifications: Notification[] = [];
@@ -118,6 +133,7 @@ function rig(options: TransitionRigOptions = {}) {
 
   return {
     transition,
+    request: handoff,
     context,
     notifications,
     replacementNotifications,
@@ -132,6 +148,24 @@ function rig(options: TransitionRigOptions = {}) {
     },
   };
 }
+
+test("missing, empty and directory handoff files fail before cutover and preserve recovery", async () => {
+  for (const kind of ["missing", "empty", "directory"]) {
+    const testRig = rig({ deferred: ["preserve this input"] });
+    rmSync(testRig.request.handoffFile);
+    if (kind === "empty") writeFileSync(testRig.request.handoffFile, "");
+    if (kind === "directory") mkdirSync(testRig.request.handoffFile);
+    const token = testRig.transition.prepare(testRig.request);
+    assert.ok(token);
+    assert.equal(await testRig.transition.execute(token, testRig.context), false, kind);
+    assert.deepEqual(testRig.parents, [], kind);
+    assert.deepEqual(testRig.prompts, [], kind);
+    assert.deepEqual(testRig.cleanup, [], kind);
+    assert.deepEqual(testRig.finished, [], kind);
+    assert.match(testRig.failures[0] ?? "", /replacement failed.*Deferred-prompt recovery remains at \/recovery\//);
+    assert.equal(testRig.transition.phase, "inactive");
+  }
+});
 
 test("the bridge registers one description-free command and uses Pi command dispatch syntax", async () => {
   const testRig = rig();
@@ -152,7 +186,7 @@ test("the bridge registers one description-free command and uses Pi command disp
   assert.equal(commands.length, 1);
   assert.equal(commands[0]?.options.description, undefined);
 
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
   assert.equal(token, "token-1");
   assert.equal(nativeTransitionCommand(token), `/${commands[0]?.name} token-1`);
   await commands[0]?.options.handler(token, testRig.context);
@@ -161,43 +195,44 @@ test("the bridge registers one description-free command and uses Pi command disp
 
 test("lineage lookup stays cancellable and snapshots deferred input only after lookup", async () => {
   const cancelled = rig();
-  const cancelledToken = cancelled.transition.prepare(request());
+  const cancelledToken = cancelled.transition.prepare(cancelled.request);
   const cancelledExecution = cancelled.transition.execute(cancelledToken ?? "", cancelled.context);
   assert.equal(cancelled.transition.cancel(), "cancelled");
   assert.equal(await cancelledExecution, false);
   assert.deepEqual(cancelled.parents, []);
 
   const latest = rig();
-  const token = latest.transition.prepare(request());
+  const token = latest.transition.prepare(latest.request);
   const execution = latest.transition.execute(token ?? "", latest.context);
   latest.setDeferred(["arrived during lineage lookup"]);
   assert.equal(await execution, true);
-  assert.ok(latest.prompts[0]?.endsWith("arrived during lineage lookup"));
+  assert.ok(readFileSync(latest.request.handoffFile, "utf8").endsWith("arrived during lineage lookup"));
   assert.equal(latest.cleanup.length, 1);
 });
 
 test("a chain cut starts a parentless master while preserving dossier and deferred prompts", async () => {
   const options: TransitionRigOptions = { maxSessionChainLength: 25, deferred: ["next instruction"] };
   const testRig = rig(options);
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
   options.maxSessionChainLength = 1;
   assert.equal(await testRig.transition.execute(token ?? "", testRig.context), true);
   assert.deepEqual(testRig.parents, [undefined]);
-  assert.ok(testRig.prompts[0]?.startsWith(request().dossier));
-  assert.ok(testRig.prompts[0]?.endsWith("next instruction"));
+  assert.equal(testRig.prompts[0], handoffStartPrompt(testRig.request.handoffFile, true));
+  assert.ok(readFileSync(testRig.request.handoffFile, "utf8").endsWith("next instruction"));
   assert.equal(testRig.cleanup.length, 1);
   assert.deepEqual(testRig.finished, ["handoff-1"]);
 });
 
-test("native replacement preserves the dossier first line and omits an empty deferred section", async () => {
+test("native replacement sends a file reference, not dossier content, and leaves ingestion to the receiver", async () => {
   const testRig = rig();
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
   assert.equal(token, "token-1");
 
   assert.equal(await testRig.transition.execute(token, testRig.context), true);
   assert.deepEqual(testRig.parents, ["/sessions/exact-source.jsonl"]);
-  assert.deepEqual(testRig.prompts, ["Task-specific title\n\n# Dossier body"]);
-  assert.equal(testRig.prompts[0]?.split("\n")[0], "Task-specific title");
+  assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, true)]);
+  assert.doesNotMatch(testRig.prompts[0] ?? "", /Task-specific title|# Dossier body/);
+  assert.equal(readFileSync(testRig.request.handoffFile, "utf8"), "Task-specific title\n\n# Dossier body");
   assert.doesNotMatch(testRig.prompts[0] ?? "", /Deferred Prompts/);
   assert.deepEqual(testRig.cleanup, []);
   assert.deepEqual(testRig.finished, ["handoff-1"]);
@@ -206,12 +241,12 @@ test("native replacement preserves the dossier first line and omits an empty def
 
 test("execution takes the latest deferred snapshot, sends one deterministic first prompt, then cleans up", async () => {
   const testRig = rig({ deferred: ["old"] });
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
   testRig.setDeferred(["  first unchanged\n", "second\nline"]);
 
   assert.equal(await testRig.transition.execute(token ?? "", testRig.context), true);
   assert.equal(
-    testRig.prompts[0],
+    readFileSync(testRig.request.handoffFile, "utf8"),
     [
       "Task-specific title\n\n# Dossier body",
       "## Deferred Prompts",
@@ -228,7 +263,7 @@ test("execution takes the latest deferred snapshot, sends one deterministic firs
 
 test("cancellation invalidates a pending token, while native invocation is committed and allows only its own new session", async () => {
   const pending = rig();
-  const staleToken = pending.transition.prepare(request());
+  const staleToken = pending.transition.prepare(pending.request);
   assert.equal(pending.transition.cancel(), "cancelled");
   assert.equal(await pending.transition.execute(staleToken ?? "", pending.context), false);
   assert.deepEqual(pending.parents, []);
@@ -249,7 +284,7 @@ test("cancellation invalidates a pending token, while native invocation is commi
       return { cancelled: true };
     },
   } as ExtensionCommandContext;
-  const token = committed.transition.prepare(request());
+  const token = committed.transition.prepare(committed.request);
   const execution = committed.transition.execute(token ?? "", committedContext);
   await nativeEntered;
   assert.equal(committed.transition.phase, "replacing");
@@ -263,7 +298,7 @@ test("cancellation invalidates a pending token, while native invocation is commi
 
 test("dispatch failure preserves recovery and reports the exact recovery path in the replacement session", async () => {
   const testRig = rig({ deferred: ["recover me"], sendError: new Error("dispatch rejected") });
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
 
   assert.equal(await testRig.transition.execute(token ?? "", testRig.context), false);
   assert.deepEqual(testRig.cleanup, []);
@@ -277,7 +312,7 @@ test("dispatch failure preserves recovery and reports the exact recovery path in
 
 test("cleanup failure is visible with its path and does not roll back successful replacement", async () => {
   const testRig = rig({ deferred: ["recover me"], cleanupError: new Error("unlink denied") });
-  const token = testRig.transition.prepare(request());
+  const token = testRig.transition.prepare(testRig.request);
 
   assert.equal(await testRig.transition.execute(token ?? "", testRig.context), true);
   assert.deepEqual(testRig.finished, ["handoff-1"]);
@@ -292,7 +327,7 @@ test("a guard-cancelled or failed newSession is terminal and never sends or clea
     { newSessionError: new Error("native setup failed") },
   ]) {
     const testRig = rig(options);
-    const token = testRig.transition.prepare(request());
+    const token = testRig.transition.prepare(testRig.request);
     assert.equal(await testRig.transition.execute(token ?? "", testRig.context), false);
     assert.deepEqual(testRig.prompts, []);
     assert.deepEqual(testRig.cleanup, []);
@@ -304,17 +339,11 @@ test("a guard-cancelled or failed newSession is terminal and never sends or clea
 test("successful first-prompt delivery does not finish or clean up until outer replacement succeeds", async () => {
   for (const afterSendResult of ["cancelled", "throw"] as const) {
     const testRig = rig({ deferred: ["recover me"], afterSendResult });
-    const token = testRig.transition.prepare(request());
+    const token = testRig.transition.prepare(testRig.request);
 
     assert.equal(await testRig.transition.execute(token ?? "", testRig.context), false);
-    assert.deepEqual(testRig.prompts, [
-      [
-        "Task-specific title\n\n# Dossier body",
-        "## Deferred Prompts",
-        "Treat the entries below as separate sequential user inputs after this dossier. Later entries may update or supersede earlier entries.",
-        "--- Deferred Prompt 1 of 1 ---\nrecover me",
-      ].join("\n\n"),
-    ]);
+    assert.deepEqual(testRig.prompts, [handoffStartPrompt(testRig.request.handoffFile, true)]);
+    assert.ok(readFileSync(testRig.request.handoffFile, "utf8").endsWith("recover me"));
     assert.deepEqual(testRig.cleanup, []);
     assert.deepEqual(testRig.finished, []);
     assert.equal(testRig.failures.length, 1);

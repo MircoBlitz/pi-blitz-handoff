@@ -27,6 +27,7 @@ import {
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
+import { registerPreparationTool, SESSION_HANDOFF_GET_TEMPLATE_TOOL, prepareWhileWaitingReadiness } from "./preparation-tool.ts";
 import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
 import {
   clearHandoffTerminalState,
@@ -58,7 +59,7 @@ import {
   nativeTransitionCommand,
   registerNativeTransitionBridge,
 } from "./transition.ts";
-import { HandoffWriter, type WriterRuntime } from "./writer.ts";
+import { HandoffWriter, preparationPrompt, type WriterRuntime } from "./writer.ts";
 
 export * from "./config-dialog.ts";
 export * from "./config.ts";
@@ -240,7 +241,7 @@ export function activateHandoffExtension(
           ),
         onTemplateFailure(failure, attempt, ctx) {
           ctx.ui.notify(
-            `Writer attempt ${attempt} could not use template ${failure.path}: ${failure.reason}`,
+            `${attempt === 0 ? "Prepare while waiting" : `Writer attempt ${attempt}`} could not use template ${failure.path}: ${failure.reason}`,
             "warning",
           );
         },
@@ -261,7 +262,8 @@ export function activateHandoffExtension(
           const token = transition.prepare({
             handoffId: result.handoff.id,
             sourceSessionPath: result.handoff.sourceSessionPath,
-            dossier: result.submission.content,
+            handoffFile: result.handoffFile,
+            deleteHandoffAfterReading: config.deleteHandoffAfterReading,
             startedAt,
             handoffStartedAt: getHandoffStartedAt(STATUS_KEY),
           });
@@ -273,7 +275,7 @@ export function activateHandoffExtension(
             return;
           }
 
-          ctx.ui.notify(`Session handoff dossier accepted on writer attempt ${result.attempt}.`, "info");
+          ctx.ui.notify(`Session handoff file marked ready on writer attempt ${result.attempt}.`, "info");
           try {
             pi.sendUserMessage(nativeTransitionCommand(token), {
               deliverAs: "followUp",
@@ -310,14 +312,31 @@ export function activateHandoffExtension(
 
   if (writer !== undefined) {
     registerSubmissionTool(pi, (submission) => writer.submit(submission));
+    registerPreparationTool(pi, async (key, ctx) => {
+      if (!config.prepareWhileWaiting) throw new Error("Prepare while waiting is disabled");
+      const handoff = flow.snapshot;
+      if (handoff?.phase !== "waiting" || handoff.readinessKey !== key) {
+        throw new Error("Template retrieval requires the current pre-GO readiness key");
+      }
+      const prepared = await writer.prepare(handoff, ctx, handoffTemplates.get(handoff.id));
+      if (flow.snapshot?.id !== handoff.id || flow.phase !== "waiting") {
+        throw new Error("Handoff template request is no longer current");
+      }
+      return {
+        text: preparationPrompt(prepared, handoff.sourceSessionPath),
+        onReturn() { prepared.templateReturned = true; },
+      };
+    });
   }
 
-  const initializeWriterTools = (ctx: ExtensionContext): void => {
+  const initializeWriterTools = (ctx: Pick<ExtensionContext, "ui">): void => {
     if (writerRuntime === undefined || writer === undefined) return;
     try {
-      writerRuntime.setActiveTools(
-        writerRuntime.getActiveTools().filter((name) => name !== SUBMIT_SESSION_HANDOFF_TOOL),
+      const tools = writerRuntime.getActiveTools().filter((name) =>
+        name !== SUBMIT_SESSION_HANDOFF_TOOL && name !== SESSION_HANDOFF_GET_TEMPLATE_TOOL,
       );
+      if (config.prepareWhileWaiting) tools.push(SESSION_HANDOFF_GET_TEMPLATE_TOOL);
+      writerRuntime.setActiveTools(tools);
     } catch (error) {
       ctx.ui.notify(
         `Could not initialize session handoff writer tools: ${errorMessage(error)}`,
@@ -341,6 +360,7 @@ export function activateHandoffExtension(
     readinessRetrySeconds: config.readinessRetrySeconds,
     callTemplate,
     onReadinessPrompt(prompt, handoff) {
+      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -354,6 +374,7 @@ export function activateHandoffExtension(
       );
     },
     onReadinessReminder(prompt, handoff) {
+      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -391,9 +412,11 @@ export function activateHandoffExtension(
       persisted.templateDirectory !== config.templateDirectory ||
       persisted.callTemplate !== config.callTemplate ||
       persisted.handoffTemplate !== config.handoffTemplate;
+    const prepareWhileWaitingChanged = persisted.prepareWhileWaiting !== config.prepareWhileWaiting;
     Object.assign(config, persisted);
     flow.setReadinessRetrySeconds(config.readinessRetrySeconds);
     writer?.configure(config.writerAttempts, config.writerRetryDelaySeconds);
+    if (prepareWhileWaitingChanged) initializeWriterTools(ctx);
     recoveryDialog.setRecoveryDirectory(config.recoveryDirectory);
     transition.setRecoveryDirectory(config.recoveryDirectory);
 
@@ -418,6 +441,7 @@ export function activateHandoffExtension(
       const handoffId = flow.snapshot?.id;
       const result = flow.resolveUserDeferral(key, choice, ctx);
       if (result === "accepted" && choice === "Cancel") {
+        writer?.invalidate();
         if (handoffId !== undefined) handoffTemplates.delete(handoffId);
         sendCancellationInstruction();
       }

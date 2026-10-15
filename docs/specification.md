@@ -2,11 +2,11 @@
 
 > **Current approved product authority.**
 >
-> This specification incorporates the explicitly approved keyed-readiness redesign and unified overlay-dialog feature. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
+> This specification incorporates the explicitly approved keyed-readiness redesign, unified overlay dialogs, and unreleased file-based handoff with optional Prepare while waiting and separate GO/DONE signals. Material product, UX, authorization, security, or scope changes require a new explicit user decision; small implementation details clearly implied by the approved concept may be resolved by the orchestrator.
 
 ## 1. Purpose
 
-This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.
+This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 Automatic handoff describes only how transfer is triggered; it does not select or authorize the replacement session's working mode. Autonomous execution, interactive clarification, answering, research, and waiting are transferred continuation modes rather than extension-owned workflows.
 
@@ -20,6 +20,7 @@ The implementation must use Pi's native lifecycle and session APIs. It must not 
 - Node.js v22.19.0 or later.
 - Native replacement uses `ctx.newSession()` through Pi's command context, with `parentSession` until the configured chain limit is reached.
 - The commands and in-chat interactions work in Pi's interactive chat surface.
+- Pi's native `write` tool and a writable `.pi/` directory under the current Pi working directory are required for file transport.
 - A persisted source session is required. Initiation is rejected visibly in `--no-session` or other in-memory sessions because they have no source transcript path or native parent lineage.
 
 ## 3. Public surface
@@ -91,6 +92,8 @@ Internally generated filenames cannot contain path traversal. New private files 
   "contextWarningPercent": 60,
   "criticalWarningPercent": 90,
   "automaticSessionHandoff": false,
+  "deleteHandoffAfterReading": true,
+  "prepareWhileWaiting": false,
   "automaticSessionHandoffPercent": 70,
   "readinessRetrySeconds": 60,
   "maxSessionChainLength": 25,
@@ -113,6 +116,8 @@ Automatic handoff is disabled when `automaticSessionHandoff` is false or `automa
 
 `maxSessionChainLength` is a positive integer, default `25`, counting the master as session one. At or above the limit, the next handoff creates an independent master by omitting `parentSession`, transferring the unchanged complete handoff and deferred prompts. This bounds chain depth for readability in `/resume`, not work duration. Old sessions remain untouched. Length is read from native persisted parent-session headers and survives resume and reload; a new master starts at one. Configuration changes apply immediately. Unreadable required lineage causes a visible cutover failure rather than an invented count.
 
+`deleteHandoffAfterReading` is a boolean, default `true`, exposed as **Delete handoff after reading**. It instructs the receiver to delete the exact handoff file only after successful complete ingestion (§10). When `false`, the receiver leaves the file unchanged at its current path; there is no archive move. `prepareWhileWaiting` is a boolean, default `false`, exposed as **Prepare while waiting**. It enables optional pre-GO retrieval and drafting (§7), not a different initiation path or a guaranteed speed improvement. Both settings apply immediately without reload.
+
 Retry delays are integer seconds from `1` through `300`. `writerAttempts` is a positive integer and means total attempts including the first.
 
 `recoveryDirectory` and an optional `templateDirectory` are absolute directory paths. `callTemplate` and `handoffTemplate` are `.cmpl` filenames, not paths. A directory setting must resolve to a directory; when it does not exist, the config dialog asks whether `save` may create it. Deliberate directory symlinks are valid.
@@ -129,8 +134,8 @@ There is no overall draft, Save action, or Cancel action. Escape discards only a
 
 The package ships exactly two templates:
 
-- `call_default.cmpl` defines a readiness-only phase and the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters. It prohibits writing a handoff or creating a continuation file during readiness and instructs the model to wait after GO for the explicit writer instruction with the Handoff Template and submission ID.
-- `handoff_default.cmpl` contains the V2 continuation dossier: explicit working mode, commissioned work, continuing grants and conditions, current state, binding decisions, active skills, evidence limits and targeted retrieval.
+- `call_default.cmpl` defines a readiness-only phase and the genuinely safe transfer boundary, finishing only required work already in flight and preferring direct GO unless a concrete active user interaction still matters. It prohibits handoff writing during readiness unless the extension explicitly enables Prepare while waiting. After GO the model waits for the writer/finalization instruction; a previously retrieved template is not resent. GO confirms only the safe boundary; DONE is submitted separately after file finalization.
+- `handoff_default.cmpl` instructs writing the supplied file and submitting only its correlated ID, while retaining the V2 continuation dossier structure: explicit working mode, commissioned work, continuing grants and conditions, current state, binding decisions, active skills, evidence limits and targeted retrieval.
 
 The package has no Fast, Balanced or development template variants. Custom managed and addendum templates remain supported; loading the package does not delete other user-owned templates or rewrite existing selections.
 
@@ -152,7 +157,7 @@ Each physical candidate path is attempted at most once. A valid template is a re
 
 Both configured roles are health-checked during extension startup and whenever `/sh settings` opens. If a non-default selection is missing, unreadable, or empty, the role default is used and a visible warning identifies the failed candidate and actual fallback. Selecting the role default does not itself produce a warning. If the role default cannot resolve, startup or configuration opening fails visibly instead of continuing with pretend template content.
 
-Exact older configurations lacking `maxSessionChainLength` gain `25` in memory, and those lacking `callTemplate` gain `call_default.cmpl`. This intentional configuration compatibility does not automatically rewrite the persisted file; other missing or unsupported settings remain invalid.
+Exact older configurations lacking `deleteHandoffAfterReading` gain `true` in memory; those lacking `prepareWhileWaiting` gain `false`. Those lacking `maxSessionChainLength` gain `25`, and those lacking `callTemplate` gain `call_default.cmpl`. This intentional configuration compatibility does not automatically rewrite the persisted file; other missing or unsupported settings remain invalid. The replaced unreleased names `debugging` and `speedMode` are not supported aliases or migration inputs.
 
 ### Project-template assignments
 
@@ -195,11 +200,11 @@ For manual and model-requested handoffs, the initial readiness instruction begin
 
 An automatic request is different: it is detected after a completed turn and its readiness instruction is delivered as steering before the next autonomous model turn, even when another continuation is already queued. This does not interrupt tools from the completed turn. The model still applies the same in-flight-work boundary, but only direct GO is permitted. User deferral is unavailable because a choice dialog could stop the autonomous run.
 
-The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends only the exact correlated tool protocol and non-configurable interaction constraints; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
+The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends the exact correlated tool protocol, non-configurable interaction constraints and, only when enabled, optional preparation instructions for Prepare while waiting; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. Readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file, and to wait after GO for the extension's explicit writer instruction containing the Handoff Template and submission ID. These are model instructions, not a deterministic filesystem write block. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
+The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. With Prepare while waiting disabled, readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file. With Prepare while waiting enabled, preparation is optional and must not delay required in-flight work. In both modes the model waits after GO for the explicit writer/finalization instruction. These are model instructions, not a deterministic filesystem write block. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
-Two correlated tools exist:
+Two correlated readiness tools exist:
 
 - `session_handoff_go({ key })` accepts direct GO for every initiation source;
 - `session_handoff_go_with_user_deferral({ key, reason })` is available only for manual and model-requested handoffs. It supplies a short concrete reason and opens an extension-owned **Ready / Wait / Cancel** selection. An automatic attempt rejects this entry point before opening UI.
@@ -214,11 +219,17 @@ After **Wait**, no timer or dialog runs automatically. A later ordinary user mes
 
 After the initial instruction, one timer is scheduled for `readinessRetrySeconds`. If the permitted tool has not resolved readiness when it fires, one short visible reminder triggers a model turn. The reminder reapplies the same resolved Call Template, then appends only the source-specific correlated tool protocol: explicit attempts retain both choices, while automatic attempts permit only direct GO. If the model calls no readiness tool, it produces no normal text. This one-shot reminder prevents deadlock when background work finishes without otherwise producing a new turn. There is no periodic polling.
 
+### Prepare while waiting
+
+When `prepareWhileWaiting: true`, readiness instructions and reminders additionally explain `session_handoff_get_template({ key })`. This continuing retrieval tool accepts only the current pre-GO readiness key. It returns the resolved Handoff Template, absolute reserved handoff-file path and correlated submission ID. It accepts neither GO nor DONE. Disabled, stale and post-GO requests fail visibly. The tool is inactive when Prepare while waiting is disabled and its availability refreshes immediately when that setting changes.
+
+The model may retrieve and draft while genuinely waiting, using its existing native file tools; preparation does not change the source tool list. It must not delay required work or call GET and GO concurrently. Repeated or concurrent retrieval shares the same preparation, template snapshot, ID and file. Cancellation invalidates that preparation. If retrieval is skipped or GET is aborted before returning its result, the writer receives a freshly resolved template normally after GO. A reservation made by an aborted GET is reused rather than causing a same-name collision. Suppression applies only once GET has returned successfully; this tracks local tool execution, not proof of model comprehension. There is no artificial waiting phase and no guaranteed acceleration; the separate GO/DONE calls and model turns are an accepted trade-off.
+
 Before accepted GO, interactive and RPC input passes unchanged and is not deferred. Slash commands retain Pi's native command behavior because Pi dispatches them before the `input` event.
 
 ## 8. GO boundary and deferred prompts
 
-Accepted direct GO or **Ready** from the user-deferral selection starts the deferred-prompt window immediately. The writer starts only after the answering tool run reaches an idle `agent_settled` boundary with no pending message.
+Accepted direct GO or **Ready** from the user-deferral selection confirms only a safe work boundary and starts the deferred-prompt window immediately. GO never triggers session replacement or asserts dossier completeness. The writer starts only after the answering tool run reaches an idle `agent_settled` boundary with no pending message.
 
 From that boundary until the native replacement begins:
 
@@ -249,42 +260,36 @@ If no post-GO prompt arrives, no recovery file is required.
 
 ## 9. Writer
 
-At each attempt the extension:
+After GO, the extension saves the active Pi tool list once and enables only native `read`, `write`, `edit` and `submit_session_handoff`. A missing native `write` tool fails visibly. It sends the writer/finalization prompt to the source model after the existing idle, no-pending-message settled boundary.
 
-1. resolves the currently effective template filename and content at writer start or retry; this is deliberately not immutable content captured when the handoff is requested;
-2. saves the active Pi tool list;
-3. allows only `submit_session_handoff`;
-4. sends the writer prompt to the source model.
+Without early preparation, each attempt resolves the effective template afresh; the prompt contains that template, exact submission ID, source-session transcript path and absolute handoff-file path. The first attempt reserves the file; retries reuse that path and instruct replacing partial content. With early preparation, the writer adopts its existing file and template snapshot; the first attempt also uses its prepared ID. No attempt resends that template: a short finalization instruction supplies the path and current ID. Later attempts use fresh IDs but the same prepared template snapshot and file.
 
-The writer prompt includes the complete dossier template, exact current submission ID, and exact source-session transcript path. Extension-owned writer control limits the model to handoff writing for that writer turn and requires exactly one submission. It explicitly states that this turn-local control is not a user instruction or continuation constraint and must not be included or preserved in the handoff.
+The source writes or updates the complete dossier with native file tools. Before DONE it must update all relevant results, facts, permissions and the precise next action; factual and semantic completeness is explicitly the model's responsibility. Extension-owned writer control limits only this writer turn and requires exactly one submission. It is not a user instruction or continuation constraint and must not be preserved in the handoff.
 
-`submit_session_handoff` accepts only:
+`submit_session_handoff({ id })` is the separate **DONE** signal. Its schema accepts only the exact current submission ID, never dossier content or a path. Submissions are accepted only during post-GO writing; pre-GO, stale or duplicate submissions fail. DONE plus the existing idle, no-pending-message settled boundary triggers the native transition. No semantic review layer is added. Before cutover, the extension checks file metadata, not Markdown, title meaning, NUL absence or dossier completeness; there is no product-specific byte cap.
 
-- `id` — the exact current submission ID;
-- `content` — the complete handoff Markdown.
-
-The extension validates current-ID correlation, nonempty content, and absence of NUL. It does not parse the Markdown structure or impose a product-specific byte cap.
-
-The template instructs the model to begin the handoff with a concise, meaningful, task-specific Markdown title and then continue with the dossier. This first line is also the useful visible name of the replacement session in Pi's session navigation. No generic handoff-status prefix may precede it. There is no separate session-name field, parser, sanitizer, or second title channel. Title and dossier structure are writer instructions, not claims of deterministic semantic validation.
+The template instructs the model to begin the file with a concise, meaningful, task-specific Markdown title and then continue with the dossier. That title is inside the file, not the replacement's initial prompt, so it is not automatically its session-navigation name. No generic handoff-status prefix may precede it. There is no separate session-name field, parser, sanitizer, or second title channel. Title and dossier structure are writer instructions, not claims of deterministic semantic validation.
 
 The dossier distinguishes completed and verified work, completed but unverified work, partial or reverted work, authorized work, work requiring fresh approval, blockers, open questions, working files, evidence, prior decisions, and precise cold-context references. It must not turn discussion, criticism, rejected proposals, or unanswered questions into authorization.
 
 The V2 default Handoff Template places `Working mode` immediately after the meaningful title, using the actual pre-writer continuation mode, `userfacing` or `autonom`. Neither automatic initiation nor the writer turn establishes autonomous work or grants permission.
 
-Its continuation sections are:
+The dossier then separates `Historical context` from `Positive context` in the same handoff file. Historical context is one short reference-only paragraph: topic/task label — actual session ID — known entry point. A transcript starting line is included only when actually established; otherwise another known entry point is used or the entry point is marked unknown. The writer uses known references rather than scanning ancestor sessions to build an inventory. No separate history file or historical narrative is produced. The paragraph explicitly instructs the receiver to load referenced session history only for a concrete unresolved fact or discrepancy that positive context or a known governing/detail source cannot answer; otherwise it stays unloaded.
 
-1. `Work and assignment` — confirmed goal, brief source-session completion labels with the exact supplied transcript reference, future already commissioned work and one precise open step.
+Positive context means everything still relevant to continuation, including constraints, active skills and uncertainty, regardless of age. Current consequences of completed work remain under state or evidence; the past itself is compressed into the historical index. Its subsections are:
+
+1. `Work and assignment` — confirmed goal, future already commissioned work and one precise open step.
 2. `Permissions and boundaries` — continuing grants with provenance and remaining coverage, authorized access/elevation, material conditions and separate gates. Completed individual actions are not reactivated; undertaking-wide grants are not consumed merely by finishing one step.
 3. `Current work state` — relevant file/system state, dirty or unintegrated work, actual running work and currently effective blockers.
 4. `Binding instructions` — decisions, genuine governing sources and active skills as name, purpose and scope. No cumulative read inventory, skill-path field or blanket reload list; selected frozen authority stays bound through its actual plan/source reference.
 5. `Evidence and uncertainty` — observed facts, checked state/result/limits and unresolved or unread frontiers. Later edits do not inherit an earlier PASS.
-6. `Targeted retrieval` — genuine detail sources, what they contain and the concrete occasion for reading them, without duplicating inline facts.
+6. `Targeted retrieval` — current-work detail sources, what they contain and the concrete occasion for reading them. Historical session references belong solely in `Historical context`.
 
-The continuation core stays inline: current permissions and their material conditions, decisive known facts and the actual work state cannot be replaced by references. Unambiguous known governing sources may carry detail. Each fact has one primary place; no length quota replaces completeness. Empty or inapplicable optional fields are omitted. Discussion and ideas are not future commissioned work.
+The continuation core stays inline in positive context: current permissions and their material conditions, decisive known facts and the actual work state cannot be replaced by references. Unambiguous known governing sources may carry detail. Each fact has one primary place; no length quota replaces completeness. Empty or inapplicable optional fields are omitted. Discussion and ideas are not future commissioned work.
 
 The recorded open step incorporates the receiving-session instruction once. Apply Deferred Prompts as separate sequential inputs before the recorded action; later prompts may supersede it. Restore only authorities and active skills required by applicable instructions and their contracts. Do not start with a previous-session recap. In `userfacing` mode resume the current dialogue, answer or question. In `autonom` mode actually perform the authorized next work in the first response. Ask only a concrete blocking question when a real missing decision, permission or blocker prevents continuation; do not re-request a still-valid grant.
 
-The source-session transcript is a targeted fallback only for a concrete discrepancy not answerable from the dossier or known governing/detail sources. Do not prescribe routine transcript reading or ancestor scans. These are semantic writer/receiver instructions, not deterministic output or restoration guarantees.
+The historical index and positive-context split are semantic writer/receiver instructions, not deterministic output, retrieval or restoration guarantees. The extension does not parse or verify topic coverage, session references, entry points or historical compression.
 
 The original Pi tool list is restored after success, cancellation, exhaustion, and any terminal writer failure.
 
@@ -292,11 +297,19 @@ If an attempt settles without a valid submission, the next attempt starts after 
 
 After exhaustion the handoff stops visibly. Any deferred-prompt recovery file remains for `/sh recover`.
 
-## 10. Deterministic assembly and native replacement
+## 10. File transport and native replacement
 
 After a valid writer submission and its settled boundary, no further model call is used to assemble the transition prompt. The extension invokes its private correlated transition command to obtain the command context required by Pi's native replacement API.
 
-When deferred prompts exist, the extension appends this section to the submitted handoff:
+The source model writes the handoff to a reserved owner-only file under the current Pi working directory:
+
+```text
+.pi/handoff_SESSID.md
+```
+
+`SESSID` is the native source-session ID; there is no timestamp or additional subdirectory. Exclusive reservation creates a new file and fails visibly on a same-name collision rather than overwriting an existing file. A file left by a cancelled, failed or retained handoff prevents another reservation for that same source session until it is explicitly removed; retries within one active writer reuse its reserved path. The extension does not read, parse or retransmit the dossier. Before native cutover it opens the existing file without creating a missing one and checks that it is a nonempty regular file. It then appends its latest deferred-prompt snapshot synchronously, without a new asynchronous input gap before `newSession()`.
+
+When deferred prompts exist, the extension appends this section to the handoff file:
 
 ```markdown
 ## Deferred Prompts
@@ -304,17 +317,24 @@ When deferred prompts exist, the extension appends this section to the submitted
 
 It then appends each unchanged prompt in original order with deterministic boundaries. The section tells the replacement model to treat the entries semantically as separate sequential user inputs after the dossier, so later deferred prompts may update or supersede earlier context. When no deferred prompt exists, the handoff is not given an empty deferred section.
 
-The private correlated transition command normally calls `ctx.newSession({ parentSession: sourceSessionPath })`. When the source chain is at or above `maxSessionChainLength`, it omits `parentSession` and creates an independent master instead. The same assembled Markdown is sent in either case. There is no intermediate handoff transport file and no model-authored transition command.
+The private correlated transition command normally calls `ctx.newSession({ parentSession: sourceSessionPath })`. When the source chain is at or above `maxSessionChainLength`, it omits `parentSession` and creates an independent master instead. The same file reference is sent in either case; there is no model-authored transition command.
 
-The complete assembled Markdown becomes the first user prompt of the fresh linked session and starts the replacement model. Its first line is already the writer-produced meaningful title. The selected Handoff Template determines continuation behavior. The V2 default handles deferred prompts before the recorded action, resumes the actual mode without a previous-session recap and performs authorized autonomous continuation rather than only announcing it.
+A short first user prompt starts the replacement model with the absolute file path and receiver instructions, not the complete dossier. The receiver follows normal startup instructions and necessary basic skills, then reads the entire file, continuing until the end if a tool truncates output. Only after successful complete ingestion it performs the configured exact cleanup:
+
+- `deleteHandoffAfterReading: true` (default): delete that exact file;
+- `deleteHandoffAfterReading: false`: leave that exact file unchanged at its current path.
+
+If reading fails or is incomplete, leave the file unchanged and report the blocker. Cleanup failures must be reported. Ingestion and post-read deletion or retention are LLM instructions, not extension-executed or verified behavior. No archive is created or used. Handoff files are plaintext and should be excluded from version control/publication by local project policy. The extension does not edit Git ignore policy.
+
+The selected Handoff Template determines continuation behavior. The V2 default handles deferred prompts before the recorded action, resumes the actual mode without a previous-session recap and performs authorized autonomous continuation rather than only announcing it.
 
 After the replacement session has accepted that prompt through its native replacement context and the session transition has succeeded, the corresponding deferred-prompt recovery file is deleted. That completes the handoff. `/sh recover` therefore lists only files left by interrupted, cancelled, or failed handoffs.
 
-The source transcript remains available through the exact source path recorded in the handoff, and through native parent-session lineage unless this handoff starts an independent master at the chain limit. The submitted handoff also remains visible in the source session's tool log.
+Persisted source transcripts remain available for targeted retrieval by the session IDs in the historical index. Native parent-session lineage additionally links the source unless this handoff starts an independent master at the chain limit. Native file-tool calls and results follow Pi's normal source and receiver session persistence; the submission tool log contains the ID, not a dossier payload.
 
 ## 11. Cancellation and lifecycle
 
-Before GO, canonical `/sh cancel` clears the pending request, correlation key, timer, and any user-wait state.
+Before GO, canonical `/sh cancel` clears the pending request, correlation key, timer, user-wait state and cached optional preparation. In-flight preparation cannot reserve a file after invalidation.
 
 After GO and before native replacement starts, `/sh cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. Every successful cancellation sends a visible follow-up instruction that tells the model to disregard the earlier readiness or writer request and submission ID, resume normal conversation and task work, and not submit a handoff. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
@@ -324,7 +344,7 @@ Late readiness answers, submissions, timers, and callbacks belonging to an inval
 
 A potential race between a still-pending asynchronous start and cancellation or shutdown is unreproduced in normal operation. A reproducible issue or PR with a minimal reproduction is welcome; speculative lifecycle-token machinery is not part of the product.
 
-A reload or process interruption may end the active in-memory handoff. It does not auto-resume or auto-replay work. A deferred-prompt recovery file remains available. A submitted handoff remains available in the source session log.
+A reload or process interruption may end the active in-memory handoff. It does not auto-resume or auto-replay work. A deferred-prompt recovery file remains available. Reserved files may remain empty or partial after cancellation, failure or interruption; there is no automatic leftover-file execution or removal. Model file-tool calls and results follow Pi's normal session persistence.
 
 ## 12. Recovery
 
@@ -374,14 +394,16 @@ Automated tests cover the actual deterministic contracts:
 - explicit versus automatic initiation, including automatic rejection of user deferral;
 - one-instruction readiness, exact keyed tool correlation, explicit-attempt user-deferral choices, source-specific one-shot reminders, and normal pre-GO input;
 - the V2 default template structure and continuation instructions, writer prompt, tool isolation/restoration, submission validation, and configured attempts;
-- deferred-prompt ordering, one-file persistence, and deterministic assembly;
+- optional Prepare while waiting retrieval, shared preparation, GO/DONE separation, prepared finalization without template retransmission and cancellation;
+- real local-file reservation, collision failure, metadata-only validation, deferred-prompt ordering/append and one recovery file;
+- receiver startup, complete-ingestion and configured post-read deletion/retention instructions (text contracts, not verified receiver execution);
 - direct native replacement, parent-session lineage inputs, configurable chain limits including the master, parentless cutover with unchanged prompts, and persisted-lineage counting across resume/reload;
 - cancellation and stale-callback invalidation;
 - per-file recovery inspection, execution, discard, and delete-after-acceptance;
 - public commands, native argument completion, menu start/cancel dispatch, public tool, and factual status;
 - genuine overlay rendering and keyboard behavior, narrow widths, scrolling, resize/theme invalidation, input focus, dismissal, and dialog lifecycle without model-context leakage.
 
-Tests use focused adapters and pure helpers where needed. They do not implement a second fake Pi runtime.
+Tests use focused adapters and pure helpers where needed. They do not implement a second fake Pi runtime. Development and deterministic validation track current Pi 1.x using updateable `^1.2.0` dependencies, with Pi-provided packages declared as native wildcard peers rather than bundled runtime copies. Test doubles follow current `AgentSettledEvent` (`aborted`) and `ExtensionToolContext` contracts. This dependency alignment does not change the approved runtime minimum or handoff lifecycle; it is not real-model/session validation.
 
 The local gate is:
 
@@ -402,7 +424,9 @@ The product excludes:
 - periodic readiness polling;
 - deterministic free-form user-text parsing or a working-style detection engine;
 - a separate session-name field;
-- an intermediate handoff transport file;
+- reading, parsing or retransmitting the dossier in extension code;
+- deterministic semantic validation or verified receiver ingestion/cleanup;
+- guaranteed acceleration or an artificial preparation waiting phase;
 - one recovery file per prompt;
 - automatic deferred-prompt replay;
 - a recovery dispatch state machine;
@@ -417,6 +441,6 @@ The product excludes:
 
 ## 16. Review status and authority
 
-This document is the current product authority, including the approved keyed-readiness refinement and unified overlay-dialog feature.
+This document is the current product authority, including approved keyed readiness, unified overlay dialogs, file transport and optional Prepare while waiting with separate GO/DONE.
 
 Git history, previous plan text, and previous implementation code are not product authority and must not be used as implementation context. Workers may report a concrete gap but must not edit or reinterpret this specification. The orchestrator may approve a small implementation detail when it is clearly implied by the approved concept and does not materially change public behavior, UX, authorization, security, data lifecycle, or scope. Material changes, uncertainty, and genuine product decisions go to the user. Contradictory proposals are rejected rather than incorporated.

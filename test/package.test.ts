@@ -58,14 +58,15 @@ test("package metadata declares the supported runtime and complete Pi package re
   assert.equal(manifest.version, "1.3.1");
   assert.equal(
     manifest.description,
-    "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and pass it to a fresh, natively linked Pi session as the first prompt that starts the replacement. How work continues is determined by the user’s existing instructions, workflow, and templates.",
+    "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   );
   assert.equal(manifest.type, "module");
   assert.deepEqual(manifest.keywords, ["pi-package", "pi-extension", "handoff", "context-window", "compaction"]);
   assert.equal(manifest.engines?.node, ">=22.19.0");
-  assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], ">=0.84.2");
+  assert.equal(manifest.peerDependencies?.["@earendil-works/pi-coding-agent"], "*");
   assert.equal(manifest.peerDependencies?.["@earendil-works/pi-tui"], "*");
-  assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^0.84.2");
+  assert.equal(manifest.devDependencies?.["@earendil-works/pi-coding-agent"], "^1.2.0");
+  assert.equal(manifest.devDependencies?.["@earendil-works/pi-tui"], "^1.2.0");
   assert.deepEqual(manifest.files, [
     "extensions",
     "docs",
@@ -101,7 +102,7 @@ test("public documentation carries the current tagline and supported line", asyn
   assert.doesNotMatch(security, /current 1\.[124] code line/);
 });
 
-test("the package ships only the readiness-only Call default and unchanged reviewed V2 Handoff default", async () => {
+test("the package ships only the Prepare while waiting-aware Call default and file-writing V2 Handoff default", async () => {
   const filenames = ["call_default.cmpl", "handoff_default.cmpl"];
   assert.deepEqual(SHIPPED_TEMPLATE_FILENAMES, filenames);
   assert.deepEqual((await readdir(join(projectRoot, "templates"))).sort(), filenames);
@@ -112,11 +113,11 @@ test("the package ships only the readiness-only Call default and unchanged revie
   ]);
   assert.equal(
     createHash("sha256").update(call).digest("hex"),
-    "513655a89bf70026e4a97fd22313f1ef79fb68c30ef609cbc9db6ecc2a87fabd",
+    "4b3034fc20d937cd67c03ef53631b12fd7630488c844175dfe14feee0ae65f97",
   );
   assert.equal(
     createHash("sha256").update(handoff).digest("hex"),
-    "70eb0966d79ce166397b09e467cd49058cd4e2e0c38476aefef998603992f080",
+    "fbed693de1259f42210dfdcd8556d8aeec709b535fb1401544b97e410ed7d0f5",
   );
 });
 
@@ -124,12 +125,14 @@ test("the V2 default text instructs mode-aware continuation, scoped grants and t
   const handoff = await readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8");
   const headings = [
     "**Working mode:**",
-    "### Work and assignment",
-    "### Permissions and boundaries",
-    "### Current work state",
-    "### Binding instructions",
-    "### Evidence and uncertainty",
-    "### Targeted retrieval",
+    "### Historical context",
+    "### Positive context",
+    "#### Work and assignment",
+    "#### Permissions and boundaries",
+    "#### Current work state",
+    "#### Binding instructions",
+    "#### Evidence and uncertainty",
+    "#### Targeted retrieval",
   ];
   let previous = -1;
   for (const heading of headings) {
@@ -148,14 +151,39 @@ test("the V2 default text instructs mode-aware continuation, scoped grants and t
   assert.match(handoff, /Preserve selected frozen authority through the binding plan\/source reference/);
   assert.match(handoff, /later edits do not inherit an earlier PASS or clean status/);
   assert.match(handoff, /Preserve the exact unread frontier or inspected ranges/);
-  assert.match(handoff, /preserve the exact source-session transcript path/i);
-  assert.match(handoff, /do not invent one, prescribe routine transcript reading or request ancestor scans/);
   assert.match(handoff, /Apply any Deferred Prompts as separate sequential user inputs/);
   assert.match(handoff, /Do not start with a previous-session recap/);
   assert.match(handoff, /actually perform the authorized next work in the first response, not merely promise continuation/);
   assert.match(handoff, /do not re-request a grant that still covers the work/);
   assert.match(handoff, /writer control applies only to the writer turn; never transfer it as a user instruction or continuation constraint/);
   assert.doesNotMatch(handoff, /^## (Loaded skills|Operational runtime state|Post-Handoff Initial Action)$/m);
+});
+
+test("the default keeps history reference-only and gates retrieval while retaining current consequences inline", async () => {
+  // Text contracts only: this does not verify model-written dossiers or retrieval behavior.
+  const handoff = await readFile(join(projectRoot, "templates", "handoff_default.cmpl"), "utf8");
+  const historyStart = handoff.indexOf("### Historical context\n");
+  const positiveStart = handoff.indexOf("### Positive context\n");
+  assert.ok(historyStart >= 0 && positiveStart > historyStart);
+  const history = handoff.slice(historyStart, positiveStart);
+  const positive = handoff.slice(positiveStart);
+
+  assert.match(history, /One short reference-only paragraph: topic\/task label — actual session ID — known entry point/);
+  assert.match(history, /starting line only when actually established/);
+  assert.match(history, /another known entry point or mark it unknown/);
+  assert.match(history, /Use known references rather than scanning ancestor sessions/);
+  assert.match(history, /entire historical context; keep it in this handoff, with no separate history file/);
+  assert.match(history, /Load referenced session history only for a concrete unresolved fact or discrepancy/);
+  assert.match(history, /cannot be answered from positive context or a known governing\/detail source/);
+  assert.match(history, /Otherwise leave it unloaded/);
+  assert.match(handoff, /Positive context means everything still relevant to continuation, including constraints, active skills and uncertainty/);
+  assert.match(handoff, /Carry forward current consequences of completed work as state or evidence/);
+  assert.match(handoff, /The continuation core belongs inline in positive context/);
+  assert.match(positive, /Keep historical session references solely in Historical context/);
+  for (const field of ["**Continuing grants:**", "**Conditions:**", "**Decisions:**", "**Active skills:**", "**Unresolved or unread:**"]) {
+    assert.ok(positive.includes(field), `Missing current-context field: ${field}`);
+  }
+  assert.doesNotMatch(handoff, /\*\*Completed in the source session:\*\*|Preserve the exact source-session transcript path/);
 });
 
 test("package lock root metadata remains coherent with the manifest", async () => {

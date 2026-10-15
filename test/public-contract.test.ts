@@ -146,6 +146,7 @@ test("blitz_handoff exposes only status and initializes the writer submission to
   await rig.startSession();
   assert.deepEqual([...rig.tools.keys()].sort(), [
     "blitz_handoff",
+    "session_handoff_get_template",
     "session_handoff_go",
     "session_handoff_go_with_user_deferral",
     "submit_session_handoff",

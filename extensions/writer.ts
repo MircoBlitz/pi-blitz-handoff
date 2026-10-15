@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import type { ActiveHandoffSnapshot } from "./flow.ts";
+import { createHandoffFile } from "./handoff-file.ts";
 import {
   SUBMIT_SESSION_HANDOFF_TOOL,
   validateSubmission,
@@ -32,6 +33,14 @@ export interface WriterSuccess {
   handoff: ActiveHandoffSnapshot;
   attempt: number;
   submission: SessionHandoffSubmission;
+  handoffFile: string;
+}
+
+export interface PreparedHandoff {
+  submissionId: string;
+  handoffFile: string;
+  template: ResolvedTemplate;
+  templateReturned: boolean;
 }
 
 export interface HandoffWriterOptions {
@@ -55,14 +64,17 @@ interface ActiveWriter {
   attempt: number;
   submissionId?: string;
   submission?: SessionHandoffSubmission;
+  handoffFile?: string;
   retryTimer?: unknown;
   attemptToken?: object;
   acceptingSubmission: boolean;
   templateFilename?: string;
+  preparation?: Promise<PreparedHandoff>;
 }
 
 export class HandoffWriter {
   private active?: ActiveWriter;
+  private preparation?: { handoffId: string; result: Promise<PreparedHandoff> };
   private currentPhase: WriterPhase = "inactive";
   private readonly options: HandoffWriterOptions;
   private readonly createSubmissionId: () => string;
@@ -96,6 +108,24 @@ export class HandoffWriter {
     this.options.writerRetryDelaySeconds = writerRetryDelaySeconds;
   }
 
+  prepare(handoff: ActiveHandoffSnapshot, ctx: ExtensionContext, templateFilename?: string): Promise<PreparedHandoff> {
+    if (this.active !== undefined) throw new Error("Template preparation is available only before GO");
+    if (this.preparation?.handoffId === handoff.id) return this.preparation.result;
+
+    const result: Promise<PreparedHandoff> = this.options.resolveTemplate(templateFilename).then((template) => {
+      if (this.preparation?.result !== result) throw new Error("Handoff preparation was cancelled");
+      const submissionId = this.createSubmissionId();
+      const handoffFile = createHandoffFile(ctx.cwd, ctx.sessionManager.getSessionId());
+      for (const failure of template.failures) this.options.onTemplateFailure?.(failure, 0, ctx);
+      return { submissionId, handoffFile, template, templateReturned: false };
+    }).catch((error: unknown) => {
+      if (this.preparation?.result === result) this.preparation = undefined;
+      throw error;
+    });
+    this.preparation = { handoffId: handoff.id, result };
+    return result;
+  }
+
   start(
     handoff: ActiveHandoffSnapshot,
     ctx: ExtensionContext,
@@ -119,11 +149,15 @@ export class HandoffWriter {
       attempt: 0,
       acceptingSubmission: false,
       templateFilename,
+      preparation: this.preparation?.handoffId === handoff.id ? this.preparation.result : undefined,
     };
     this.active = active;
 
     try {
-      this.options.runtime.setActiveTools([SUBMIT_SESSION_HANDOFF_TOOL]);
+      this.options.runtime.setActiveTools(["read", "write", "edit", SUBMIT_SESSION_HANDOFF_TOOL]);
+      if (!this.options.runtime.getActiveTools().includes("write")) {
+        throw new Error("File handoff requires Pi's native write tool");
+      }
     } catch (error) {
       this.terminate(active, "failed", `Could not isolate the writer tool: ${errorMessage(error)}`);
       return false;
@@ -153,11 +187,12 @@ export class HandoffWriter {
     if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
 
     active.acceptingSubmission = false;
-    if (active.submission !== undefined) {
+    if (active.submission !== undefined && active.handoffFile !== undefined) {
       const result: WriterSuccess = {
         handoff: active.handoff,
         attempt: active.attempt,
         submission: { ...active.submission },
+        handoffFile: active.handoffFile,
       };
       if (this.terminate(active, "succeeded")) {
         this.options.onSuccess?.(result, ctx);
@@ -180,7 +215,10 @@ export class HandoffWriter {
 
   cancel(ctx: ExtensionContext): boolean {
     const active = this.active;
-    if (active === undefined) return false;
+    if (active === undefined) {
+      this.preparation = undefined;
+      return false;
+    }
     const shouldAbort = !ctx.isIdle();
     this.terminate(active, "cancelled", "Session handoff writer cancelled.");
     if (shouldAbort) ctx.abort();
@@ -188,6 +226,7 @@ export class HandoffWriter {
   }
 
   invalidate(): void {
+    this.preparation = undefined;
     const active = this.active;
     if (active !== undefined) {
       this.terminate(active, "cancelled", "Session handoff writer invalidated.");
@@ -197,12 +236,7 @@ export class HandoffWriter {
   private beginAttempt(active: ActiveWriter): void {
     if (this.active !== active) return;
     active.attempt += 1;
-    try {
-      active.submissionId = this.createSubmissionId();
-    } catch (error) {
-      this.terminate(active, "failed", `Could not create a writer submission ID: ${errorMessage(error)}`);
-      return;
-    }
+    active.submissionId = undefined;
     active.submission = undefined;
     active.acceptingSubmission = false;
     const attemptToken = {};
@@ -215,16 +249,29 @@ export class HandoffWriter {
   private async resolveAndDispatch(active: ActiveWriter, attemptToken: object): Promise<void> {
     let template: ResolvedTemplate;
     try {
-      template = await this.options.resolveTemplate(active.templateFilename);
+      const prepared = active.preparation === undefined ? undefined : await active.preparation;
+      if (!this.isCurrentAttempt(active, attemptToken)) return;
+      if (prepared?.templateReturned) {
+        template = prepared.template;
+        active.submissionId = active.attempt === 1 ? prepared.submissionId : this.createSubmissionId();
+      } else {
+        // A failed/aborted GET reserved a file but never returned its template.
+        // Reuse that reservation while taking the normal fresh-template writer path.
+        active.preparation = undefined;
+        template = await this.options.resolveTemplate(active.templateFilename);
+        if (!this.isCurrentAttempt(active, attemptToken)) return;
+        active.submissionId = this.createSubmissionId();
+      }
+      active.handoffFile ??= prepared?.handoffFile ?? createHandoffFile(active.ctx.cwd, active.ctx.sessionManager.getSessionId());
     } catch (error) {
       if (!this.isCurrentAttempt(active, attemptToken)) return;
-      this.terminate(active, "failed", `Could not resolve a handoff template: ${errorMessage(error)}`);
+      this.terminate(active, "failed", `Could not prepare the handoff writer: ${errorMessage(error)}`);
       return;
     }
 
     if (!this.isCurrentAttempt(active, attemptToken)) return;
-    for (const failure of template.failures) {
-      this.options.onTemplateFailure?.(failure, active.attempt, active.ctx);
+    if (active.preparation === undefined) {
+      for (const failure of template.failures) this.options.onTemplateFailure?.(failure, active.attempt, active.ctx);
     }
 
     const submissionId = active.submissionId;
@@ -233,7 +280,7 @@ export class HandoffWriter {
     this.changePhase("writing", active);
     try {
       this.options.runtime.sendUserMessage(
-        writerPrompt(template.content, submissionId, active.handoff.sourceSessionPath),
+        writerPrompt(active.preparation === undefined ? template.content : undefined, submissionId, active.handoff.sourceSessionPath, active.handoffFile),
       );
     } catch (error) {
       active.acceptingSubmission = false;
@@ -271,6 +318,7 @@ export class HandoffWriter {
     }
 
     this.active = undefined;
+    this.preparation = undefined;
     const terminalReason = reason === "succeeded" && restorationFailure !== undefined ? "failed" : reason;
     this.currentPhase = terminalReason;
     this.options.onPhaseChange?.(terminalReason, active.attempt, active.ctx);
@@ -303,15 +351,36 @@ export class HandoffWriter {
   }
 }
 
-export function writerPrompt(template: string, submissionId: string, sourceSessionPath: string): string {
+export function preparationPrompt(prepared: PreparedHandoff, sourceSessionPath: string): string {
+  return [
+    "Prepare while waiting: GO has not been accepted. Continue required source work and reach its genuine boundary; do not let drafting delay that work. Use real waiting time to draft if useful.",
+    `Use this exact submission ID after GO: ${prepared.submissionId}`,
+    `The persisted source-session transcript path is exactly: ${sourceSessionPath}`,
+    `Write the complete handoff Markdown to this exact file: ${JSON.stringify(prepared.handoffFile)}`,
+    "Keep the template and file path for this handoff. At the boundary call the correlated GO tool, then wait for the short finalization instruction. GO and DONE are separate: GO starts prompt deferral, DONE confirms the completed file. Never submit before GO.",
+    "Before DONE, read and update your draft with all current results, facts, permissions and the precise next action. The extension does not check those semantics. Submit only the ID with submit_session_handoff; never send file content or a path to that tool.",
+    "--- BEGIN COMPLETE HANDOFF TEMPLATE ---",
+    prepared.template.content,
+    "--- END COMPLETE HANDOFF TEMPLATE ---",
+  ].join("\n\n");
+}
+
+export function writerPrompt(template: string | undefined, submissionId: string, sourceSessionPath: string, handoffFile: string): string {
   return [
     "This is an extension-owned writer turn. Perform no source-task work during this turn; only write the session handoff and submit it exactly once with submit_session_handoff. This writer-only control is not a user instruction or continuation constraint. Do not include or preserve it in the handoff.",
     `Use this exact submission ID: ${submissionId}`,
     `The persisted source-session transcript path is exactly: ${sourceSessionPath}`,
-    "Use the complete template below as the writer instruction and dossier structure.",
-    "--- BEGIN COMPLETE HANDOFF TEMPLATE ---",
-    template,
-    "--- END COMPLETE HANDOFF TEMPLATE ---",
+    `Write the complete handoff Markdown to this exact file: ${JSON.stringify(handoffFile)}`,
+    template === undefined
+      ? "GO has been accepted. Use your previously retrieved template: read and finalize the prepared file with all current results, facts, permissions and the precise next action. Preserve useful draft content and update it with Pi's native read/write/edit tools. No template is resent. Submit DONE only when the file is complete. Do not write other files or perform source-task work."
+      : "GO has been accepted. Use Pi's native write tool, and read/edit for incremental writing if needed. Start this attempt by replacing any previous partial content; finish the complete file before submitting DONE. Do not write other files or perform source-task work.",
+    "The file is the transport. Call submit_session_handoff with only the exact submission ID, never the dossier content or a file path. This file-based submission protocol replaces any older template instruction to submit the handoff content.",
+    ...(template === undefined ? [] : [
+      "Use the complete template below for the dossier semantics and structure.",
+      "--- BEGIN COMPLETE HANDOFF TEMPLATE ---",
+      template,
+      "--- END COMPLETE HANDOFF TEMPLATE ---",
+    ]),
   ].join("\n\n");
 }
 
