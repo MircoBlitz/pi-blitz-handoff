@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { DeferredPromptWindow, type DeferredPromptSnapshot } from "./deferred.ts";
-import { createReadinessKey, readinessPrompt, readinessReminder } from "./readiness.ts";
+import { createReadinessKey, readinessEmergency, readinessPrompt, readinessReminder } from "./readiness.ts";
 
 export type ExplicitHandoffStartSource = "command" | "tool";
 export type HandoffStartSource = ExplicitHandoffStartSource | "automatic";
@@ -33,6 +33,7 @@ export interface HandoffFlowOptions {
   callTemplate: string;
   onReadinessPrompt(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
   onReadinessReminder(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
+  onReadinessEmergency(prompt: string, handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
   onReady(handoff: ActiveHandoffSnapshot, ctx: ExtensionContext): void;
   onPhaseChange?(handoff: ActiveHandoffSnapshot | undefined, ctx: ExtensionContext): void;
   createHandoffId?: () => string;
@@ -51,6 +52,7 @@ interface ActiveHandoff {
   awaitingUserGo: boolean;
   callTemplate: string;
   instructionSent: boolean;
+  emergencySent: boolean;
   writerDispatched: boolean;
   reminderTimer?: unknown;
   deferred?: DeferredPromptWindow;
@@ -148,6 +150,7 @@ export class HandoffFlow {
       awaitingUserGo: false,
       callTemplate,
       instructionSent: false,
+      emergencySent: false,
       writerDispatched: false,
     };
     this.changed(ctx);
@@ -205,6 +208,18 @@ export class HandoffFlow {
     const deferred = this.active.deferred;
     if (deferred === undefined) throw new Error("Deferred-prompt window is unavailable after accepted GO");
     return { action: "deferred", snapshot: deferred.capture(text) };
+  }
+
+  escalateReadiness(percent: number | null | undefined, ctx: ExtensionContext): void {
+    const active = this.active;
+    if (
+      active === undefined || active.phase !== "waiting" || active.awaitingUserGo || active.emergencySent ||
+      percent === null || percent === undefined || percent < 90
+    ) return;
+    this.clearReminderTimer(active);
+    active.instructionSent = true;
+    active.emergencySent = true;
+    this.options.onReadinessEmergency(readinessEmergency(active.readinessKey, percent), snapshot(active), ctx);
   }
 
   handleSettled(ctx: ExtensionContext): void {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.2 — 2026-10-21
+
+### Added
+
+- A fixed 90% emergency limit for a requested handoff still waiting for model GO. At the next completed turn it sends one urgent, model-visible steering instruction to stop source-task work and call the existing correlated GO immediately, rather than treating the UI warning as a model instruction. It cancels the normal reminder timer and preserves explicit user Wait, GO/DONE separation and the normal automatic-attempt budget. No real-model compliance or remaining-capacity guarantee is claimed.
+
 ## 1.4.1 — 2026-10-21
 
 ### Fixed

@@ -387,6 +387,12 @@ export function activateHandoffExtension(
         },
       );
     },
+    onReadinessEmergency(prompt) {
+      pi.sendMessage(
+        { customType: "pi-blitz-handoff-emergency", content: prompt, display: true },
+        { deliverAs: "steer", triggerTurn: true },
+      );
+    },
     onReady(handoff, ctx) {
       ctx.ui.notify("Session handoff readiness confirmed.", "info");
       const selectedHandoffTemplate = handoffTemplates.get(handoff.id);
@@ -737,8 +743,12 @@ export function activateHandoffExtension(
   });
 
   pi.on("turn_end", async (_event, ctx) => {
+    const usage = ctx.getContextUsage();
+    if (flow.phase !== "inactive") {
+      flow.escalateReadiness(usage?.percent, ctx);
+      return;
+    }
     if (
-      flow.phase !== "inactive" ||
       automaticAttempts >= 2 ||
       !automaticHandoffEnabled(
         config.automaticSessionHandoff,
@@ -749,7 +759,6 @@ export function activateHandoffExtension(
     const threshold = automaticAttempts === 0
       ? config.automaticSessionHandoffPercent
       : config.criticalWarningPercent;
-    const usage = ctx.getContextUsage();
     if (
       shouldStartAutomaticHandoff(
         config.automaticSessionHandoff,
@@ -758,6 +767,7 @@ export function activateHandoffExtension(
       )
     ) {
       await requestAutomaticStart(ctx);
+      flow.escalateReadiness(usage?.percent, ctx);
     }
   });
 

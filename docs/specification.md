@@ -180,7 +180,7 @@ Failure to read, parse, or validate the project assignment file does not by itse
 
 ## 6. Warnings and automatic initiation
 
-The warning percentage produces one advisory warning. At and above the critical percentage, a critical warning may be repeated after settled turns.
+The warning percentage produces one advisory warning. At and above the critical percentage, a critical warning may be repeated after settled turns. These are UI notifications, not model instructions. The separate fixed 90% emergency limit below escalates an already requested handoff in model context.
 
 When automatic handoff is enabled, the extension checks context usage at each completed `turn_end`. At the first boundary at or above the configured automatic percentage, it records the automatic request and inserts readiness before the next model turn without interrupting the completed turn's tool work.
 
@@ -192,7 +192,7 @@ Every successful compaction resets the accepted-attempt count to zero, whether i
 
 A start request records pending intent. Its source determines whether user deferral is available; it does not otherwise infer a working style.
 
-For manual and model-requested handoffs, the initial readiness instruction begins only when Pi is settled and no user or system continuation is outstanding:
+Outside the 90% emergency exception below, manual and model-requested handoffs begin their initial readiness instruction only when Pi is settled and no user or system continuation is outstanding:
 
 - a request made during a model run waits for `agent_settled`;
 - a request made while Pi is already settled may dispatch immediately;
@@ -200,9 +200,9 @@ For manual and model-requested handoffs, the initial readiness instruction begin
 
 An automatic request is different: it is detected after a completed turn and its readiness instruction is delivered as steering before the next autonomous model turn, even when another continuation is already queued. This does not interrupt tools from the completed turn. The model still applies the same in-flight-work boundary, but only direct GO is permitted. User deferral is unavailable because a choice dialog could stop the autonomous run.
 
-The extension creates one unpredictable correlation key and sends one resolved Call Template. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends the exact correlated tool protocol, non-configurable interaction constraints and, only when enabled, optional preparation instructions for Prepare while waiting; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
+The extension creates one unpredictable correlation key. Normal readiness sends one resolved Call Template; emergency escalation can replace readiness that has not yet been dispatched. The editable Call Template owns the semantic work-boundary and working-style guidance. Deterministic code appends the exact correlated tool protocol, non-configurable interaction constraints and, only when enabled, optional preparation instructions for Prepare while waiting; editable template prose does not own correlation, tool availability, user-choice mechanics, timers, or state invariants.
 
-The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. With Prepare while waiting disabled, readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file. With Prepare while waiting enabled, preparation is optional and must not delay required in-flight work. In both modes the model waits after GO for the explicit writer/finalization instruction. These are model instructions, not a deterministic filesystem write block. A custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
+The default Call Template guides the current model to finish only required work already in flight before the genuinely safe transfer boundary. With Prepare while waiting disabled, readiness is not handoff preparation: the default instructs the model not to write a handoff or create a continuation file. With Prepare while waiting enabled, preparation is optional and must not delay required in-flight work. In both modes the model waits after GO for the explicit writer/finalization instruction. These are model instructions, not a deterministic filesystem write block. Outside the fixed 90% emergency exception, a custom Call Template may define a different working style without deterministic code appending a second work-boundary policy. Automatic handoffs still permit only direct GO because user deferral would stop the autonomous run.
 
 Two correlated readiness tools exist:
 
@@ -218,6 +218,16 @@ The extension does not parse free-form user text or build a working-style detect
 After **Wait**, no timer or dialog runs automatically. A later ordinary user message may explicitly indicate readiness; the model then calls direct GO with the same key. The extension does not parse that message.
 
 After the initial instruction, one timer is scheduled for `readinessRetrySeconds`. If the permitted tool has not resolved readiness when it fires, one short visible reminder triggers a model turn. The reminder reapplies the same resolved Call Template, then appends only the source-specific correlated tool protocol: explicit attempts retain both choices, while automatic attempts permit only direct GO. If the model calls no readiness tool, it produces no normal text. This one-shot reminder prevents deadlock when background work finishes without otherwise producing a new turn. There is no periodic polling.
+
+### 90% emergency limit
+
+For an already requested handoff still waiting for model GO, the first completed `turn_end` reporting at least 90% context use sends one additional visible model instruction as native steering with a triggered turn. The fixed limit is 90%, not 85%, and does not change the configured normal automatic threshold or UI warning thresholds. It applies to every initiation source, including a manual request whose normal readiness instruction has not yet been dispatched; the emergency makes that request's existing key usable for GO immediately.
+
+The instruction tells the model to stop all source-task work now, stop postponing transfer to finish tasks or wait for subagents, gather no additional context, and call direct GO immediately with the exact existing readiness key. Unfinished work belongs in the handoff for the replacement session. It overrides normal Call Template waiting guidance, repeats neither the Call Template nor optional preparation instructions, and preserves separate GO, writer finalization and DONE.
+
+One flag on the active handoff limits this escalation to one message. The normal one-shot reminder timer is cancelled when the emergency is sent. Escalation is not a new initiation, does not consume another automatic attempt, and adds no polling, background timer or forced compaction. An open user-choice dialog, an explicitly chosen **Wait**, an already accepted GO and a cancelled handoff are not overridden. Disabled automatic initiation remains disabled when no handoff was requested.
+
+This is an urgent model instruction, not deterministic model compliance or a forced abort of native tools or subagents. Observation happens at completed turn boundaries, so a large response or tool result may cross the limit before the next check. The emergency does not guarantee remaining writer capacity or successful replacement.
 
 ### Prepare while waiting
 

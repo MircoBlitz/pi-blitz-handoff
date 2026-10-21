@@ -9,11 +9,11 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!NOTE]
-> **Release Note — 1.4.1**
+> **Release Note — 1.4.2**
 >
-> Cancelling a handoff now removes its reserved file and any draft, so another handoff can start from the same source session without manual deletion. This applies to optional preparation before GO and cancellation after DONE while native cutover is still pending. Existing unrelated files and deferred-prompt recovery files are preserved. Cleanup failures report the affected path.
+> A requested handoff still waiting for model GO now receives one urgent model-visible steering instruction at the first completed turn reporting at least 90% context use: stop source-task work and call the current correlated GO immediately. This is a last-resort limit; the normal earlier handoff threshold remains unchanged.
 >
-> Cancellation cleanup is performed by the extension and is independent of **Delete handoff after reading**. Successful receiver ingestion and its configured post-read cleanup remain model responsibilities, not extension-verified guarantees.
+> The instruction respects explicit user Wait and preserves separate GO, writing and DONE. It is not a forced abort or proof of model compliance. Large responses or tool results can cross the limit before the next check; remaining transfer capacity is not guaranteed.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
@@ -140,6 +140,14 @@ The extension does not parse free-form replies. If neither permitted readiness t
 `prepareWhileWaiting` is off by default and can be toggled in `/sh settings` without reload. When enabled, all initiation sources receive additional readiness instructions and the optional `session_handoff_get_template({ key })` tool. Before GO it returns the selected template, absolute reserved file path and submission ID. Repeated retrieval shares one preparation. It does not accept GO or DONE, and disabled, stale or post-GO calls fail.
 
 Use early drafting only during real waiting and with existing source tools. It must not delay required work or run concurrently with GO. Skipping retrieval is valid: the normal writer receives the template after GO. An aborted GET also takes that normal path and reuses any reserved file; only a successfully returned GET suppresses later template delivery. There is no artificial waiting phase. GO starts prompt deferral; DONE confirms the finalized file, and only DONE plus the settled boundary permits replacement. The extra calls/turns are an accepted trade-off, not a guaranteed acceleration.
+
+### 90% emergency limit
+
+A requested handoff that is still waiting for the model's GO receives one urgent model-visible steering message at the first completed turn reporting at least **90%** context use. This is the last-resort limit, not a replacement for the earlier normal handoff threshold. It does not activate at 85% or follow a higher configured UI warning threshold.
+
+The instruction tells the model to stop source-task work, stop postponing transfer to finish tasks or wait for subagents, gather no more context, and call direct GO immediately using the current key. The normal reminder timer is cancelled; the Call Template and optional preparation instructions are not repeated. GO, writing and DONE remain separate.
+
+An explicit user **Wait**, an open user-choice dialog and an already accepted GO are respected. With no requested handoff, disabled automatic initiation stays disabled. This is an instruction to the model, not a forced abort or a guarantee that it will comply. A large response or tool result can cross the limit before the next turn-boundary check, so 90% is not a guaranteed safe reserve.
 
 ### Automatic initiation
 
@@ -311,7 +319,7 @@ git diff --check
 npm pack --dry-run
 ```
 
-Maintainers with the local functional checks also run `npm test` before release. Version 1.4.1 has local functional validation, including cancellation cleanup and same-session restart, but no real-model/session end-to-end validation of this fix. Earlier Real-Pi evidence below does not validate the file transport, cancellation cleanup under a real model, or receiver ingestion and cleanup.
+Maintainers with the local functional checks also run `npm test` before release. Version 1.4.2 has local functional validation, including emergency-message delivery and correlation, cancellation cleanup and same-session restart. It has no real-model/session end-to-end validation of the emergency instruction or model compliance. Earlier Real-Pi evidence below does not validate the file transport, emergency behavior under a real model, cancellation cleanup under a real model, or receiver ingestion and cleanup.
 
 The code is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
 
