@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -75,6 +76,8 @@ interface ActiveWriter {
 export class HandoffWriter {
   private active?: ActiveWriter;
   private preparation?: { handoffId: string; result: Promise<PreparedHandoff> };
+  // Keep ownership through DONE until cutover invalidates this source runtime.
+  private reservedFile?: string;
   private currentPhase: WriterPhase = "inactive";
   private readonly options: HandoffWriterOptions;
   private readonly createSubmissionId: () => string;
@@ -116,6 +119,7 @@ export class HandoffWriter {
       if (this.preparation?.result !== result) throw new Error("Handoff preparation was cancelled");
       const submissionId = this.createSubmissionId();
       const handoffFile = createHandoffFile(ctx.cwd, ctx.sessionManager.getSessionId());
+      this.reservedFile = handoffFile;
       for (const failure of template.failures) this.options.onTemplateFailure?.(failure, 0, ctx);
       return { submissionId, handoffFile, template, templateReturned: false };
     }).catch((error: unknown) => {
@@ -215,18 +219,27 @@ export class HandoffWriter {
 
   cancel(ctx: ExtensionContext): boolean {
     const active = this.active;
-    if (active === undefined) {
-      this.preparation = undefined;
-      return false;
+    const reservedFile = this.reservedFile;
+    this.preparation = undefined;
+    this.reservedFile = undefined;
+    if (active !== undefined) {
+      const shouldAbort = !ctx.isIdle();
+      this.terminate(active, "cancelled", "Session handoff writer cancelled.");
+      if (shouldAbort) ctx.abort();
     }
-    const shouldAbort = !ctx.isIdle();
-    this.terminate(active, "cancelled", "Session handoff writer cancelled.");
-    if (shouldAbort) ctx.abort();
-    return true;
+    if (reservedFile !== undefined) {
+      try {
+        rmSync(reservedFile, { force: true });
+      } catch (error) {
+        ctx.ui.notify(`Session handoff cancelled, but could not remove reserved file ${reservedFile}: ${errorMessage(error)}`, "error");
+      }
+    }
+    return active !== undefined || reservedFile !== undefined;
   }
 
   invalidate(): void {
     this.preparation = undefined;
+    this.reservedFile = undefined;
     const active = this.active;
     if (active !== undefined) {
       this.terminate(active, "cancelled", "Session handoff writer invalidated.");
@@ -263,6 +276,7 @@ export class HandoffWriter {
         active.submissionId = this.createSubmissionId();
       }
       active.handoffFile ??= prepared?.handoffFile ?? createHandoffFile(active.ctx.cwd, active.ctx.sessionManager.getSessionId());
+      this.reservedFile = active.handoffFile;
     } catch (error) {
       if (!this.isCurrentAttempt(active, attemptToken)) return;
       this.terminate(active, "failed", `Could not prepare the handoff writer: ${errorMessage(error)}`);

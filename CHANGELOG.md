@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.1 — 2026-10-21
+
+### Fixed
+
+- Cancelling a handoff removes its runtime-owned file reservation and draft, including optional pre-GO preparation and the interval after DONE before native cutover. A subsequent handoff in the same source session no longer collides with the cancelled attempt's file. Existing unrelated files and deferred-prompt recovery files remain untouched; cleanup failures report the affected path.
+
+### Changed
+
+- Added the shared pi-blitz logo and repository standard. Functional tests and Pi working documents are now ignored local maintainer files rather than public repository content. The npm package continues to exclude them. The new release is published without private checkpoint commits; existing public history is unchanged.
+
+### Validation limits
+
+- Local functional checks cover cancellation before GO, during writing and after DONE before native cutover, same-session restart, collision protection, recovery retention and cleanup errors. No real-model/Pi-session end-to-end validation was performed for this fix.
+
 ## 1.4.0 — 2026-10-16
 
 ### Added

@@ -1,5 +1,6 @@
 node_modules/
 coverage/
+test/
 *.tgz
 .pi/
 .pi-tmp/

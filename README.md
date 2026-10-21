@@ -9,11 +9,11 @@ Steer your context. Hand off what matters.
 This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.
 
 > [!NOTE]
-> **Release Note — 1.4.0**
+> **Release Note — 1.4.1**
 >
-> GO confirms only the safe work boundary; DONE is a separate submission after file finalization. Optional `prepareWhileWaiting: true` permits early template retrieval and drafting during genuine waiting, without resending the template after GO. It is disabled by default and promises no speed gain.
+> Cancelling a handoff now removes its reserved file and any draft, so another handoff can start from the same source session without manual deletion. This applies to optional preparation before GO and cancellation after DONE while native cutover is still pending. Existing unrelated files and deferred-prompt recovery files are preserved. Cleanup failures report the affected path.
 >
-> The source model writes the dossier to `.pi/handoff_SESSID.md`, using the native source-session ID without a timestamp. The submission tool receives only the attempt ID; the fresh session starts with a short file reference. **Delete handoff after reading** (`deleteHandoffAfterReading: true`, the default) instructs the receiver to delete the file after complete ingestion. When disabled, the file stays unchanged at the same path. Ingestion and cleanup are model instructions, not extension-enforced guarantees.
+> Cancellation cleanup is performed by the extension and is independent of **Delete handoff after reading**. Successful receiver ingestion and its configured post-read cleanup remain model responsibilities, not extension-verified guarantees.
 
 The “Blitz” in the project name is the author's surname, not a speed claim. Do not expect a handoff to be faster than compaction; its purpose is more precise context transfer, not speed.
 
@@ -162,7 +162,7 @@ The activity line is rendered as a Pi widget directly above the input editor. It
 
 Failure and cancellation override those states. Finished status remains in the replacement session until its next agent run starts, ordinary user input arrives, or another handoff begins. Its second line reports the wait from initiation to accepted `GO` and the handoff time from `GO` to successful completion. After `GO`, the activity line shows `Inputs deferred (0)` and increments the count for every captured prompt.
 
-Before GO is accepted, canonical `/sh cancel` clears pending readiness, the user-wait state and any cached optional preparation. After GO is accepted but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Every successful cancellation sends a follow-up instruction that releases the model from the earlier readiness or writer request and resumes normal work. Deferred prompts are not replayed automatically to the source session.
+Before GO is accepted, canonical `/sh cancel` clears pending readiness, the user-wait state and any cached optional preparation. After GO is accepted but before native replacement begins, it stops extension-owned writer work, restores the prior tools, and leaves a deferred-prompt recovery file for explicit recovery. Both `/sh cancel` and **Cancel** in the readiness selection delete this runtime's reserved handoff file, including a partial draft or a completed file still awaiting native cutover. This allows another handoff from the same source session without manual deletion. Cleanup is independent of **Delete handoff after reading**; pre-existing files not reserved by this runtime are left alone, and cleanup errors identify the affected path. Every successful cancellation sends a follow-up instruction that releases the model from the earlier readiness or writer request and resumes normal work. Deferred prompts are not replayed automatically to the source session.
 
 From `GO` until completion or cancellation, user-initiated session replacement, fork, and compaction are blocked. The extension's own correlated native replacement is allowed.
 
@@ -241,7 +241,7 @@ Optional early preparation or the normal writer reserves an owner-only file unde
 
 `SESSID` is the native source-session ID. The file sits directly under `.pi`, without a timestamp. An existing same-name file is never overwritten by reservation; a collision fails visibly. A leftover file therefore blocks another handoff from that same source session until explicitly removed. Retries within one writer reuse its reserved path. Unprepared attempts replace partial content; prepared attempts retain and update the draft.
 
-**Delete handoff after reading** (`deleteHandoffAfterReading`) is a boolean setting in `/sh settings` or `config.json`, enabled by default. After complete successful ingestion, it tells the receiver to delete the exact file. When disabled, the file stays unchanged at its current path; there is no archive move. The extension does not read the dossier, perform receiver cleanup or verify ingestion. Cancelled, interrupted or failed handoffs can leave empty or partial files at the supplied path for manual inspection.
+**Delete handoff after reading** (`deleteHandoffAfterReading`) is a boolean setting in `/sh settings` or `config.json`, enabled by default. After complete successful ingestion, it tells the receiver to delete the exact file. When disabled, the file stays unchanged at its current path; there is no archive move. The extension does not read the dossier, perform receiver cleanup or verify ingestion. Interrupted or failed handoffs, and cancellation cleanup errors, can leave empty or partial files at the supplied path for manual inspection.
 
 These files contain plaintext conversation context and should remain outside version control and publication. Exclude `.pi/handoff_*.md` using your project's local Git exclude or ignore policy; the extension does not change that policy automatically. Disabling deletion increases local retention. The file transport avoids placing the entire dossier in the submission tool or initial prompt, but file writing and reading still depend on the model, native tools and their output limits.
 
@@ -300,17 +300,18 @@ npm install
 
 Development dependencies track current Pi 1.x (`^1.2.0`). Pi-provided host packages use wildcard peers, as recommended by Pi's native package contract; development copies are not bundled. The existing documented runtime minimum is unchanged.
 
-The deterministic test suite covers unit, integration, and package testing and currently passes against Pi 1.2.0; it is not end-to-end Real-Pi testing.
+Functional tests are local maintainer checks. Their files are ignored and are not distributed in the public repository or npm package. Local Pi working documents and private checkpoint history are also excluded from the new public release. The earlier public history is unchanged. The shared layout and logo conventions are documented in the [pi-blitz standard](docs/pi-blitz-standard.md).
+
+After cloning, source and package checks are available with:
 
 ```text
-npm test
 npm run typecheck
 npx tsc --noEmit --noUnusedLocals --noUnusedParameters
 git diff --check
 npm pack --dry-run
 ```
 
-Version 1.4.0 has deterministic local tests, not a real-model/session end-to-end validation. Earlier Real-Pi evidence below does not validate the new transport or receiver cleanup.
+Maintainers with the local functional checks also run `npm test` before release. Version 1.4.1 has local functional validation, including cancellation cleanup and same-session restart, but no real-model/session end-to-end validation of this fix. Earlier Real-Pi evidence below does not validate the file transport, cancellation cleanup under a real model, or receiver ingestion and cleanup.
 
 The code is tested for public registration, project-template selection and inheritance, composed success, rejection/failure, cancellation/recovery, package metadata, and packed-file boundaries. Version 1.1.0 was also validated interactively with current Pi across manual, automatic, model-initiated, user-deferral, cancellation, resume, tree, and fork behavior.
 

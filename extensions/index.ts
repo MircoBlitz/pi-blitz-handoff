@@ -441,7 +441,7 @@ export function activateHandoffExtension(
       const handoffId = flow.snapshot?.id;
       const result = flow.resolveUserDeferral(key, choice, ctx);
       if (result === "accepted" && choice === "Cancel") {
-        writer?.invalidate();
+        writer?.cancel(ctx);
         if (handoffId !== undefined) handoffTemplates.delete(handoffId);
         sendCancellationInstruction();
       }

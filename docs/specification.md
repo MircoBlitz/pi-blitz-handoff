@@ -307,7 +307,7 @@ The source model writes the handoff to a reserved owner-only file under the curr
 .pi/handoff_SESSID.md
 ```
 
-`SESSID` is the native source-session ID; there is no timestamp or additional subdirectory. Exclusive reservation creates a new file and fails visibly on a same-name collision rather than overwriting an existing file. A file left by a cancelled, failed or retained handoff prevents another reservation for that same source session until it is explicitly removed; retries within one active writer reuse its reserved path. The extension does not read, parse or retransmit the dossier. Before native cutover it opens the existing file without creating a missing one and checks that it is a nonempty regular file. It then appends its latest deferred-prompt snapshot synchronously, without a new asynchronous input gap before `newSession()`.
+`SESSID` is the native source-session ID; there is no timestamp or additional subdirectory. Exclusive reservation creates a new file and fails visibly on a same-name collision rather than overwriting an existing file. A file left by a failed, interrupted or retained handoff, or by a failed cancellation cleanup, prevents another reservation for that same source session until it is explicitly removed; retries within one active writer reuse its reserved path. The extension does not read, parse or retransmit the dossier. Before native cutover it opens the existing file without creating a missing one and checks that it is a nonempty regular file. It then appends its latest deferred-prompt snapshot synchronously, without a new asynchronous input gap before `newSession()`.
 
 When deferred prompts exist, the extension appends this section to the handoff file:
 
@@ -334,7 +334,7 @@ Persisted source transcripts remain available for targeted retrieval by the sess
 
 ## 11. Cancellation and lifecycle
 
-Before GO, canonical `/sh cancel` clears the pending request, correlation key, timer, user-wait state and cached optional preparation. In-flight preparation cannot reserve a file after invalidation.
+Before GO, canonical `/sh cancel` clears the pending request, correlation key, timer, user-wait state and cached optional preparation. In-flight preparation cannot reserve a file after invalidation. Both `/sh cancel` and **Cancel** in the readiness selection delete the exact handoff file reserved by this runtime, including an empty reservation or partial draft. After GO, cancellation also removes that reservation, including after DONE while native replacement is still pending. This cleanup is independent of `deleteHandoffAfterReading`: that setting governs successful receiver ingestion, not abandoned attempts. A new handoff in the same source session can then reserve the same session-based path with a fresh submission ID. A pre-existing file that this runtime did not reserve is never deleted. A missing reserved file is harmless; any other cleanup failure is reported visibly with its path. There is no recursive cleanup or directory scan.
 
 After GO and before native replacement starts, `/sh cancel` stops extension-owned writer work, restores the original tools, and leaves any deferred-prompt recovery file untouched for `/sh recover`. Every successful cancellation sends a visible follow-up instruction that tells the model to disregard the earlier readiness or writer request and submission ID, resume normal conversation and task work, and not submit a handoff. Once `ctx.newSession()` has been invoked, the cutover is committed and is no longer cancellable. Deferred prompts are not automatically replayed to the source session.
 
@@ -344,7 +344,7 @@ Late readiness answers, submissions, timers, and callbacks belonging to an inval
 
 A potential race between a still-pending asynchronous start and cancellation or shutdown is unreproduced in normal operation. A reproducible issue or PR with a minimal reproduction is welcome; speculative lifecycle-token machinery is not part of the product.
 
-A reload or process interruption may end the active in-memory handoff. It does not auto-resume or auto-replay work. A deferred-prompt recovery file remains available. Reserved files may remain empty or partial after cancellation, failure or interruption; there is no automatic leftover-file execution or removal. Model file-tool calls and results follow Pi's normal session persistence.
+A reload or process interruption may end the active in-memory handoff. It does not auto-resume or auto-replay work. A deferred-prompt recovery file remains available. Reserved files may remain empty or partial after failure, interruption or a failed cancellation cleanup; apart from explicit cancellation of this runtime's reservation, there is no automatic leftover-file execution or removal. Model file-tool calls and results follow Pi's normal session persistence.
 
 ## 12. Recovery
 
