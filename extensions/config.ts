@@ -8,12 +8,10 @@ export interface HandoffConfig {
   criticalWarningPercent: number;
   automaticSessionHandoff: boolean;
   deleteHandoffAfterReading: boolean;
-  prepareWhileWaiting: boolean;
+  deferPromptsFrom: "request" | "writing";
   automaticSessionHandoffPercent: number;
   readinessRetrySeconds: number;
   maxSessionChainLength: number;
-  writerAttempts: number;
-  writerRetryDelaySeconds: number;
   recoveryDirectory: string;
   templateDirectory: string | null;
   callTemplate: string;
@@ -33,12 +31,10 @@ const CONFIG_KEYS = [
   "criticalWarningPercent",
   "automaticSessionHandoff",
   "deleteHandoffAfterReading",
-  "prepareWhileWaiting",
+  "deferPromptsFrom",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
   "maxSessionChainLength",
-  "writerAttempts",
-  "writerRetryDelaySeconds",
   "recoveryDirectory",
   "templateDirectory",
   "callTemplate",
@@ -63,12 +59,10 @@ export function defaultConfig(agentDirectory: string): HandoffConfig {
     criticalWarningPercent: 90,
     automaticSessionHandoff: false,
     deleteHandoffAfterReading: true,
-    prepareWhileWaiting: false,
+    deferPromptsFrom: "writing",
     automaticSessionHandoffPercent: 70,
     readinessRetrySeconds: 60,
     maxSessionChainLength: 25,
-    writerAttempts: 3,
-    writerRetryDelaySeconds: 30,
     recoveryDirectory: `${paths.recoveryDirectory}${sep}`,
     templateDirectory: null,
     callTemplate: "call_default.cmpl",
@@ -96,7 +90,10 @@ export function validateConfig(value: unknown): HandoffConfig {
 
   const automaticSessionHandoff = booleanSetting(record, "automaticSessionHandoff");
   const deleteHandoffAfterReading = booleanSetting(record, "deleteHandoffAfterReading");
-  const prepareWhileWaiting = booleanSetting(record, "prepareWhileWaiting");
+  const deferPromptsFrom = record.deferPromptsFrom;
+  if (deferPromptsFrom !== "request" && deferPromptsFrom !== "writing") {
+    throw new Error("deferPromptsFrom must be request or writing");
+  }
   const automaticSessionHandoffPercent = numberSetting(record, "automaticSessionHandoffPercent");
   if (automaticSessionHandoffPercent < 0 || automaticSessionHandoffPercent > 100) {
     throw new Error("automaticSessionHandoffPercent must be from 0 through 100");
@@ -104,8 +101,6 @@ export function validateConfig(value: unknown): HandoffConfig {
 
   const readinessRetrySeconds = integerSetting(record, "readinessRetrySeconds", 1, 300);
   const maxSessionChainLength = integerSetting(record, "maxSessionChainLength", 1);
-  const writerAttempts = integerSetting(record, "writerAttempts", 1);
-  const writerRetryDelaySeconds = integerSetting(record, "writerRetryDelaySeconds", 1, 300);
   const recoveryDirectory = absoluteDirectorySetting(record, "recoveryDirectory");
 
   const templateValue = record.templateDirectory;
@@ -121,12 +116,10 @@ export function validateConfig(value: unknown): HandoffConfig {
     criticalWarningPercent,
     automaticSessionHandoff,
     deleteHandoffAfterReading,
-    prepareWhileWaiting,
+    deferPromptsFrom,
     automaticSessionHandoffPercent,
     readinessRetrySeconds,
     maxSessionChainLength,
-    writerAttempts,
-    writerRetryDelaySeconds,
     recoveryDirectory,
     templateDirectory: templateValue,
     callTemplate,
@@ -180,12 +173,19 @@ export async function saveConfig(
 function upgradePersistedConfig(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  const optionalKeys = new Set(["callTemplate", "maxSessionChainLength", "deleteHandoffAfterReading", "prepareWhileWaiting"]);
+  const optionalKeys = new Set(["callTemplate", "maxSessionChainLength", "deleteHandoffAfterReading", "deferPromptsFrom"]);
+  const retiredKeys = ["prepareWhileWaiting", "writerAttempts", "writerRetryDelaySeconds"];
+  const supportedKeys = new Set<string>([...CONFIG_KEYS, ...retiredKeys]);
   const requiredKeys = CONFIG_KEYS.filter((key) => !optionalKeys.has(key));
-  if (requiredKeys.some((key) => !(key in record)) || Object.keys(record).some((key) => !CONFIG_KEYS.includes(key as typeof CONFIG_KEYS[number]))) {
+  if (requiredKeys.some((key) => !(key in record)) || Object.keys(record).some((key) => !supportedKeys.has(key))) {
     return value;
   }
-  return { callTemplate: "call_default.cmpl", maxSessionChainLength: 25, deleteHandoffAfterReading: true, prepareWhileWaiting: false, ...record };
+  if ("prepareWhileWaiting" in record) booleanSetting(record, "prepareWhileWaiting");
+  if ("writerAttempts" in record) integerSetting(record, "writerAttempts", 1);
+  if ("writerRetryDelaySeconds" in record) integerSetting(record, "writerRetryDelaySeconds", 1, 300);
+  const upgraded: Record<string, unknown> = { callTemplate: "call_default.cmpl", maxSessionChainLength: 25, deleteHandoffAfterReading: true, deferPromptsFrom: "writing", ...record };
+  for (const key of retiredKeys) delete upgraded[key];
+  return upgraded;
 }
 
 function templateSetting(record: Record<string, unknown>, name: "callTemplate" | "handoffTemplate"): string {

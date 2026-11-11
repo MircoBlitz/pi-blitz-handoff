@@ -1,6 +1,6 @@
 {
   "name": "pi-blitz-handoff",
-  "version": "1.4.2",
+  "version": "2.0.0",
   "description": "This extension is designed for one purpose: to capture a session’s continuation context more precisely than compaction and make it available to a fresh, natively linked Pi session through a local handoff file referenced by its first prompt. How work continues is determined by the user’s existing instructions, workflow, and templates.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,14 @@
   },
   "files": [
     "extensions",
-    "docs",
+    "docs/pi-blitz-standard.md",
+    "docs/session-chain-validation.md",
+    "docs/specification.md",
+    "docs/specification.sha256",
+    "docs/llm/README.md",
+    "docs/llm/SECURITY.md",
+    "docs/llm/CHANGELOG.md",
+    "docs/llm/specification.md",
     "assets/logo.png",
     "templates/call_default.cmpl",
     "templates/handoff_default.cmpl",

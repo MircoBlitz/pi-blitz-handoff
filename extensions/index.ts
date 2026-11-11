@@ -17,7 +17,6 @@ import {
   type ExplicitHandoffStartSource,
   type HandoffStartResult,
 } from "./flow.ts";
-import { registerSessionHandoffGoTools } from "./go-tool.ts";
 import { ProjectTemplateDialog } from "./project-template-dialog.ts";
 import { documentDialog, selectDialog } from "./overlay-dialog.ts";
 import {
@@ -27,8 +26,8 @@ import {
 import { RecoveryDialog } from "./recovery-dialog.ts";
 import { persistDeferredPrompts } from "./recovery-store.ts";
 import { registerPublicHandoffTool } from "./public-tool.ts";
-import { registerPreparationTool, SESSION_HANDOFF_GET_TEMPLATE_TOOL, prepareWhileWaitingReadiness } from "./preparation-tool.ts";
-import { registerSubmissionTool, SUBMIT_SESSION_HANDOFF_TOOL } from "./submission-tool.ts";
+import { registerPreparationTool } from "./preparation-tool.ts";
+import { registerSubmissionTool } from "./submission-tool.ts";
 import {
   clearHandoffTerminalState,
   contextWarning,
@@ -55,7 +54,9 @@ import {
   synchronizeManagedTemplate,
 } from "./templates.ts";
 import {
+  DeliveredTurnCompletion,
   NativeHandoffTransition,
+  type NativeTransitionRequest,
   nativeTransitionCommand,
   registerNativeTransitionBridge,
 } from "./transition.ts";
@@ -66,7 +67,7 @@ export * from "./config.ts";
 export * from "./deferred.ts";
 export * from "./filesystem.ts";
 export * from "./flow.ts";
-export * from "./go-tool.ts";
+export * from "./preparation-tool.ts";
 export * from "./recovery-store.ts";
 export * from "./public-tool.ts";
 export * from "./project-template-dialog.ts";
@@ -83,7 +84,7 @@ const STATUS_KEY = "pi-blitz-handoff";
 const AUTOMATIC_ATTEMPT_ENTRY = "pi-blitz-handoff-automatic-attempt";
 const READINESS_MESSAGE_TYPE = "pi-blitz-handoff-readiness";
 const CANCELLATION_MESSAGE_TYPE = "pi-blitz-handoff-cancelled";
-const CANCELLATION_INSTRUCTION = "Session handoff cancelled. Disregard the previous handoff readiness or writer instruction and any submission ID. Resume normal conversation and task work. Do not submit a session handoff.";
+const CANCELLATION_INSTRUCTION = "Session handoff cancelled. Disregard the previous handoff request and any Finish ID. Resume normal conversation and task work. Do not finish a session handoff.";
 const HANDOFF_HELP = [
   "## Commands",
   "- `/sh` — Open the handoff menu",
@@ -95,11 +96,11 @@ const HANDOFF_HELP = [
   "- `/sh help` — Show this help",
   "",
   "## Dialog controls",
-  "Arrow keys select; Enter confirms; Escape returns or closes without confirming.",
-  "Page Up / Page Down scroll details. In content inspection, arrows and Home / End also scroll.",
+  "Use your Pi keybindings to select, confirm, cancel and scroll; each dialog shows its current keys.",
+  "Content inspection also uses selection navigation and editor line-start / line-end bindings.",
   "",
-  "## Readiness",
-  "Ready accepts GO. Wait keeps ordinary input normal until you tell your LLM to start. Cancel ends the handoff.",
+  "## Handoff",
+  "Request → retrieve template → write/update supplied file → Finish. Use /sh cancel to cancel before native cutover.",
   "",
   "Dialog answers stay outside model context. Closing Settings does not undo confirmed edits.",
   "Recovery never executes automatically. Inspecting a file never changes it.",
@@ -176,6 +177,7 @@ export function activateHandoffExtension(
   let flow: HandoffFlow;
   let configDialog: ConfigDialog;
   let navigationDialog: AbortController | undefined;
+  let cancellationStartedAt: number | undefined;
   const config = { ...initialConfig };
   const handoffTemplates = new Map<string, string>();
   const agentDirectory = dirname(paths.baseDirectory);
@@ -185,16 +187,17 @@ export function activateHandoffExtension(
     (content, options) => pi.sendUserMessage(content, options),
   );
 
-  const transition = new NativeHandoffTransition({
-    recoveryDirectory: config.recoveryDirectory,
-    getMaxSessionChainLength: () => config.maxSessionChainLength,
-    async settleDeferredWrites() {
-      await recoveryWrites;
-    },
-    getDeferredSnapshot(handoffId) {
-      return flow.snapshot?.id === handoffId ? flow.deferredSnapshot : undefined;
-    },
-    onReplacementStarted(_request, ctx) {
+  const transitionFailure = (request: NativeTransitionRequest, message: string, ctx: ExtensionContext): void => {
+    flow.finish(ctx, request.handoffId);
+    writer?.invalidate();
+    const sessionFile = ctx.sessionManager.getSessionFile();
+    unprotectReplacementSession(sessionFile);
+    setHandoffTerminalState(sessionFile, "failed");
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, request.startedAt);
+    ctx.ui.notify(message, "error");
+  };
+  const completion = new DeliveredTurnCompletion({
+    onStarted(_request, ctx) {
       protectReplacementSession(ctx.sessionManager.getSessionFile());
     },
     onFinished(request, ctx) {
@@ -212,14 +215,18 @@ export function activateHandoffExtension(
         request.handoffStartedAt,
       );
     },
-    onFailure(request, message, ctx) {
-      flow.finish(ctx, request.handoffId);
-      const sessionFile = ctx.sessionManager.getSessionFile();
-      unprotectReplacementSession(sessionFile);
-      setHandoffTerminalState(sessionFile, "failed");
-      updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, request.startedAt);
-      ctx.ui.notify(message, "error");
+    onFailure: transitionFailure,
+  });
+  const transition = new NativeHandoffTransition({
+    recoveryDirectory: config.recoveryDirectory,
+    getMaxSessionChainLength: () => config.maxSessionChainLength,
+    async settleDeferredWrites() {
+      await recoveryWrites;
     },
+    getDeferredSnapshot(handoffId) {
+      return flow.snapshot?.id === handoffId ? flow.deferredSnapshot : undefined;
+    },
+    onFailure: transitionFailure,
   });
   registerNativeTransitionBridge(pi, transition);
 
@@ -227,8 +234,6 @@ export function activateHandoffExtension(
   const writer = writerRuntime === undefined
     ? undefined
     : new HandoffWriter({
-        writerAttempts: config.writerAttempts,
-        writerRetryDelaySeconds: config.writerRetryDelaySeconds,
         runtime: writerRuntime,
         resolveTemplate: (selectedFilename) =>
           resolveTemplate(
@@ -239,23 +244,8 @@ export function activateHandoffExtension(
             },
             HANDOFF_DEFAULT_TEMPLATE,
           ),
-        onTemplateFailure(failure, attempt, ctx) {
-          ctx.ui.notify(
-            `${attempt === 0 ? "Prepare while waiting" : `Writer attempt ${attempt}`} could not use template ${failure.path}: ${failure.reason}`,
-            "warning",
-          );
-        },
-        onPhaseChange(phase, _attempt, ctx) {
-          const writing = phase === "resolving" || phase === "writing" || phase === "retry-delay";
-          updatePersistentHandoffStatus(
-            ctx.ui,
-            STATUS_KEY,
-            flow.phase,
-            getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
-            writing,
-            undefined,
-            flow.deferredSnapshot?.prompts.length ?? 0,
-          );
+        onTemplateFailure(failure, ctx) {
+          ctx.ui.notify(`Could not use handoff template ${failure.path}: ${failure.reason}`, "warning");
         },
         onSuccess(result, ctx) {
           const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
@@ -268,6 +258,7 @@ export function activateHandoffExtension(
             handoffStartedAt: getHandoffStartedAt(STATUS_KEY),
           });
           if (token === undefined) {
+            writer?.invalidate();
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
             updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, startedAt);
@@ -275,81 +266,69 @@ export function activateHandoffExtension(
             return;
           }
 
-          ctx.ui.notify(`Session handoff file marked ready on writer attempt ${result.attempt}.`, "info");
+          ctx.ui.notify("Session handoff file marked ready.", "info");
           try {
             pi.sendUserMessage(nativeTransitionCommand(token), {
-              deliverAs: "followUp",
               expandPromptTemplates: true,
             });
           } catch (error) {
             transition.cancel();
+            writer?.invalidate();
             flow.finish(ctx, result.handoff.id);
             setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "failed");
             updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "failed", false, startedAt);
             ctx.ui.notify(`Could not request native session replacement: ${errorMessage(error)}`, "error");
           }
         },
-        onTerminalFailure(reason, message, ctx) {
-          const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
-          flow.finish(ctx);
-          setHandoffTerminalState(
-            ctx.sessionManager.getSessionFile(),
-            reason === "cancelled" ? "cancelled" : "failed",
-          );
-          updatePersistentHandoffStatus(
-            ctx.ui,
-            STATUS_KEY,
-            "inactive",
-            reason === "cancelled" ? "cancelled" : "failed",
-            false,
-            startedAt,
-          );
-          if (reason !== "cancelled") {
-            ctx.ui.notify(message, "error");
-          }
+        onCancellationComplete(succeeded, ctx) {
+          completeCancellation(succeeded, ctx);
         },
       });
 
   if (writer !== undefined) {
-    registerSubmissionTool(pi, (submission) => writer.submit(submission));
-    registerPreparationTool(pi, async (key, ctx) => {
-      if (!config.prepareWhileWaiting) throw new Error("Prepare while waiting is disabled");
+    registerSubmissionTool(pi, (submission, ctx) => {
       const handoff = flow.snapshot;
-      if (handoff?.phase !== "waiting" || handoff.readinessKey !== key) {
-        throw new Error("Template retrieval requires the current pre-GO readiness key");
-      }
+      if (handoff === undefined) throw new Error("No active handoff request");
+      writer.submit(submission);
+      flow.acceptFinish(handoff.id, ctx);
+    });
+    registerPreparationTool(pi, async (ctx) => {
+      const handoff = flow.snapshot;
+      if (handoff === undefined || handoff.phase === "ready") throw new Error("Template retrieval requires a current active handoff request");
       const prepared = await writer.prepare(handoff, ctx, handoffTemplates.get(handoff.id));
-      if (flow.snapshot?.id !== handoff.id || flow.phase !== "waiting") {
-        throw new Error("Handoff template request is no longer current");
-      }
-      return {
+      if (flow.snapshot?.id !== handoff.id) throw new Error("Handoff template request is no longer current");
+      const response = {
         text: preparationPrompt(prepared, handoff.sourceSessionPath),
-        onReturn() { prepared.templateReturned = true; },
+        onReturn(): void {
+          writer.returned(prepared);
+          const initialInstruction = flow.templateReturned(handoff.id, ctx);
+          if (initialInstruction !== undefined) response.text = `${initialInstruction}\n\n${response.text}`;
+        },
       };
+      return response;
     });
   }
 
-  const initializeWriterTools = (ctx: Pick<ExtensionContext, "ui">): void => {
-    if (writerRuntime === undefined || writer === undefined) return;
-    try {
-      const tools = writerRuntime.getActiveTools().filter((name) =>
-        name !== SUBMIT_SESSION_HANDOFF_TOOL && name !== SESSION_HANDOFF_GET_TEMPLATE_TOOL,
-      );
-      if (config.prepareWhileWaiting) tools.push(SESSION_HANDOFF_GET_TEMPLATE_TOOL);
-      writerRuntime.setActiveTools(tools);
-    } catch (error) {
-      ctx.ui.notify(
-        `Could not initialize session handoff writer tools: ${errorMessage(error)}`,
-        "error",
-      );
-    }
+  const completeCancellation = (succeeded: boolean, ctx: ExtensionContext): void => {
+    const terminal = succeeded ? "cancelled" : "failed";
+    setHandoffTerminalState(ctx.sessionManager.getSessionFile(), terminal);
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", terminal, false, cancellationStartedAt);
+    cancellationStartedAt = undefined;
+    ctx.ui.notify(
+      succeeded ? "Session handoff cancelled." : "Session handoff stopped, but cleanup failed. See the reported error.",
+      succeeded ? "info" : "error",
+    );
+    sendCancellationInstruction(succeeded);
   };
 
-  const sendCancellationInstruction = (): void => {
+  const sendCancellationInstruction = (succeeded: boolean): void => {
     pi.sendMessage(
       {
         customType: CANCELLATION_MESSAGE_TYPE,
-        content: CANCELLATION_INSTRUCTION,
+        content: succeeded ? CANCELLATION_INSTRUCTION : CANCELLATION_INSTRUCTION.replace(
+          "Session handoff cancelled.",
+          "Session handoff stopped, but cleanup failed.",
+        ),
         display: true,
       },
       { deliverAs: "followUp", triggerTurn: true },
@@ -358,9 +337,9 @@ export function activateHandoffExtension(
 
   flow = new HandoffFlow({
     readinessRetrySeconds: config.readinessRetrySeconds,
+    deferPromptsFrom: config.deferPromptsFrom,
     callTemplate,
     onReadinessPrompt(prompt, handoff) {
-      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -374,7 +353,6 @@ export function activateHandoffExtension(
       );
     },
     onReadinessReminder(prompt, handoff) {
-      if (config.prepareWhileWaiting) prompt = prepareWhileWaitingReadiness(prompt);
       pi.sendMessage(
         {
           customType: READINESS_MESSAGE_TYPE,
@@ -393,12 +371,7 @@ export function activateHandoffExtension(
         { deliverAs: "steer", triggerTurn: true },
       );
     },
-    onReady(handoff, ctx) {
-      ctx.ui.notify("Session handoff readiness confirmed.", "info");
-      const selectedHandoffTemplate = handoffTemplates.get(handoff.id);
-      handoffTemplates.delete(handoff.id);
-      writer?.start(handoff, ctx, selectedHandoffTemplate);
-    },
+    onReady(_handoff, ctx) { writer?.handleSettled(ctx); },
     onPhaseChange(handoff, ctx) {
       updatePersistentHandoffStatus(
         ctx.ui,
@@ -409,7 +382,7 @@ export function activateHandoffExtension(
         undefined,
         flow.deferredSnapshot?.prompts.length ?? 0,
         undefined,
-        handoff?.awaitingUserGo ?? false,
+        flow.deferredSnapshot !== undefined,
       );
     },
   });
@@ -418,11 +391,9 @@ export function activateHandoffExtension(
       persisted.templateDirectory !== config.templateDirectory ||
       persisted.callTemplate !== config.callTemplate ||
       persisted.handoffTemplate !== config.handoffTemplate;
-    const prepareWhileWaitingChanged = persisted.prepareWhileWaiting !== config.prepareWhileWaiting;
     Object.assign(config, persisted);
     flow.setReadinessRetrySeconds(config.readinessRetrySeconds);
-    writer?.configure(config.writerAttempts, config.writerRetryDelaySeconds);
-    if (prepareWhileWaitingChanged) initializeWriterTools(ctx);
+    flow.setDeferPromptsFrom(config.deferPromptsFrom);
     recoveryDialog.setRecoveryDirectory(config.recoveryDirectory);
     transition.setRecoveryDirectory(config.recoveryDirectory);
 
@@ -438,21 +409,6 @@ export function activateHandoffExtension(
         "error",
       );
     }
-  });
-
-  registerSessionHandoffGoTools(pi, {
-    accept: (key, ctx) => flow.acceptGo(key, ctx),
-    beginUserDeferral: (key, ctx) => flow.beginUserDeferral(key, ctx),
-    resolveUserDeferral: (key, choice, ctx) => {
-      const handoffId = flow.snapshot?.id;
-      const result = flow.resolveUserDeferral(key, choice, ctx);
-      if (result === "accepted" && choice === "Cancel") {
-        writer?.cancel(ctx);
-        if (handoffId !== undefined) handoffTemplates.delete(handoffId);
-        sendCancellationInstruction();
-      }
-      return result;
-    },
   });
 
   const reportStart = (
@@ -471,7 +427,8 @@ export function activateHandoffExtension(
     }
 
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
-    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, flow.phase);
+    updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, flow.phase, undefined, false, undefined,
+      flow.deferredSnapshot?.prompts.length ?? 0, undefined, flow.deferredSnapshot !== undefined);
     const message = "Session handoff requested. Waiting for readiness.";
     ctx.ui.notify(message, "info");
     return message;
@@ -528,6 +485,11 @@ export function activateHandoffExtension(
     ctx: ExtensionContext,
     source: ExplicitHandoffStartSource,
   ): Promise<string> => {
+    if (writer?.isActive || transition.isProtected) {
+      const message = "A session handoff is already active.";
+      ctx.ui.notify(message, "warning");
+      return message;
+    }
     if (configDialog.isActive) {
       const message = "Session handoff cannot start while configuration is active.";
       ctx.ui.notify(message, "warning");
@@ -543,6 +505,11 @@ export function activateHandoffExtension(
         ctx.ui.notify(message, "warning");
         return message;
       }
+      if (writer?.isActive || transition.isProtected) {
+        const message = "A session handoff is already active.";
+        ctx.ui.notify(message, "warning");
+        return message;
+      }
       const result = flow.start(ctx, source, templates.callTemplate);
       if (result.accepted) handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
       return reportStart(result, ctx);
@@ -554,10 +521,10 @@ export function activateHandoffExtension(
   };
 
   const requestAutomaticStart = async (ctx: ExtensionContext): Promise<void> => {
-    if (flow.phase !== "inactive" || configDialog.isActive) return;
+    if (flow.phase !== "inactive" || configDialog.isActive || writer?.isActive || transition.isProtected) return;
     try {
       const templates = await effectiveTemplates(ctx);
-      if (configDialog.isActive) return;
+      if (configDialog.isActive || writer?.isActive || transition.isProtected) return;
       const result = flow.startAutomaticAtTurnBoundary(ctx, templates.callTemplate);
       if (result.accepted) {
         handoffTemplates.set(result.handoff.id, templates.handoffTemplate);
@@ -590,7 +557,7 @@ export function activateHandoffExtension(
           const active = flow.phase !== "inactive" || writer?.isActive || transition.isProtected;
           selected = await selectDialog(ctx,
             formatPublicStatus(flow.phase, ctx.getContextUsage(), config,
-              getHandoffTerminalState(ctx.sessionManager.getSessionFile()), writer?.isActive ?? false),
+              getHandoffTerminalState(ctx.sessionManager.getSessionFile())),
             [
               { value: active ? "cancel" : "start", label: active ? "Cancel handoff" : "Start handoff", description: active ? "End the active transfer before cutover" : "Request a fresh linked session" },
               { value: "recover", label: "Recovery", description: "Inspect or replay retained prompts" },
@@ -646,26 +613,31 @@ export function activateHandoffExtension(
       return;
     }
     if (action === "cancel") {
-      const startedAt = getHandoffActivityStartedAt(STATUS_KEY);
       const transitionCancellation = transition.cancel();
       if (transitionCancellation === "committed") {
         ctx.ui.notify("Session handoff cutover has started and can no longer be cancelled.", "warning");
         return;
       }
-      const writerCancelled = writer?.cancel(ctx) ?? false;
+      cancellationStartedAt ??= getHandoffActivityStartedAt(STATUS_KEY);
       const activeHandoffId = flow.snapshot?.id;
       const flowCancelled = flow.cancel(ctx);
       if (activeHandoffId !== undefined) handoffTemplates.delete(activeHandoffId);
-      const cancelled = transitionCancellation === "cancelled" || writerCancelled || flowCancelled;
-      if (cancelled) {
-        setHandoffTerminalState(ctx.sessionManager.getSessionFile(), "cancelled");
-        updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive", "cancelled", false, startedAt);
-        sendCancellationInstruction();
+      const writerCancelled = writer?.beginCancellation(ctx) ?? false;
+      if (writer?.cancellationPending) {
+        try {
+          // Let existing source work and native writes settle; do not abort them.
+          await ctx.waitForIdle();
+          writer.finalizeCancellation(ctx);
+        } catch (error) {
+          ctx.ui.notify(`Could not settle session handoff cancellation: ${errorMessage(error)}`, "error");
+        }
+        return;
       }
-      ctx.ui.notify(
-        cancelled ? "Session handoff cancelled." : "No active session handoff to cancel.",
-        "info",
-      );
+      if (transitionCancellation === "cancelled" || writerCancelled || flowCancelled) {
+        completeCancellation(true, ctx);
+      } else {
+        ctx.ui.notify("No active session handoff to cancel.", "info");
+      }
       return;
     }
     ctx.ui.notify("Usage: /sh, /sh start, /sh help, /sh recover, /sh settings, /sh project-template, or /sh cancel", "warning");
@@ -693,7 +665,8 @@ export function activateHandoffExtension(
         ctx.getContextUsage(),
         config,
         getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
-        writer?.isActive ?? false,
+        false,
+        flow.deferredSnapshot?.prompts.length,
       );
     },
     start(ctx) {
@@ -702,12 +675,17 @@ export function activateHandoffExtension(
   });
 
   pi.on("agent_start", (_event, ctx) => {
+    completion.agentStart();
     if (flow.phase !== "inactive") return;
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
     updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
   });
 
+  pi.on("turn_start", (event) => completion.turnStart(event.turnIndex));
+  pi.on("message_start", (event, ctx) => completion.messageStart(event, ctx));
+
   pi.on("input", async (event, ctx) => {
+    if (completion.input(event, ctx)) return { action: "continue" };
     if (event.source !== "extension" && flow.phase === "inactive") {
       clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
       updatePersistentHandoffStatus(ctx.ui, STATUS_KEY, "inactive");
@@ -722,9 +700,11 @@ export function activateHandoffExtension(
       STATUS_KEY,
       flow.phase,
       getHandoffTerminalState(ctx.sessionManager.getSessionFile()),
-      writer?.isActive ?? false,
+      flow.phase === "writing" || flow.phase === "ready",
       undefined,
       result.snapshot.prompts.length,
+      undefined,
+      true,
     );
 
     const recoveryWrite = recoveryWrites.then(() =>
@@ -742,7 +722,9 @@ export function activateHandoffExtension(
     return { action: "handled" };
   });
 
-  pi.on("turn_end", async (_event, ctx) => {
+  pi.on("turn_end", async (event, ctx) => {
+    await completion.turnEnd(event, ctx);
+    if (event.outcome !== "completed") return;
     const usage = ctx.getContextUsage();
     if (flow.phase !== "inactive") {
       flow.escalateReadiness(usage?.percent, ctx);
@@ -779,7 +761,7 @@ export function activateHandoffExtension(
       ctx.ui.notify(warningMessage(warning, usage.percent), "warning");
     }
 
-    if (writer?.isActive) {
+    if (writer?.cancellationPending) {
       writer.handleSettled(ctx);
       return;
     }
@@ -797,6 +779,7 @@ export function activateHandoffExtension(
 
   pi.on("session_before_switch", (event, ctx) => {
     if (
+      !writer?.cancellationPending &&
       !flow.isTransferProtected &&
       !transition.isProtected &&
       !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
@@ -808,6 +791,7 @@ export function activateHandoffExtension(
 
   pi.on("session_before_fork", (_event, ctx) => {
     if (
+      !writer?.cancellationPending &&
       !flow.isTransferProtected &&
       !transition.isProtected &&
       !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
@@ -818,6 +802,7 @@ export function activateHandoffExtension(
 
   pi.on("session_before_compact", (_event, ctx) => {
     if (
+      !writer?.cancellationPending &&
       !flow.isTransferProtected &&
       !transition.isProtected &&
       !replacementSessionIsProtected(ctx.sessionManager.getSessionFile())
@@ -826,9 +811,14 @@ export function activateHandoffExtension(
     return { cancel: true };
   });
 
+  pi.on("session_before_tree", (_event, ctx) => {
+    if (!writer?.cancellationPending) return;
+    ctx.ui.notify("Session navigation is blocked while session handoff cancellation is being cleaned up.", "warning");
+    return { cancel: true };
+  });
+
   pi.on("session_start", (_event, ctx) => {
     automaticAttempts = restoredAutomaticAttempts(ctx);
-    initializeWriterTools(ctx);
     for (const warning of pendingStartupTemplateWarnings) ctx.ui.notify(warning, "warning");
     pendingStartupTemplateWarnings = [];
     navigationDialog?.abort();
@@ -847,9 +837,11 @@ export function activateHandoffExtension(
     projectTemplateDialog.discard();
     recoveryDialog.discard();
     handoffTemplates.clear();
+    cancellationStartedAt = undefined;
     writer?.invalidate();
     flow.invalidate();
     transition.invalidate();
+    completion.discard();
     unprotectReplacementSession(ctx.sessionManager.getSessionFile());
     clearHandoffTerminalState(ctx.sessionManager.getSessionFile());
     disposePersistentHandoffStatus(ctx.ui, STATUS_KEY);
@@ -887,15 +879,11 @@ function projectSettingsErrorCategory(error: unknown): string {
 
 function writerRuntimeFrom(pi: ExtensionAPI): WriterRuntime | undefined {
   if (
-    typeof pi.getActiveTools !== "function" ||
-    typeof pi.setActiveTools !== "function" ||
-    typeof pi.sendUserMessage !== "function"
+    typeof pi.getActiveTools !== "function"
   ) {
     return undefined;
   }
   return {
     getActiveTools: () => pi.getActiveTools(),
-    setActiveTools: (toolNames) => pi.setActiveTools(toolNames),
-    sendUserMessage: (content) => pi.sendUserMessage(content),
   };
 }

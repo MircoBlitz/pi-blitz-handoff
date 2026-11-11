@@ -12,38 +12,49 @@ interface HandoffWidgetComponent {
   invalidate(): void;
 }
 
+type HandoffStatusColor = "success" | "warning" | "error";
+interface HandoffStatusTheme {
+  fg(color: HandoffStatusColor, text: string): string;
+}
+interface HandoffStatusLine {
+  text: string;
+  color: HandoffStatusColor;
+}
+
 interface HandoffStatusUI {
   setWidget?(
     key: string,
-    content: string[] | ((tui: { requestRender(): void }) => HandoffWidgetComponent) | undefined,
+    content: string[] | ((tui: { requestRender(): void }, theme: HandoffStatusTheme) => HandoffWidgetComponent) | undefined,
   ): void;
   setWorkingIndicator?(options?: { frames?: string[]; intervalMs?: number }): void;
-  theme?: { fg(color: "success" | "warning" | "error", text: string): string };
+  theme?: HandoffStatusTheme;
 }
 
 class PersistentHandoffWidget implements HandoffWidgetComponent {
-  private lines: string[] | undefined;
+  private lines: HandoffStatusLine[] | undefined;
   private readonly requestRender: () => void;
+  private readonly theme: HandoffStatusTheme;
 
-  constructor(lines: string[] | undefined, requestRender: () => void) {
+  constructor(lines: HandoffStatusLine[] | undefined, theme: HandoffStatusTheme, requestRender: () => void) {
     this.lines = lines;
+    this.theme = theme;
     this.requestRender = requestRender;
   }
 
-  update(lines: string[] | undefined): void {
+  update(lines: HandoffStatusLine[] | undefined): void {
     this.lines = lines;
     this.requestRender();
   }
 
   render(width: number): string[] {
-    return this.lines?.map((line) => truncateToWidth(line, width)) ?? [];
+    return this.lines?.map((line) => truncateToWidth(this.theme.fg(line.color, line.text), width)) ?? [];
   }
 
   invalidate(): void {}
 }
 
 interface PersistentHandoffWidgetState {
-  lines: string[] | undefined;
+  lines: HandoffStatusLine[] | undefined;
   component?: PersistentHandoffWidget;
 }
 
@@ -94,9 +105,8 @@ export function persistentHandoffStatus(
   if (terminalState === "finished") return "Session Handoff Finished";
   if (terminalState === "failed") return "Session Handoff Failed";
   if (terminalState === "cancelled") return "Session Handoff Cancelled";
-  if (writing) return "Writing Session Handoff";
+  if (writing || phase === "writing" || phase === "ready") return "Writing Session Handoff";
   if (phase === "inactive") return undefined;
-  if (phase === "user-input-required") return "User Input Required";
   return "Waiting for Session Handoff";
 }
 
@@ -110,8 +120,8 @@ export function registerPersistentHandoffStatus(ui: HandoffStatusUI, key: string
 
   const state: PersistentHandoffWidgetState = { lines: undefined };
   widgets.set(key, state);
-  ui.setWidget?.(key, (tui) => {
-    const component = new PersistentHandoffWidget(state.lines, () => tui.requestRender());
+  ui.setWidget?.(key, (tui, theme) => {
+    const component = new PersistentHandoffWidget(state.lines, theme, () => tui.requestRender());
     state.component = component;
     return component;
   });
@@ -135,12 +145,12 @@ export function updatePersistentHandoffStatus(
   startedAtOverride?: number,
   deferredInputCount = 0,
   handoffStartedAtOverride?: number,
-  awaitingUserGo = false,
+  deferralActive = false,
 ): void {
-  const showWriting = writing && terminalState === undefined;
+  const showWriting = (writing || phase === "writing" || phase === "ready") && terminalState === undefined;
   const active = terminalState === undefined && phase !== "inactive";
   const activity = active ? getHandoffActivity(key) : handoffActivity.get(key);
-  if (active && phase === "ready" && activity !== undefined && activity.handoffStartedAt === undefined) {
+  if (active && (phase === "writing" || phase === "ready") && activity !== undefined && activity.handoffStartedAt === undefined) {
     activity.handoffStartedAt = Date.now();
   }
   const displayedActivity = activity ?? (startedAtOverride === undefined
@@ -152,21 +162,17 @@ export function updatePersistentHandoffStatus(
 
   const lines = terminalState === undefined && phase !== "inactive"
     ? [
-        colorizeActivity(
-          ui,
-          formatHandoffActivity(showWriting, phase, deferredInputCount),
-          showWriting ? undefined : phase === "user-input-required" ? "error" : "warning",
-        ),
-        ...(awaitingUserGo
-          ? [colorizeActivity(ui, "Awaiting User GO · Tell your LLM to start when ready", "warning")]
-          : []),
+        {
+          text: formatHandoffActivity(showWriting, deferralActive || phase === "writing" || phase === "ready", deferredInputCount),
+          color: "warning" as const,
+        },
       ]
     : terminalState === undefined
       ? undefined
-      : colorizeTerminal(ui, terminalState, elapsedSeconds, displayedActivity);
+      : formatTerminal(terminalState, elapsedSeconds, displayedActivity);
   const widget = persistentWidgets.get(ui)?.get(key);
   if (widget === undefined) {
-    ui.setWidget?.(key, lines);
+    ui.setWidget?.(key, lines?.map((line) => ui.theme?.fg(line.color, line.text) ?? line.text));
   } else {
     widget.lines = lines;
     widget.component?.update(lines);
@@ -200,22 +206,11 @@ function elapsedSince(startedAt: number): number {
   return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
 }
 
-function colorizeActivity(
-  ui: HandoffStatusUI,
-  text: string,
-  semanticColor: "warning" | "error" | undefined,
-): string {
-  if (ui.theme === undefined) return text;
-  if (semanticColor !== undefined) return ui.theme.fg(semanticColor, text);
-  return `\u001b[38;5;226m${text}\u001b[39m`;
-}
-
-function colorizeTerminal(
-  ui: HandoffStatusUI,
+function formatTerminal(
   state: HandoffTerminalState,
   elapsedSeconds: number | undefined,
   activity: HandoffActivity | undefined,
-): string[] {
+): HandoffStatusLine[] {
   const label = state === "finished"
     ? "Session Handoff Finished"
     : state === "failed"
@@ -228,22 +223,17 @@ function colorizeTerminal(
       + `Handoff Time ${elapsedSince(activity.handoffStartedAt)} sec`,
     );
   }
-  if (ui.theme === undefined) return lines;
   const color = state === "finished" ? "success" : state === "failed" ? "error" : "warning";
-  return lines.map((line) => ui.theme?.fg(color, line) ?? line);
+  return lines.map((text) => ({ text, color }));
 }
 
 function elapsedBetween(startedAt: number, endedAt: number): number {
   return Math.max(0, Math.floor((endedAt - startedAt) / 1000));
 }
 
-function formatHandoffActivity(writing: boolean, phase: HandoffFlowPhase, deferredInputCount: number): string {
-  const activity = writing
-    ? "Writing Session Handoff"
-    : phase === "user-input-required"
-      ? "User Input Required"
-      : "Waiting for Session Handoff";
-  const input = phase === "ready" || writing
+function formatHandoffActivity(writing: boolean, deferralActive: boolean, deferredInputCount: number): string {
+  const activity = writing ? "Writing Session Handoff" : "Waiting for Session Handoff";
+  const input = deferralActive || writing
     ? `Inputs deferred (${deferredInputCount})`
     : "Input available";
   return `${activity} · ${input} · /sh cancel`;
@@ -277,9 +267,11 @@ export function formatPublicStatus(
     | "automaticSessionHandoff"
     | "automaticSessionHandoffPercent"
     | "readinessRetrySeconds"
+    | "deferPromptsFrom"
   >,
   terminalState?: HandoffTerminalState,
   writing = false,
+  deferredInputCount?: number,
 ): string {
   const persistent = persistentHandoffStatus(phase, terminalState, writing);
   const handoff = persistent === undefined ? "No active session handoff." : `${persistent}.`;
@@ -296,6 +288,8 @@ export function formatPublicStatus(
     `Context usage: ${context}.`,
     `Warning threshold: ${formatPercent(config.contextWarningPercent)}; critical threshold: ${formatPercent(config.criticalWarningPercent)}.`,
     `Automatic session handoff: ${automatic}.`,
+    `Defer prompts from: ${config.deferPromptsFrom}.`,
+    ...(deferredInputCount === undefined ? [] : [`Inputs deferred (${deferredInputCount}).`]),
     `Readiness reminder delay: ${config.readinessRetrySeconds} seconds.`,
   ].join(" ");
 }

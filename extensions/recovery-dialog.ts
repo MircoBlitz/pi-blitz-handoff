@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -5,6 +6,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 
 import { deleteRecoveryFile, inspectRecoveryFile } from "./recovery-store.ts";
 import { documentDialog, selectDialog } from "./overlay-dialog.ts";
+import { deliveredOperationPrompt } from "./transition.ts";
 
 const SAFE_RECOVERY_FILE_PATTERN = /^[A-Za-z0-9-]+\.md$/;
 const RECOVERY_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z-/;
@@ -166,7 +168,11 @@ export class RecoveryDialog {
     }
 
     try {
-      this.sendUserMessage(assembleRecoveryTurn(content));
+      this.sendUserMessage(deliveredOperationPrompt({
+        id: randomUUID(),
+        kind: "recovery",
+        recovery: { directory: this.recoveryDirectory, fileName },
+      }, assembleRecoveryTurn(content)));
     } catch (error) {
       ctx.ui.notify(
         `Recovery dispatch failed immediately; ${path} was retained: ${errorMessage(error)}`,
@@ -175,15 +181,8 @@ export class RecoveryDialog {
       return "list";
     }
 
-    try {
-      await deleteRecoveryFile(this.recoveryDirectory, fileName);
-      ctx.ui.notify(`Recovery dispatch returned without an immediate error; deleted ${path}.`, "info");
-    } catch (error) {
-      ctx.ui.notify(
-        `Recovery dispatch returned without an immediate error, but ${path} could not be deleted: ${errorMessage(error)}`,
-        "error",
-      );
-    }
+    // Native sendUserMessage returns void, not a delivery receipt. The receiving
+    // instance deletes this exact file only after its observed completed turn.
     return "executed";
   }
 

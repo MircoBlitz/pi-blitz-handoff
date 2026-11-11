@@ -1,8 +1,8 @@
-import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
-  Input, Markdown, ScrollView, SelectList, Text, matchesKey, truncateToWidth, visibleWidth,
-  type Component, type Focusable, type SelectItem, type TUI,
+  Input, Markdown, ScrollView, SelectList, Text, truncateToWidth, visibleWidth,
+  type Component, type Focusable, type Keybinding, type SelectItem, type TUI,
 } from "@earendil-works/pi-tui";
 
 export type DialogContext = Pick<ExtensionContext, "mode" | "ui">;
@@ -34,9 +34,12 @@ export class OverlayDialog implements Component, Focusable {
   private readonly content: DialogContent;
   private readonly done: (value: string | undefined) => void;
   private readonly signal?: AbortSignal;
+  private readonly keybindings: Pick<KeybindingsManager, "matches" | "getKeys">;
 
   constructor(tui: TUI, theme: Theme, heading: string, description: string,
-    content: DialogContent, done: (value: string | undefined) => void, signal?: AbortSignal) {
+    content: DialogContent, done: (value: string | undefined) => void, signal: AbortSignal | undefined,
+    keybindings: Pick<KeybindingsManager, "matches" | "getKeys">) {
+    this.keybindings = keybindings;
     this.tui = tui;
     this.theme = theme;
     this.heading = heading;
@@ -111,18 +114,18 @@ export class OverlayDialog implements Component, Focusable {
 
   handleInput(data: string): void {
     if (this.closed) return;
-    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
+    if (this.keybindings.matches(data, "tui.select.cancel")) {
       this.finish(undefined);
       return;
     }
-    if (matchesKey(data, "pageUp")) this.scroll.scrollBy(-this.scroll.viewportHeight);
-    else if (matchesKey(data, "pageDown")) this.scroll.scrollBy(this.scroll.viewportHeight);
+    if (this.keybindings.matches(data, "tui.select.pageUp")) this.scroll.scrollBy(-this.scroll.viewportHeight);
+    else if (this.keybindings.matches(data, "tui.select.pageDown")) this.scroll.scrollBy(this.scroll.viewportHeight);
     else if (this.content.kind === "document") {
-      if (matchesKey(data, "up")) this.scroll.scrollBy(-1);
-      else if (matchesKey(data, "down")) this.scroll.scrollBy(1);
-      else if (matchesKey(data, "home")) this.scroll.scrollToStart();
-      else if (matchesKey(data, "end")) this.scroll.scrollToEnd();
-      else if (matchesKey(data, "return")) this.finish("close");
+      if (this.keybindings.matches(data, "tui.select.up")) this.scroll.scrollBy(-1);
+      else if (this.keybindings.matches(data, "tui.select.down")) this.scroll.scrollBy(1);
+      else if (this.keybindings.matches(data, "tui.editor.cursorLineStart")) this.scroll.scrollToStart();
+      else if (this.keybindings.matches(data, "tui.editor.cursorLineEnd")) this.scroll.scrollToEnd();
+      else if (this.keybindings.matches(data, "tui.select.confirm")) this.finish("close");
     } else if (this.content.kind === "input") this.input.handleInput(data);
     else this.selection(this.listHeight || 5).handleInput(data);
     this.tui.requestRender();
@@ -149,9 +152,21 @@ export class OverlayDialog implements Component, Focusable {
     // Native ScrollView owns bounds/position; this component supplies its viewport.
     this.scroll.updateLayout(lines.length, viewport, () => this.tui.requestRender());
     const body = lines.slice(this.scroll.scrollTop, this.scroll.scrollTop + viewport);
+    const keys = (id: Keybinding) => this.keybindings.getKeys(id).join("/") || "unbound";
+    const navigation = `${keys("tui.select.up")}/${keys("tui.select.down")}`;
+    const paging = `${keys("tui.select.pageUp")}/${keys("tui.select.pageDown")}`;
+    const cancel = keys("tui.select.cancel");
+    const selectionActions = `${keys("tui.select.confirm")} confirm · ${cancel} back`;
     const hints = this.content.kind === "document"
-      ? ["Enter back · Esc close", `↑↓ / PgUp/PgDn scroll · Home/End · ${Math.min(lines.length, this.scroll.scrollTop + 1)}–${Math.min(lines.length, this.scroll.scrollTop + viewport)}/${lines.length}`]
-      : [this.content.kind === "input" ? "Enter OK · Esc back" : inner < 40 ? "↑↓ · Enter · Esc" : "↑↓ select · Enter confirm · Esc back", "PgUp/PgDn scroll details"];
+      ? [`${keys("tui.select.confirm")} back · ${cancel} close`, `${navigation} / ${paging} scroll · ${keys("tui.editor.cursorLineStart")}/${keys("tui.editor.cursorLineEnd")} · ${Math.min(lines.length, this.scroll.scrollTop + 1)}–${Math.min(lines.length, this.scroll.scrollTop + viewport)}/${lines.length}`]
+      : [this.content.kind === "input" ? `${keys("tui.input.submit")} OK · ${cancel} back` : `${navigation} select · ${selectionActions}`, `${paging} scroll details`];
+    if (this.content.kind === "select" && visibleWidth(hints[0]) > inner) {
+      // Keep the way forward and the way out visible, even with one hint row.
+      hints[0] = visibleWidth(selectionActions) > inner
+        ? `${keys("tui.select.confirm")} OK · ${cancel} back` : selectionActions;
+      const scrolling = `${navigation} · ${paging} scroll`;
+      if (visibleWidth(scrolling) <= inner) hints[1] = scrolling;
+    }
     const border = (s: string) => this.theme.fg("border", s);
     const row = (s: string) => {
       const value = truncateToWidth(s, inner, "");
@@ -172,7 +187,7 @@ export class OverlayDialog implements Component, Focusable {
 function show(ctx: DialogContext, heading: string, description: string, content: DialogContent, signal?: AbortSignal) {
   if (signal?.aborted) return Promise.resolve(undefined);
   return ctx.ui.custom<string | undefined>(
-    (tui, theme, _keys, done) => new OverlayDialog(tui, theme, heading, description, content, done, signal),
+    (tui, theme, keys, done) => new OverlayDialog(tui, theme, heading, description, content, done, signal, keys),
     { overlay: true, overlayOptions: { anchor: "center", width: "90%", margin: 1 } },
   );
 }

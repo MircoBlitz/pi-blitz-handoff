@@ -1,38 +1,39 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
-export const SUBMIT_SESSION_HANDOFF_TOOL = "submit_session_handoff";
+export const SESSION_HANDOFF_FINISH_TOOL = "session_handoff_finish";
 
 export interface SessionHandoffSubmission {
   id: string;
 }
 
-export type SubmissionHandler = (submission: SessionHandoffSubmission) => void;
+export type SubmissionHandler = (submission: SessionHandoffSubmission, ctx: ExtensionContext) => void;
 
 export function validateSubmission(
   submission: SessionHandoffSubmission,
   currentSubmissionId: string,
 ): string | undefined {
   if (submission.id !== currentSubmissionId) {
-    return "Submission ID does not match the current writer attempt";
+    return "Finish ID does not match the current handoff";
   }
   return undefined;
 }
 
 export function registerSubmissionTool(pi: ExtensionAPI, submit: SubmissionHandler): void {
   const tool = {
-    name: SUBMIT_SESSION_HANDOFF_TOOL,
-    label: "Session Handoff DONE",
-    description: "Signal DONE after GO: the handoff file is complete and updated for the exact current writer attempt. Does not receive or save the file content.",
-    promptSnippet: "Submit DONE after GO with only the exact submission ID",
+    name: SESSION_HANDOFF_FINISH_TOOL,
+    executionMode: "sequential",
+    label: "Finish Session Handoff",
+    description: "At the safe checkpoint, mark the complete updated handoff file ready using the exact ID returned by successful template retrieval. Accepts no content or path.",
+    promptSnippet: "Finish the retrieved handoff with its exact ID only",
     promptGuidelines: [
-      "Only after GO and finalizing the complete current handoff file, use submit_session_handoff exactly once with only the current submission ID.",
+      "Use session_handoff_finish once after successful session_handoff_get_template retrieval and finalizing the supplied file at the safe checkpoint.",
     ],
     parameters: {
       type: "object",
       properties: {
         id: {
           type: "string",
-          description: "Exact submission ID supplied in the writer prompt",
+          description: "Exact Finish ID returned by session_handoff_get_template",
         },
       },
       required: ["id"],
@@ -41,12 +42,16 @@ export function registerSubmissionTool(pi: ExtensionAPI, submit: SubmissionHandl
     async execute(
       _toolCallId: string,
       params: SessionHandoffSubmission,
+      signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ctx: ExtensionContext,
     ): Promise<{
       content: Array<{ type: "text"; text: string }>;
       details: { id: string };
       terminate: true;
     }> {
-      submit(params);
+      signal?.throwIfAborted();
+      submit(params, ctx);
       return {
         content: [{ type: "text", text: "Session handoff file marked ready." }],
         details: { id: params.id },

@@ -1,5 +1,32 @@
 # Changelog
 
+For agents: [LLM counterpart](docs/llm/CHANGELOG.md).
+
+## 2.0.0 — 2026-11-11
+
+GitHub release with source, version tag and package archive. npm publication is handled separately by the maintainer; this entry does not establish npm availability. Package 2.0.0 marks breaking protocol, custom-template, settings and UI changes; it is independent of the supported Pi version. Requires Pi >=1.5.0 and Node.js >=22.19.0.
+
+### Changed
+
+- Replaced GO/DONE with request → mandatory `session_handoff_get_template({})` → drafting → `session_handoff_finish({ id })`. The initial request contains no path or Finish ID. GET supplies the template, exact reserved file, transcript locator and fresh Finish ID; repeated GET reuses the active snapshot/path/ID. Finish accepts only that ID, not content or a path, and rejects missing retrieval, stale and duplicate submissions.
+- Custom templates remain supported, but cannot remove the mandatory retrieval/Finish rules. Transfer happens at the next safe checkpoint, not whole-task completion; independent background work need not finish. Early drafting uses unchanged source tools, without isolation, another writer round or automatic writer retries. A pending selected Call is delivered once through early GET or emergency steering when needed.
+- Added **Defer prompts from** (`deferPromptsFrom`): **Writing (template retrieved)** by default, or **Request**. The active request retains its chosen mode. Successful GET starts Writing capture; failed/aborted GET does not. Deferred prompts remain unchanged and ordered in one recovery file and are appended before native cutover; later prompts may supersede earlier context.
+- Native completion and associated recovery deletion track the exact turn actually receiving bootstrap or Recovery input, even when it is not the first recipient turn. Only native `completed` counts; error, abort, rejected or unobserved delivery retains recovery. Completion does not verify ingestion or receiver cleanup; no queue, retry or extra semantic veto was added.
+- Cancellation invalidates retrieval/Finish immediately and removes only the runtime-owned reservation after native writes settle, without aborting unrelated work or changing source tools. Same-source restart is supported; recovery remains explicit. Status uses the current native theme, width-safe rendering and fixed recorded durations.
+
+### Removed and compatibility
+
+- Removed separate GO/DONE tools, the **Ready / Wait / Cancel** choice, and `prepareWhileWaiting`, `writerAttempts` and `writerRetryDelaySeconds`. Canonical `/sh cancel`, menu cancellation and the one-shot `readinessRetrySeconds` reminder remain.
+- Recognized previous saved settings are validated and normalized only in memory, with missing deferral mode defaulting to `writing`; retained values must validate, and unknown keys/invalid shapes remain errors. Loading does not rewrite personal configuration. Explicit settings saves use the supported schema. This is load compatibility, not old protocol compatibility.
+
+### Validation and limits
+
+- Corrected source/local candidate: 197 passing tests, typecheck, no-unused checks, whitespace checks, package dry-run and specification checksum verification. Development dependencies remain `^1.2.0`, resolving Pi 1.2.0; these checks are not Pi 1.5 static proof.
+- Real Pi 1.5/model runs with Handoff alone covered command/manual and model starts, early/repeated GET with stable IDs/paths, native writes/Finish, parent-linked replacements, full reads and configured retention (`deleteHandoffAfterReading: false`). Also observed cancellation cleanup/restart, two Writing-mode deferred prompts appended unchanged in order with later-prompt precedence, the one-shot reminder, and explicit native Recovery inspection/execution/completed-turn deletion.
+- Separate actual Pi 1.5 SDK-bound tool calls with real contexts, no doubles and no model rejected invalid/stale Finish IDs without changing the active request, path, dossier or session. Not agent-loop interception or model-compliance proof.
+- A bounded Pi 1.5.2/configured-model smoke loaded the unchanged prepared package and observed GET/repeated GET, native write/Finish, parent-linked replacement, full reading and deletion enabled, ordered Writing-mode prompts with later-prompt precedence, cancellation/restart, the active-session switch guard and explicit Recovery with completed-turn cleanup. This is not a full compatibility matrix. The first isolated startup unexpectedly downloaded an `rg` helper; that copy was removed and the existing native helper reused. No Pi or dependency version changed.
+- Real-model >=90% emergency, automatic initiation, Request-mode deferral, chain-limit rollover and broad UI scenarios remain unrun; deterministic checks exist. No universal model-compliance, lossless-transfer or extension-verified ingestion/cleanup claim.
+
 ## 1.4.2 — 2026-10-21
 
 ### Added

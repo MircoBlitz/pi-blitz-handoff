@@ -15,12 +15,10 @@ const SETTING_KEYS: readonly SettingKey[] = [
   "criticalWarningPercent",
   "automaticSessionHandoff",
   "deleteHandoffAfterReading",
-  "prepareWhileWaiting",
+  "deferPromptsFrom",
   "automaticSessionHandoffPercent",
   "readinessRetrySeconds",
   "maxSessionChainLength",
-  "writerAttempts",
-  "writerRetryDelaySeconds",
   "recoveryDirectory",
   "templateDirectory",
   "callTemplate",
@@ -32,12 +30,10 @@ const SETTING_LABELS: Record<SettingKey, string> = {
   criticalWarningPercent: "Critical warning percentage",
   automaticSessionHandoff: "Automatic session handoff",
   deleteHandoffAfterReading: "Delete handoff after reading",
-  prepareWhileWaiting: "Prepare while waiting",
+  deferPromptsFrom: "Defer prompts from",
   automaticSessionHandoffPercent: "Automatic session handoff percentage",
   readinessRetrySeconds: "Readiness reminder seconds",
   maxSessionChainLength: "Maximum session chain length",
-  writerAttempts: "Writer attempts",
-  writerRetryDelaySeconds: "Writer retry delay seconds",
   recoveryDirectory: "Recovery directory",
   templateDirectory: "Template directory",
   callTemplate: "Call template",
@@ -123,7 +119,11 @@ export class ConfigDialog {
 }
 
 function settingOptions(config: HandoffConfig): string[] {
-  return SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${formatValue(config[key])}`);
+  return SETTING_KEYS.map((key) => `${SETTING_LABELS[key]}: ${key === "deferPromptsFrom" ? deferralLabel(config.deferPromptsFrom) : formatValue(config[key])}`);
+}
+
+function deferralLabel(value: HandoffConfig["deferPromptsFrom"]): string {
+  return value === "request" ? "Request" : "Writing (template retrieved)";
 }
 
 function formatValue(value: HandoffConfig[SettingKey]): string {
@@ -141,13 +141,19 @@ async function editSetting(
 ): Promise<HandoffConfig> {
   let candidate: HandoffConfig | undefined;
 
-  if (key === "automaticSessionHandoff" || key === "deleteHandoffAfterReading" || key === "prepareWhileWaiting") {
+  if (key === "deferPromptsFrom") {
+    const answer = await selectDialog(ctx,
+      "When should ordinary prompts begin being deferred? Writing starts when the template is successfully retrieved, including early preparation. Changes apply to the next handoff request.",
+      ["Request", "Writing (template retrieved)"],
+      { signal, heading: SETTING_LABELS[key] },
+    );
+    if (signal.aborted || answer === undefined) return draft;
+    candidate = { ...draft, deferPromptsFrom: answer === "Request" ? "request" : "writing" };
+  } else if (key === "automaticSessionHandoff" || key === "deleteHandoffAfterReading") {
     const answer = await selectDialog(ctx,
       key === "deleteHandoffAfterReading"
         ? "Should the receiving session delete the handoff file after reading it completely? Disabled leaves the file unchanged."
-        : key === "prepareWhileWaiting"
-          ? "Should early template retrieval and drafting be offered while waiting before GO?"
-          : "Should automatic session handoff be enabled?",
+        : "Should automatic session handoff be enabled?",
       ["Enabled", "Disabled"],
       { signal, heading: SETTING_LABELS[key] },
     );
@@ -193,7 +199,7 @@ async function editSetting(
   }
 }
 
-function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "deleteHandoffAfterReading" | "prepareWhileWaiting">, draft: HandoffConfig): string {
+function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "deleteHandoffAfterReading" | "deferPromptsFrom">, draft: HandoffConfig): string {
   switch (key) {
     case "contextWarningPercent":
       return `What context percentage should show a warning? Enter a number from 1 to less than ${draft.criticalWarningPercent}.`;
@@ -205,10 +211,6 @@ function questionFor(key: Exclude<SettingKey, "automaticSessionHandoff" | "delet
       return "How many seconds should pass before the one-time readiness reminder? Enter an integer from 1 through 300.";
     case "maxSessionChainLength":
       return "How many sessions may one chain contain, including its master? Enter a positive integer.";
-    case "writerAttempts":
-      return "How many total writer attempts should be made? Enter a positive integer.";
-    case "writerRetryDelaySeconds":
-      return "How many seconds should pass before retrying the writer? Enter an integer from 1 through 300.";
     case "recoveryDirectory":
       return "What absolute directory path should store recovery files?";
     case "templateDirectory":
@@ -240,7 +242,7 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
     }
     case "automaticSessionHandoff":
     case "deleteHandoffAfterReading":
-    case "prepareWhileWaiting":
+    case "deferPromptsFrom":
       return undefined;
     case "automaticSessionHandoffPercent": {
       const value = finiteNumber(answer);
@@ -255,14 +257,6 @@ function candidateForAnswer(draft: HandoffConfig, key: SettingKey, answer: strin
     case "maxSessionChainLength": {
       const value = integer(answer, 1);
       return value === undefined ? undefined : { ...draft, maxSessionChainLength: value };
-    }
-    case "writerAttempts": {
-      const value = integer(answer, 1);
-      return value === undefined ? undefined : { ...draft, writerAttempts: value };
-    }
-    case "writerRetryDelaySeconds": {
-      const value = integer(answer, 1, 300);
-      return value === undefined ? undefined : { ...draft, writerRetryDelaySeconds: value };
     }
     case "recoveryDirectory":
       return isAbsolute(answer) ? { ...draft, recoveryDirectory: answer } : undefined;
@@ -288,15 +282,14 @@ function validationMessage(key: SettingKey, draft: HandoffConfig): string {
       return `Enter a finite number above ${draft.contextWarningPercent} through 100.`;
     case "automaticSessionHandoff":
     case "deleteHandoffAfterReading":
-    case "prepareWhileWaiting":
       return "Choose Enabled or Disabled.";
+    case "deferPromptsFrom":
+      return "Choose Request or Writing (template retrieved).";
     case "automaticSessionHandoffPercent":
       return "Enter a finite number from 0 through 100.";
     case "readinessRetrySeconds":
-    case "writerRetryDelaySeconds":
       return "Enter an integer from 1 through 300.";
     case "maxSessionChainLength":
-    case "writerAttempts":
       return "Enter a positive integer.";
     case "recoveryDirectory":
       return "Enter an absolute recovery directory path.";
